@@ -25,6 +25,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def cache_headers(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/assets/"):
+        # Vite content-hashes these filenames, so they never change under the same URL.
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    else:
+        # index.html (and any other top-level file) must always be revalidated,
+        # otherwise browsers can keep serving a stale build after a deploy.
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
 # ── Data models ──────────────────────────────────────────────────────────────
 
 class ActivitySummary(BaseModel):
