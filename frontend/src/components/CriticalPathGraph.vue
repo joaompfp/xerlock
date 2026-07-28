@@ -28,14 +28,14 @@
     >
       <svg :width="svgWidth" :height="svgHeight">
         <defs>
-          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-            <path d="M0 0L10 5L0 10z" fill="#aab0bb" />
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill="#98a0ac" />
           </marker>
-          <marker id="arrow-critical" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <marker id="arrow-critical" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
             <path d="M0 0L10 5L0 10z" fill="#e74c3c" />
           </marker>
         </defs>
-        <g :transform="`translate(${tx},${ty}) scale(${scale})`">
+        <g class="viewport" :class="{ 'viewport-animated': animating }" :transform="`translate(${tx},${ty}) scale(${scale})`">
           <path
             v-for="e in edges"
             :key="e.id"
@@ -55,21 +55,21 @@
             :transform="`translate(${n.x - n.width / 2}, ${n.y - n.height / 2})`"
             @click.stop="selectNode(n)"
           >
-            <rect :width="n.width" :height="n.height" rx="8" class="node-rect" />
-            <text v-if="n.milestone" class="node-mile-icon" x="10" y="18">◆</text>
-            <text class="node-code" :x="n.milestone ? 22 : 10" y="18">{{ n.code }}</text>
-            <text class="node-name" x="10" y="36">{{ truncate(n.name, 30) }}</text>
-            <text class="node-meta" x="10" y="54">
+            <rect :width="n.width" :height="n.height" rx="9" class="node-rect" />
+            <text v-if="n.milestone" class="node-mile-icon" x="11" y="19">◆</text>
+            <text class="node-code" :x="n.milestone ? 24 : 11" y="19">{{ n.code }}</text>
+            <text class="node-name" x="11" y="38">{{ truncate(n.name, 28) }}</text>
+            <text class="node-meta" x="11" y="55">
               {{ n.durationLabel }}<template v-if="n.dateLabel"> · {{ n.dateLabel }}</template>
               <template v-if="n.floatHrs > 0"> · float {{ Math.round(n.floatHrs / 8) }}d</template>
             </text>
             <g
               v-if="n.hiddenCount > 0"
               class="expand-btn"
-              :transform="`translate(${n.width - 22}, ${n.height - 22})`"
+              :transform="`translate(${n.width - 24}, ${n.height - 24})`"
               @click.stop="expandNode(n.id)"
             >
-              <circle r="10" />
+              <circle r="12" />
               <text x="0" y="4" text-anchor="middle">+{{ n.hiddenCount }}</text>
             </g>
           </g>
@@ -122,6 +122,11 @@ import { formatDate, formatHours, statusLabel } from '../utils/format'
 const NEAR_CRITICAL_THRESHOLD_HRS = 80 // 10 working days
 const NODE_WIDTH = 210
 const NODE_HEIGHT = 64
+const DAGRE_RANKSEP = 70 // spacing dagre uses internally, only needed to recover rank index from its output
+const RANK_GAP_X = 50 // column gap in our own wrapped grid
+const STACK_GAP_Y = 14 // gap between same-rank siblings stacked in one column
+const ROW_GAP_Y = 46 // gap between wrapped rows
+const CANVAS_PADDING = 30
 
 export default {
   name: 'CriticalPathGraph',
@@ -137,10 +142,23 @@ export default {
       ty: 40,
       panning: false,
       panStart: null,
+      animating: false,
+      canvasWidth: 900,
     }
   },
   mounted() {
+    if (this.$refs.canvas) {
+      this.canvasWidth = this.$refs.canvas.clientWidth
+      this._resizeObserver = new ResizeObserver(entries => {
+        for (const entry of entries) this.canvasWidth = entry.contentRect.width
+      })
+      this._resizeObserver.observe(this.$refs.canvas)
+    }
     this.$nextTick(this.resetView)
+  },
+  beforeUnmount() {
+    this._resizeObserver?.disconnect()
+    clearTimeout(this._animTimer)
   },
   watch: {
     activities() {
@@ -179,9 +197,13 @@ export default {
     selected() {
       return this.selectedId != null ? this.actLookup.get(this.selectedId) : null
     },
+    // Runs dagre once to get a correct topological rank + crossing-minimized order,
+    // then re-flows that single wide row into wrapped, alternating-direction rows —
+    // like a snake / wrapped paragraph — so long critical chains stay readable
+    // instead of demanding a mile of horizontal scrolling.
     layout() {
       const g = new dagre.graphlib.Graph()
-      g.setGraph({ rankdir: 'LR', nodesep: 20, ranksep: 70, marginx: 20, marginy: 20 })
+      g.setGraph({ rankdir: 'LR', nodesep: 20, ranksep: DAGRE_RANKSEP, marginx: 20, marginy: 20 })
       g.setDefaultEdgeLabel(() => ({}))
 
       const crit = this.criticalIds
@@ -207,45 +229,108 @@ export default {
 
       dagre.layout(g)
 
+      const raw = []
+      for (const id of visible) {
+        const a = this.actLookup.get(id)
+        const gn = g.node(id)
+        if (!a || !gn) continue
+        raw.push({ id, a, gx: gn.x, gy: gn.y })
+      }
+      if (raw.length === 0) return { nodes: [], edges: [], width: 400, height: 300 }
+
+      const minGx = Math.min(...raw.map(r => r.gx))
+      const rankOf = r => Math.round((r.gx - minGx) / (NODE_WIDTH + DAGRE_RANKSEP))
+
+      const rankGroups = new Map()
+      for (const r of raw) {
+        const rk = rankOf(r)
+        if (!rankGroups.has(rk)) rankGroups.set(rk, [])
+        rankGroups.get(rk).push(r)
+      }
+      for (const group of rankGroups.values()) group.sort((x, y) => x.gy - y.gy)
+
+      const maxRank = Math.max(...rankGroups.keys())
+      const ranksPerRow = Math.max(
+        1,
+        Math.floor((this.canvasWidth - CANVAS_PADDING * 2 + RANK_GAP_X) / (NODE_WIDTH + RANK_GAP_X))
+      )
+      const rowOf = rk => Math.floor(rk / ranksPerRow)
+      const numRows = rowOf(maxRank) + 1
+
+      const rowStackCount = new Array(numRows).fill(1)
+      for (const [rk, group] of rankGroups) {
+        const row = rowOf(rk)
+        rowStackCount[row] = Math.max(rowStackCount[row], group.length)
+      }
+      const rowY = new Array(numRows).fill(0)
+      for (let i = 1; i < numRows; i++) {
+        rowY[i] = rowY[i - 1] + rowStackCount[i - 1] * (NODE_HEIGHT + STACK_GAP_Y) + ROW_GAP_Y
+      }
+
+      const posById = new Map()
+      for (const [rk, group] of rankGroups) {
+        const row = rowOf(rk)
+        const dir = row % 2 === 0 ? 1 : -1
+        const colInRow = rk - row * ranksPerRow
+        const colPos = dir === 1 ? colInRow : ranksPerRow - 1 - colInRow
+        const x = CANVAS_PADDING + colPos * (NODE_WIDTH + RANK_GAP_X) + NODE_WIDTH / 2
+        group.forEach((r, stackIdx) => {
+          const y = rowY[row] + stackIdx * (NODE_HEIGHT + STACK_GAP_Y) + NODE_HEIGHT / 2
+          posById.set(r.id, { x, y, row, dir })
+        })
+      }
+
       const nodes = []
       let maxX = 0
       let maxY = 0
-      for (const id of visible) {
-        const a = this.actLookup.get(id)
-        if (!a) continue
-        const gn = g.node(id)
-        if (!gn) continue
+      for (const r of raw) {
+        const pos = posById.get(r.id)
+        const a = r.a
         const hiddenCount =
           a.predecessors.filter(p => !visible.has(p.task_id)).length +
           a.successors.filter(s => !visible.has(s.task_id)).length
         nodes.push({
-          id,
-          x: gn.x,
-          y: gn.y,
-          width: gn.width,
-          height: gn.height,
+          id: r.id,
+          x: pos.x,
+          y: pos.y,
+          row: pos.row,
+          dir: pos.dir,
+          width: NODE_WIDTH,
+          height: NODE_HEIGHT,
           code: a.task_code,
           name: a.task_name,
           milestone: a.task_type === 'TT_Mile',
-          critical: crit.has(id),
-          nearCritical: !crit.has(id) && this.baseVisibleIds.has(id),
+          critical: crit.has(r.id),
+          nearCritical: !crit.has(r.id) && this.baseVisibleIds.has(r.id),
           floatHrs: a.total_float_hrs,
           durationLabel: formatHours(a.duration_hrs),
           dateLabel: a.early_start ? formatDate(a.early_start) : '',
           hiddenCount,
         })
-        maxX = Math.max(maxX, gn.x + gn.width / 2)
-        maxY = Math.max(maxY, gn.y + gn.height / 2)
+        maxX = Math.max(maxX, pos.x + NODE_WIDTH / 2)
+        maxY = Math.max(maxY, pos.y + NODE_HEIGHT / 2)
       }
 
+      const nodeById = new Map(nodes.map(n => [n.id, n]))
+      // "forward" = the side a node's row is reading towards; "backward" = where it reads in from.
+      // Anchoring every edge this way means a same-row hop is a gentle sideways curve, and a
+      // row-wrap hop becomes a hairpin turn on the correct edge — like a snake game or a
+      // wrapped paragraph, always readable without special-casing the two situations.
+      const forwardAnchor = n => ({ x: n.x + (n.dir === 1 ? n.width / 2 : -n.width / 2), y: n.y })
+      const backwardAnchor = n => ({ x: n.x + (n.dir === 1 ? -n.width / 2 : n.width / 2), y: n.y })
       const edges = edgeMeta.map(em => {
-        const ge = g.edge(em.from, em.to)
-        const pts = ge.points
-        const path = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ')
+        const a = nodeById.get(em.from)
+        const b = nodeById.get(em.to)
+        const start = forwardAnchor(a)
+        const end = backwardAnchor(b)
+        const dx = Math.max(40, Math.abs(end.x - start.x) * 0.5)
+        const c1x = start.x + (a.dir === 1 ? dx : -dx)
+        const c2x = end.x + (b.dir === 1 ? -dx : dx)
+        const path = `M ${start.x} ${start.y} C ${c1x} ${start.y}, ${c2x} ${end.y}, ${end.x} ${end.y}`
         return { ...em, path, criticalEdge: crit.has(em.from) && crit.has(em.to) }
       })
 
-      return { nodes, edges, width: maxX + 60, height: maxY + 60 }
+      return { nodes, edges, width: maxX + CANVAS_PADDING, height: maxY + CANVAS_PADDING }
     },
     nodes() {
       return this.layout.nodes
@@ -297,7 +382,12 @@ export default {
       )
     },
     selectNode(n) {
-      this.selectedId = this.selectedId === n.id ? null : n.id
+      if (this.selectedId === n.id) {
+        this.selectedId = null
+        return
+      }
+      this.selectedId = n.id
+      this.$nextTick(() => this.centerOnNode(n.id))
     },
     expandNode(id) {
       const a = this.actLookup.get(id)
@@ -305,6 +395,7 @@ export default {
       for (const p of a.predecessors) this.expandedExtra.add(p.task_id)
       for (const s of a.successors) this.expandedExtra.add(s.task_id)
       this.expandedExtra = new Set(this.expandedExtra)
+      this.$nextTick(() => this.centerOnNode(id))
     },
     revealAndSelect(id) {
       if (!this.visibleIds.has(id)) {
@@ -312,10 +403,18 @@ export default {
         this.expandedExtra = new Set(this.expandedExtra)
       }
       this.selectedId = id
+      this.$nextTick(() => this.centerOnNode(id))
     },
     resetGraph() {
       this.expandedExtra = new Set()
       this.selectedId = null
+    },
+    triggerAnimation() {
+      this.animating = true
+      clearTimeout(this._animTimer)
+      this._animTimer = setTimeout(() => {
+        this.animating = false
+      }, 260)
     },
     // Zoom while keeping the graph point under (cx, cy) — canvas-local coords — fixed on screen.
     // Without this, scaling around the origin flings the graph out of view after a couple of clicks.
@@ -328,12 +427,25 @@ export default {
       this.scale = clamped
     },
     zoomBy(factor) {
+      this.triggerAnimation()
       const el = this.$refs.canvas
       const cx = el ? el.clientWidth / 2 : 0
       const cy = el ? el.clientHeight / 2 : 0
       this.zoomAt(cx, cy, this.scale * factor)
     },
+    // Smoothly pans (and, only if too zoomed-out to read, zooms in a little) so the given
+    // node lands centered on screen — keeps you oriented after selecting or expanding.
+    centerOnNode(id) {
+      const el = this.$refs.canvas
+      const n = this.nodes.find(nd => nd.id === id)
+      if (!el || !n) return
+      this.triggerAnimation()
+      this.scale = Math.min(2.5, Math.max(this.scale, 0.85))
+      this.tx = el.clientWidth / 2 - n.x * this.scale
+      this.ty = el.clientHeight / 2 - n.y * this.scale
+    },
     resetView() {
+      this.triggerAnimation()
       const el = this.$refs.canvas
       const gw = this.layout.width
       const gh = this.layout.height
@@ -343,9 +455,9 @@ export default {
         this.ty = 40
         return
       }
-      const pad = 40
+      const pad = 30
       const s = Math.min((el.clientWidth - pad * 2) / gw, (el.clientHeight - pad * 2) / gh, 1.2)
-      this.scale = Math.max(0.03, s)
+      this.scale = Math.max(0.1, s)
       this.tx = (el.clientWidth - gw * this.scale) / 2
       this.ty = (el.clientHeight - gh * this.scale) / 2
     },
@@ -377,7 +489,7 @@ export default {
 .graph-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid #eee; background: #fafbfc; flex-wrap: wrap; gap: 8px; }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; }
 .legend-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #666; }
-.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .dot-critical { background: #e74c3c; }
 .dot-near { background: #d4a017; }
 .dot-other { background: #b3b8c2; }
@@ -388,29 +500,34 @@ export default {
 .btn-tiny:hover:not(:disabled) { background: #f0f2f5; }
 .btn-tiny:disabled { opacity: 0.4; cursor: default; }
 
-.graph-canvas { position: relative; overflow: hidden; height: 480px; background: radial-gradient(#f0f1f4 1px, transparent 1px) 0 0 / 16px 16px, #fff; cursor: grab; }
+.graph-canvas { position: relative; overflow: hidden; height: 560px; background: radial-gradient(#eef0f4 1.5px, transparent 1.5px) 0 0 / 18px 18px, #fff; cursor: grab; }
 .graph-canvas.dragging { cursor: grabbing; }
 
-.edge { fill: none; stroke: #aab0bb; stroke-width: 1.5; transition: opacity 0.15s, stroke 0.15s; }
-.edge.edge-critical { stroke: #e74c3c; stroke-width: 2.5; }
-.edge.dimmed { opacity: 0.15; }
+/* No transition by default — dragging/wheel-zoom must track the pointer instantly.
+   The animated class is toggled on only for programmatic camera moves (buttons,
+   fit, select, expand) so those glide instead of snapping. */
+.viewport-animated { transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1); }
+
+.edge { fill: none; stroke: #98a0ac; stroke-width: 1.8; transition: opacity 0.15s, stroke 0.15s; }
+.edge.edge-critical { stroke: #e74c3c; stroke-width: 3; }
+.edge.dimmed { opacity: 0.12; }
 
 .node { cursor: pointer; }
 .node .node-rect { fill: #fafbfc; stroke: #d5d8de; stroke-width: 1.5; transition: filter 0.15s, opacity 0.15s; }
-.node.critical .node-rect { fill: #fdf1f0; stroke: #e74c3c; stroke-width: 2; }
-.node.near-critical .node-rect { fill: #fdf8ec; stroke: #d4a017; stroke-width: 1.5; }
+.node.critical .node-rect { fill: #fdeeed; stroke: #e74c3c; stroke-width: 2.5; }
+.node.near-critical .node-rect { fill: #fdf6e6; stroke: #d4a017; stroke-width: 2; }
 .node.other .node-rect { fill: #f5f6f8; stroke: #c9cdd4; }
-.node.selected .node-rect { stroke: #2f5496; stroke-width: 2.5; filter: drop-shadow(0 2px 6px rgba(47,84,150,0.35)); }
-.node.dimmed { opacity: 0.25; }
-.node:hover .node-rect { filter: drop-shadow(0 2px 5px rgba(0,0,0,0.12)); }
+.node.selected .node-rect { stroke: #2f5496; stroke-width: 3; filter: drop-shadow(0 3px 8px rgba(47,84,150,0.4)); }
+.node.dimmed { opacity: 0.22; }
+.node:hover .node-rect { filter: drop-shadow(0 2px 6px rgba(0,0,0,0.14)); }
 
-.node-mile-icon { font-size: 11px; fill: #8e44ad; }
-.node-code { font-size: 10px; font-weight: 700; fill: #666; text-transform: uppercase; letter-spacing: 0.3px; }
-.node-name { font-size: 12px; font-weight: 600; fill: #1a1a2e; }
-.node-meta { font-size: 10px; fill: #888; }
+.node-mile-icon { font-size: 12px; fill: #8e44ad; }
+.node-code { font-size: 11px; font-weight: 700; fill: #5a5f68; text-transform: uppercase; letter-spacing: 0.3px; }
+.node-name { font-size: 13px; font-weight: 600; fill: #1a1a2e; }
+.node-meta { font-size: 11px; fill: #888; }
 
-.expand-btn circle { fill: #2f5496; opacity: 0.9; }
-.expand-btn text { fill: white; font-size: 10px; font-weight: 700; }
+.expand-btn circle { fill: #2f5496; opacity: 0.92; }
+.expand-btn text { fill: white; font-size: 11px; font-weight: 700; }
 .expand-btn:hover circle { fill: #1f3b6e; }
 
 .detail-panel { border-top: 1px solid #eee; padding: 16px 18px; background: #f8f9fc; }
