@@ -5,21 +5,6 @@ const REL_TYPE_LABELS = { PR_FS: 'FS', PR_SS: 'SS', PR_FF: 'FF', PR_SF: 'SF' }
 const HEADER_FILL = 'FF2F5496'
 const CRITICAL_FONT = 'FFC0392B'
 
-const ACTIVITY_COLUMNS = [
-  { header: 'Activity ID', key: 'task_code', width: 14 },
-  { header: 'Activity Name', key: 'task_name', width: 44 },
-  { header: 'WBS', key: 'wbs_path', width: 26 },
-  { header: 'Status', key: 'status_label', width: 12 },
-  { header: '% Complete', key: 'pct_complete', width: 10 },
-  { header: 'Orig. Duration (d)', key: 'duration_d', width: 10 },
-  { header: 'Start', key: 'early_start', width: 12, style: { numFmt: 'dd-mmm-yy' } },
-  { header: 'Finish', key: 'early_end', width: 12, style: { numFmt: 'dd-mmm-yy' } },
-  { header: 'Total Float (d)', key: 'total_float_d', width: 11 },
-  { header: 'Free Float (d)', key: 'free_float_d', width: 11 },
-  { header: 'Calendar', key: 'calendar', width: 16 },
-  { header: 'Critical', key: 'critical_label', width: 9 },
-]
-
 const RELATIONSHIP_COLUMNS = [
   { header: 'Predecessor ID', key: 'pred_code', width: 14 },
   { header: 'Predecessor Name', key: 'pred_name', width: 38 },
@@ -49,21 +34,44 @@ function slug(s) {
 }
 
 /**
- * wbs_id -> "Level 1 > Level 2 > ..." breadcrumb, built from the nested wbs_tree.
- * The root node (the project itself) is excluded from the breadcrumb since it's
- * identical on every row and just adds noise; it still gets its own fallback entry
- * in case an activity is assigned directly to it.
+ * wbs_id -> [level1Label, level2Label, ...], built from the nested wbs_tree.
+ * The root node (the project itself) is excluded since it's identical for every
+ * activity and just adds noise; it still gets its own fallback entry (its own
+ * label as a single-element array) in case an activity is assigned directly to it.
  */
-function buildWbsPathMap(wbsTree) {
+function buildWbsLevelsMap(wbsTree) {
   const map = new Map()
   function walk(node, trail, isRoot) {
     const label = node.wbs_short_name ? `${node.wbs_short_name} ${node.wbs_name}` : node.wbs_name
-    const path = isRoot ? [] : [...trail, label]
-    map.set(node.wbs_id, path.length ? path.join(' > ') : label)
-    for (const child of node.children || []) walk(child, path, false)
+    const levels = isRoot ? [] : [...trail, label]
+    map.set(node.wbs_id, levels.length ? levels : [label])
+    for (const child of node.children || []) walk(child, levels, false)
   }
   for (const root of wbsTree || []) walk(root, [], true)
   return map
+}
+
+function maxWbsDepth(wbsLevelsMap) {
+  let max = 1
+  for (const levels of wbsLevelsMap.values()) {
+    if (levels.length > max) max = levels.length
+  }
+  return max
+}
+
+function wbsLevelColumns(maxDepth, widthPerLevel = 22) {
+  return Array.from({ length: maxDepth }, (_, i) => ({
+    header: `WBS Level ${i + 1}`,
+    key: `wbs_l${i + 1}`,
+    width: widthPerLevel,
+  }))
+}
+
+function wbsLevelValues(wbsLevelsMap, wbsId, maxDepth) {
+  const levels = wbsLevelsMap.get(wbsId) || []
+  const out = {}
+  for (let i = 0; i < maxDepth; i++) out[`wbs_l${i + 1}`] = levels[i] || ''
+  return out
 }
 
 function styleHeaderRow(ws) {
@@ -77,14 +85,27 @@ function styleHeaderRow(ws) {
   ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columns.length } }
 }
 
-function addActivitiesSheet(wb, activities, wbsPathMap, sheetName) {
+function addActivitiesSheet(wb, activities, wbsLevelsMap, maxDepth, sheetName) {
   const ws = wb.addWorksheet(sheetName)
-  ws.columns = ACTIVITY_COLUMNS
+  ws.columns = [
+    { header: 'Activity ID', key: 'task_code', width: 14 },
+    { header: 'Activity Name', key: 'task_name', width: 44 },
+    ...wbsLevelColumns(maxDepth),
+    { header: 'Status', key: 'status_label', width: 12 },
+    { header: '% Complete', key: 'pct_complete', width: 10 },
+    { header: 'Orig. Duration (d)', key: 'duration_d', width: 10 },
+    { header: 'Start', key: 'early_start', width: 12, style: { numFmt: 'dd-mmm-yy' } },
+    { header: 'Finish', key: 'early_end', width: 12, style: { numFmt: 'dd-mmm-yy' } },
+    { header: 'Total Float (d)', key: 'total_float_d', width: 11 },
+    { header: 'Free Float (d)', key: 'free_float_d', width: 11 },
+    { header: 'Calendar', key: 'calendar', width: 16 },
+    { header: 'Critical', key: 'critical_label', width: 9 },
+  ]
   activities.forEach(a => {
     ws.addRow({
       task_code: a.task_code,
       task_name: a.task_name,
-      wbs_path: wbsPathMap.get(a.wbs_id) || '',
+      ...wbsLevelValues(wbsLevelsMap, a.wbs_id, maxDepth),
       status_label: statusLabel(a.status),
       pct_complete: a.pct_complete,
       duration_d: round1(a.duration_hrs / 8),
@@ -159,29 +180,23 @@ async function newWorkbook() {
   return wb
 }
 
-/** Full programme export: all activities + all relationships, P6-style two-sheet workbook. */
-export async function exportProgrammeXlsx(data) {
+/**
+ * Single P6-style workbook: Activities (all), Critical Path (subset), Relationships (all).
+ * One file covers both the full programme and the critical-path view, since a critical
+ * path is just a filtered slice of the same activity/relationship data.
+ */
+export async function exportWorkbook(data) {
   const wb = await newWorkbook()
-  const wbsPathMap = buildWbsPathMap(data.wbs_tree)
+  const wbsLevelsMap = buildWbsLevelsMap(data.wbs_tree)
+  const maxDepth = maxWbsDepth(wbsLevelsMap)
   const actLookup = new Map(data.activities.map(a => [a.task_id, a]))
-  addActivitiesSheet(wb, data.activities, wbsPathMap, 'Activities')
-  addRelationshipsSheet(wb, data.activities, actLookup, 'Relationships')
-  await downloadWorkbook(wb, `${slug(data.project.proj_short_name)}-programme.xlsx`)
-}
-
-/** Critical-path-only export: critical activities + the relationships that chain them. */
-export async function exportCriticalPathXlsx(data) {
-  const wb = await newWorkbook()
-  const wbsPathMap = buildWbsPathMap(data.wbs_tree)
   const critical = data.activities.filter(a => a.is_critical)
-  const criticalIds = new Set(critical.map(a => a.task_id))
-  const actLookup = new Map(data.activities.map(a => [a.task_id, a]))
-  addActivitiesSheet(wb, critical, wbsPathMap, 'Critical Path')
-  const criticalWithCriticalPreds = critical.filter(a =>
-    (a.predecessors || []).some(p => criticalIds.has(p.task_id))
-  )
-  addRelationshipsSheet(wb, criticalWithCriticalPreds, actLookup, 'Relationships')
-  await downloadWorkbook(wb, `${slug(data.project.proj_short_name)}-critical-path.xlsx`)
+
+  addActivitiesSheet(wb, data.activities, wbsLevelsMap, maxDepth, 'Activities')
+  addActivitiesSheet(wb, critical, wbsLevelsMap, maxDepth, 'Critical Path')
+  addRelationshipsSheet(wb, data.activities, actLookup, 'Relationships')
+
+  await downloadWorkbook(wb, `${slug(data.project.proj_short_name)}-schedule.xlsx`)
 }
 
 function csvEscape(v) {
@@ -198,25 +213,31 @@ function downloadCsv(rows, filename) {
 
 /** CSV export of an activity list (used for both "all activities" and any filtered view). */
 export function exportActivitiesCsv(data, activities, filename) {
-  const wbsPathMap = buildWbsPathMap(data.wbs_tree)
+  const wbsLevelsMap = buildWbsLevelsMap(data.wbs_tree)
+  const maxDepth = maxWbsDepth(wbsLevelsMap)
+  const wbsHeaders = Array.from({ length: maxDepth }, (_, i) => `WBS Level ${i + 1}`)
   const headers = [
-    'Activity ID', 'Activity Name', 'WBS', 'Status', '% Complete',
+    'Activity ID', 'Activity Name', ...wbsHeaders, 'Status', '% Complete',
     'Orig. Duration (d)', 'Start', 'Finish', 'Total Float (d)', 'Free Float (d)',
     'Calendar', 'Critical',
   ]
-  const rows = activities.map(a => [
-    a.task_code,
-    a.task_name,
-    wbsPathMap.get(a.wbs_id) || '',
-    statusLabel(a.status),
-    a.pct_complete,
-    round1(a.duration_hrs / 8),
-    a.early_start ? a.early_start.slice(0, 10) : '',
-    a.early_end ? a.early_end.slice(0, 10) : '',
-    round1(a.total_float_hrs / 8),
-    round1(a.free_float_hrs / 8),
-    a.calendar || '',
-    a.is_critical ? 'Yes' : '',
-  ])
+  const rows = activities.map(a => {
+    const levels = wbsLevelsMap.get(a.wbs_id) || []
+    const wbsCells = Array.from({ length: maxDepth }, (_, i) => levels[i] || '')
+    return [
+      a.task_code,
+      a.task_name,
+      ...wbsCells,
+      statusLabel(a.status),
+      a.pct_complete,
+      round1(a.duration_hrs / 8),
+      a.early_start ? a.early_start.slice(0, 10) : '',
+      a.early_end ? a.early_end.slice(0, 10) : '',
+      round1(a.total_float_hrs / 8),
+      round1(a.free_float_hrs / 8),
+      a.calendar || '',
+      a.is_critical ? 'Yes' : '',
+    ]
+  })
   downloadCsv([headers, ...rows], filename || `${slug(data.project.proj_short_name)}-activities.csv`)
 }

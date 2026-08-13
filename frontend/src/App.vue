@@ -42,26 +42,9 @@
           <span class="header-meta">{{ data.project.total_activities }} activities &middot; {{ data.project.total_wbs }} WBS nodes</span>
         </div>
         <div class="header-right">
-          <div class="export-dropdown">
-            <div v-if="exportMenuOpen" class="export-menu-overlay" @click="exportMenuOpen = false"></div>
-            <button class="btn-outline" @click="exportMenuOpen = !exportMenuOpen">
-              Export {{ exportMenuOpen ? '▴' : '▾' }}
-            </button>
-            <div v-if="exportMenuOpen" class="export-menu">
-              <button @click="doExport(() => exportProgrammeXlsx(data))">
-                Full programme (.xlsx)
-                <span>Activities + Relationships</span>
-              </button>
-              <button @click="doExport(() => exportCriticalPathXlsx(data))">
-                Critical path (.xlsx)
-                <span>Critical activities + their links</span>
-              </button>
-              <button @click="doExport(() => exportActivitiesCsv(data, data.activities))">
-                All activities (.csv)
-                <span>Flat activity list</span>
-              </button>
-            </div>
-          </div>
+          <button class="btn-outline" @click="doExport(() => exportWorkbook(data))">
+            Export to Excel (.xlsx)
+          </button>
           <button class="btn-outline" @click="data = null">Load another</button>
         </div>
       </header>
@@ -104,12 +87,7 @@
       <!-- Critical Path Graph -->
       <div v-if="tab === 'story'" class="section">
         <div class="story-header">
-          <div class="story-header-top">
-            <h2>Critical Path</h2>
-            <button class="btn-outline" @click="doExport(() => exportCriticalPathXlsx(data))">
-              Export critical path (.xlsx)
-            </button>
-          </div>
+          <h2>Critical Path</h2>
           <p class="subtitle">{{ data.project.total_critical }} critical activities. Drag to pan, scroll to zoom, click a node for detail, click ⊕ to expand its neighbors.</p>
         </div>
 
@@ -251,7 +229,7 @@
 import WBSNode from './components/WBSNode.vue'
 import CriticalPathGraph from './components/CriticalPathGraph.vue'
 import { formatDate, formatHours, statusLabel } from './utils/format'
-import { exportProgrammeXlsx, exportCriticalPathXlsx, exportActivitiesCsv } from './utils/export'
+import { exportWorkbook, exportActivitiesCsv } from './utils/export'
 
 export default {
   name: 'App',
@@ -268,7 +246,6 @@ export default {
       sortField: 'total_float_hrs',
       sortDir: 'asc',
       selectedAct: null,
-      exportMenuOpen: false,
       exporting: false,
     }
   },
@@ -378,7 +355,6 @@ export default {
         .replace(/(^-|-$)/g, '')
     },
     async doExport(fn) {
-      this.exportMenuOpen = false
       if (this.exporting) return
       this.exporting = true
       try {
@@ -389,8 +365,7 @@ export default {
         this.exporting = false
       }
     },
-    exportProgrammeXlsx,
-    exportCriticalPathXlsx,
+    exportWorkbook,
     exportActivitiesCsv,
   },
 }
@@ -426,16 +401,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .btn-outline:hover { background: #f5f5f5; }
 .header-right { display: flex; gap: 8px; align-items: center; }
 
-/* Export dropdown */
-.export-dropdown { position: relative; }
-.export-menu-overlay { position: fixed; inset: 0; z-index: 10; }
-.export-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 11; background: white; border: 1px solid #e0e0e0; border-radius: 8px; box-shadow: 0 8px 24px rgba(26,26,46,0.14); min-width: 240px; overflow: hidden; }
-.export-menu button { display: block; width: 100%; text-align: left; padding: 10px 14px; border: none; background: none; cursor: pointer; border-bottom: 1px solid #f0f0f0; }
-.export-menu button:last-child { border-bottom: none; }
-.export-menu button:hover { background: #f0f4ff; }
-.export-menu button { font-size: 13px; font-weight: 600; color: #1a1a2e; }
-.export-menu button span { display: block; font-size: 11px; font-weight: 400; color: #888; margin-top: 1px; }
-
 /* Stats */
 .stats-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
 .stat-card { flex: 1; min-width: 120px; background: #f8f9fc; border: 1px solid #e8e8e8; border-radius: 8px; padding: 12px 16px; text-align: center; transition: transform 0.15s, box-shadow 0.15s; }
@@ -452,7 +417,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 /* Section */
 .section { margin-bottom: 40px; }
 .story-header { margin-bottom: 24px; }
-.story-header-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .story-header h2 { font-size: 20px; font-weight: 700; }
 .story-header .subtitle { font-size: 13px; color: #888; margin-top: 4px; }
 
