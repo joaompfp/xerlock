@@ -56,6 +56,7 @@ class ActivitySummary(BaseModel):
     total_float_hrs: Optional[float]
     free_float_hrs: float
     duration_hrs: float
+    remain_duration_hrs: float
     task_type: str
     calendar: Optional[str]
     calendar_hrs_per_day: float
@@ -321,6 +322,7 @@ def parse_xer(filepath: str) -> ScheduleData:
             "total_float_hrs": tf,
             "free_float_hrs": safe_float(a.free_float_hr_cnt),
             "duration_hrs": safe_float(a.target_drtn_hr_cnt),
+            "remain_duration_hrs": safe_float(a.remain_drtn_hr_cnt),
             "task_type": a.task_type or "",
             "calendar": cal_name,
             "calendar_hrs_per_day": cal_hrs_dict.get(a.clndr_id, 8.0),

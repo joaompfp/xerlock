@@ -97,6 +97,7 @@
         <button :class="{ active: tab === 'story' }" @click="tab = 'story'">Critical Path</button>
         <button :class="{ active: tab === 'table' }" @click="tab = 'table'">Activity Table</button>
         <button :class="{ active: tab === 'wbs' }" @click="tab = 'wbs'">WBS Tree</button>
+        <button :class="{ active: tab === 'progress' }" @click="tab = 'progress'">Progress</button>
         <button :class="{ active: tab === 'health' }" @click="tab = 'health'">Health Check</button>
         <button class="btn-collapse" @click="headerCollapsed = !headerCollapsed" :title="headerCollapsed ? 'Show header' : 'Hide header for more room'">
           {{ headerCollapsed ? '⌄ Show header' : '⌃ Hide header' }}
@@ -244,6 +245,11 @@
         </div>
       </div>
 
+      <!-- Progress -->
+      <div v-if="tab === 'progress'" class="section section-full">
+        <ProgressView :data="data" @jump="jumpToActivity" />
+      </div>
+
       <!-- Health Check -->
       <div v-if="tab === 'health'" class="section section-full">
         <HealthCheck :data="data" @jump="jumpToActivity" />
@@ -257,13 +263,14 @@ import WBSNode from './components/WBSNode.vue'
 import CriticalPathGraph from './components/CriticalPathGraph.vue'
 import GanttChart from './components/GanttChart.vue'
 import HealthCheck from './components/HealthCheck.vue'
+import ProgressView from './components/ProgressView.vue'
 import { formatDate, formatHours, statusLabel, isMilestone, formatFloat, timeAgo } from './utils/format'
 import { exportWorkbook, exportActivitiesCsv } from './utils/export'
 import { loadLastFile, saveLastFile, clearLastFile } from './utils/lastFile'
 
 export default {
   name: 'App',
-  components: { WBSNode, CriticalPathGraph, GanttChart, HealthCheck },
+  components: { WBSNode, CriticalPathGraph, GanttChart, HealthCheck, ProgressView },
   data() {
     return {
       data: null,
