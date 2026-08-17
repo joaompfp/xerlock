@@ -83,7 +83,7 @@
           <span class="detail-code">{{ selected.task_code }}</span>
           <span class="detail-name">{{ selected.task_name }}</span>
         </div>
-        <button class="btn-tiny" @click="selected = null">Close</button>
+        <button class="btn-tiny" @click="selectedId = null">Close</button>
       </div>
       <div class="detail-stats">
         <span><strong>{{ formatDate(selected.early_start) }}</strong> → <strong>{{ formatDate(selected.early_end) }}</strong></span>
