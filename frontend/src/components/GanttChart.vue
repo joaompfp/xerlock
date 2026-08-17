@@ -324,7 +324,9 @@ export default {
   props: {
     data: { type: Object, required: true },
     extraRoom: { type: Boolean, default: false },
+    jumpTo: { type: [Number, String], default: null },
   },
+  emits: ['jumped'],
   data() {
     const saved = loadSavedView()
 
@@ -378,6 +380,14 @@ export default {
     showLinks() { this.persistView() },
     showProgressLine() { this.persistView() },
     dayWidthOverride() { this.persistView() },
+    jumpTo: {
+      immediate: true,
+      handler(taskId) {
+        if (taskId == null) return
+        this.revealAndSelect(taskId)
+        this.$emit('jumped')
+      },
+    },
   },
   computed: {
     actLookup() {
