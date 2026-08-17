@@ -7,7 +7,7 @@
       </div>
       <div class="basis-group">
         <span class="basis-label">Critical basis</span>
-        <button :class="{ active: criticalBasis === 'tf0' }" @click="criticalBasis = 'tf0'">TF = 0</button>
+        <button :class="{ active: criticalBasis === 'tf0' }" @click="criticalBasis = 'tf0'">TF &le; 0</button>
         <button :class="{ active: criticalBasis === 'longest' }" @click="criticalBasis = 'longest'">Longest Path</button>
       </div>
     </div>
@@ -15,7 +15,7 @@
     <div class="gantt-controls">
       <div class="legend">
         <template v-if="criticalBasis === 'tf0'">
-          <span class="legend-item"><i class="dot dot-critical"></i>Critical (TF=0)</span>
+          <span class="legend-item"><i class="dot dot-critical"></i>Critical (TF&le;0)</span>
           <span class="legend-item"><i class="dot dot-near"></i>Near-critical</span>
           <span class="legend-item"><i class="dot dot-other"></i>Normal</span>
         </template>
@@ -23,6 +23,7 @@
           <span class="legend-item"><i class="dot dot-critical"></i>On longest path</span>
           <span class="legend-item"><i class="dot dot-other"></i>Normal</span>
         </template>
+        <span class="legend-item"><i class="dot dot-neg"></i>Negative float</span>
         <span class="legend-item"><i class="diamond"></i>Milestone</span>
         <span class="legend-item"><i class="bar-wbs"></i>WBS rollup</span>
         <span class="legend-item" v-if="showProgressLine"><i class="progress-swatch"></i>Progress line</span>
@@ -55,7 +56,7 @@
     <!-- Filter bar: narrows which rows are shown (not just dimmed), the way P6's activity filter works.
          The same search box doubles as "find" — clicking a filtered result scrolls/centers on it. -->
     <div class="filter-bar">
-      <input type="text" v-model="filterText" class="filter-input" placeholder="Search activity code or name…" />
+      <input type="text" v-model="filterText" class="filter-input" placeholder="Search code, name, or WBS…" />
       <select v-model="filterStatus" class="filter-select">
         <option value="">All statuses</option>
         <option value="TK_NotStart">Not started</option>
@@ -233,13 +234,14 @@
         <div>
           <span class="detail-code">{{ selectedActivity.task_code }}</span>
           <span class="detail-name">{{ selectedActivity.task_name }}</span>
+          <div v-if="selectedActivity.wbs_path" class="detail-wbs-path">{{ selectedActivity.wbs_path }}</div>
         </div>
         <button class="btn-tiny-light" @click="selectedTaskId = null">Close</button>
       </div>
       <div class="detail-stats">
         <span><strong>{{ formatDate(selectedActivity.early_start) }}</strong> → <strong>{{ formatDate(selectedActivity.early_end) }}</strong></span>
-        <span>{{ formatHours(selectedActivity.duration_hrs) }} duration</span>
-        <span :class="selectedActivity.total_float_hrs === 0 ? 'float-crit' : ''">{{ formatFloat(selectedActivity.total_float_hrs) }} float</span>
+        <span>{{ formatHours(selectedActivity.duration_hrs, selectedActivity.calendar_hrs_per_day) }} duration</span>
+        <span :class="selectedActivity.is_negative_float ? 'float-neg' : (selectedActivity.total_float_hrs === 0 ? 'float-crit' : '')">{{ formatFloat(selectedActivity.total_float_hrs) }} float</span>
         <span>{{ statusLabel(selectedActivity.status) }}</span>
         <span>{{ selectedActivity.pct_complete }}% complete</span>
       </div>
@@ -256,7 +258,7 @@
               <span class="rel-type">{{ p.type }}</span>
               <template v-if="p.activity">
                 <span class="rel-dates">{{ formatDate(p.activity.early_start) }} → {{ formatDate(p.activity.early_end) }}</span>
-                <span class="rel-dur">{{ formatHours(p.activity.duration_hrs) }}</span>
+                <span class="rel-dur">{{ formatHours(p.activity.duration_hrs, p.activity.calendar_hrs_per_day) }}</span>
               </template>
               <span v-if="p.lag_hrs" class="rel-lag">+{{ p.lag_hrs }}h lag</span>
             </div>
@@ -274,7 +276,7 @@
               <span class="rel-type">{{ s.type }}</span>
               <template v-if="s.activity">
                 <span class="rel-dates">{{ formatDate(s.activity.early_start) }} → {{ formatDate(s.activity.early_end) }}</span>
-                <span class="rel-dur">{{ formatHours(s.activity.duration_hrs) }}</span>
+                <span class="rel-dur">{{ formatHours(s.activity.duration_hrs, s.activity.calendar_hrs_per_day) }}</span>
               </template>
               <span v-if="s.lag_hrs" class="rel-lag">+{{ s.lag_hrs }}h lag</span>
             </div>
@@ -518,7 +520,7 @@ export default {
       const q = this.filterText.trim().toLowerCase()
       const ids = new Set()
       for (const a of this.data.activities) {
-        if (q && !(a.task_code.toLowerCase().includes(q) || a.task_name.toLowerCase().includes(q))) continue
+        if (q && !(a.task_code.toLowerCase().includes(q) || a.task_name.toLowerCase().includes(q) || (a.wbs_path && a.wbs_path.toLowerCase().includes(q)))) continue
         if (this.filterStatus && a.status !== this.filterStatus) continue
         if (this.filterCriticalOnly && !this.isBasisCritical(a)) continue
         ids.add(a.task_id)
@@ -667,9 +669,12 @@ export default {
       return this.criticalBasis === 'longest' ? a.is_longest_path : a.is_critical
     },
     classifyActivity(a) {
-      if (this.isBasisCritical(a)) return 'critical'
-      if (this.criticalBasis === 'tf0' && a.total_float_hrs > 0 && a.total_float_hrs <= 80) return 'near'
-      return 'other'
+      const base = this.isBasisCritical(a)
+        ? 'critical'
+        : (this.criticalBasis === 'tf0' && a.total_float_hrs > 0 && a.total_float_hrs <= 80 ? 'near' : 'other')
+      // Negative float means the activity is already behind an imposed date — flag it
+      // regardless of critical basis, since that's a property of the activity itself.
+      return a.is_negative_float ? `${base} negative` : base
     },
     buildActivityRow(a, level) {
       const milestone = isMilestone(a)
@@ -774,7 +779,7 @@ export default {
     },
     barTitle(a) {
       return `${a.task_code} — ${a.task_name}\n${formatDate(a.early_start)} → ${formatDate(a.early_end)}\n` +
-        `Duration: ${formatHours(a.duration_hrs)} · Float: ${formatFloat(a.total_float_hrs)} · ${a.pct_complete}% complete`
+        `Duration: ${formatHours(a.duration_hrs, a.calendar_hrs_per_day)} · Float: ${formatFloat(a.total_float_hrs)} · ${a.pct_complete}% complete`
     },
     milestoneTitle(a) {
       return `${a.task_code} — ${a.task_name}\n${formatDate(a.early_start)}\nFloat: ${formatFloat(a.total_float_hrs)}`
@@ -928,6 +933,7 @@ export default {
 .dot-critical { background: var(--crit); }
 .dot-near { background: var(--near); }
 .dot-other { background: var(--accent); }
+.dot-neg { background: var(--crit); box-shadow: 0 0 0 2px var(--white), 0 0 0 3px var(--crit); }
 .diamond { width: 8px; height: 8px; background: var(--milestone); display: inline-block; transform: rotate(45deg); }
 .bar-wbs { width: 16px; height: 7px; border-radius: 3px; background: var(--gray-700); display: inline-block; }
 .progress-swatch { width: 14px; height: 2px; background: var(--milestone); display: inline-block; }
@@ -1007,6 +1013,7 @@ export default {
 .g-bar.critical { background: var(--crit-tint); border-color: var(--crit); }
 .g-bar.near { background: var(--near-tint); border-color: var(--near); }
 .g-bar.other { background: var(--accent-soft); border-color: var(--accent); }
+.g-bar.negative { box-shadow: inset 0 -3px 0 0 var(--crit), 0 1px 2px rgba(20,33,61,0.15); }
 .g-bar.selected { box-shadow: 0 0 0 2px var(--ink); }
 .g-bar-progress { height: 100%; background: rgba(20,33,61,0.28); }
 
@@ -1023,8 +1030,10 @@ export default {
 .detail-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: var(--space-2); }
 .detail-code { font-family: var(--font-mono); font-weight: 700; color: var(--accent); margin-right: var(--space-2); }
 .detail-name { font-weight: 600; color: var(--ink); }
+.detail-wbs-path { font: var(--text-micro); color: var(--gray-700); font-family: var(--font-mono); margin-top: 2px; }
 .detail-stats { display: flex; gap: 18px; font: var(--text-small); color: var(--gray-700); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .float-crit { color: var(--crit); font-weight: 700; }
+.float-neg { color: var(--white); background: var(--crit); font-weight: 700; padding: 1px 6px; border-radius: var(--radius-sm); }
 .detail-rels { display: flex; gap: var(--space-8); flex-wrap: wrap; }
 .rel-col { flex: 1; min-width: 200px; }
 .rel-col h4 { font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); letter-spacing: 0.04em; margin-bottom: var(--space-2); }

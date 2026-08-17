@@ -4,9 +4,13 @@ export function formatDate(d) {
   return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-export function formatHours(h) {
+// hrsPerDay defaults to 8 but should be passed from the activity's own calendar
+// (calendar_hrs_per_day) wherever available — a schedule mixing standard 8h calendars
+// with night-shift/6-day/24-7 calendars would otherwise show silently wrong day counts
+// for activities on the non-standard calendars.
+export function formatHours(h, hrsPerDay = 8) {
   if (!h) return '0d'
-  const days = Math.round(h / 8)
+  const days = Math.round(h / (hrsPerDay || 8))
   return days + 'd'
 }
 

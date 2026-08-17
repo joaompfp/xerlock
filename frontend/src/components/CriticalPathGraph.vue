@@ -10,9 +10,10 @@
 
     <div class="graph-toolbar">
       <div class="legend">
-        <span class="legend-item"><i class="dot dot-critical"></i>Critical (TF=0)</span>
+        <span class="legend-item"><i class="dot dot-critical"></i>Critical (TF&le;0)</span>
         <span class="legend-item"><i class="dot dot-near"></i>Near-critical (&le;10d float)</span>
         <span class="legend-item"><i class="dot dot-other"></i>Expanded</span>
+        <span class="legend-item"><i class="dot dot-neg"></i>Negative float</span>
         <span class="legend-item"><i class="diamond"></i>Milestone</span>
       </div>
       <div class="toolbar-actions">
@@ -67,6 +68,7 @@
             <title>{{ n.code }} — {{ n.name }}
 {{ n.fullRangeLabel }} ({{ n.durationLabel }})</title>
             <rect :width="n.width" :height="n.height" rx="2" class="node-rect" />
+            <rect v-if="n.negativeFloat" :width="n.width" height="4" class="node-neg-flag" />
             <!-- Top row: code + duration, divided from the name/footer below -->
             <rect v-if="n.milestone" x="7" y="6" width="8" height="8" class="node-mile-icon" transform="rotate(45 11 10)" />
             <text class="node-code" :x="n.milestone ? 22 : 9" y="15">{{ n.code }}</text>
@@ -78,7 +80,7 @@
             <line x1="0" :x2="n.width" :y1="n.height - 18" :y2="n.height - 18" class="node-rule" />
             <line :x1="n.width / 2" :x2="n.width / 2" :y1="n.height - 18" :y2="n.height" class="node-rule" />
             <text class="node-meta" x="9" :y="n.height - 5">{{ n.dateRangeLabel }}</text>
-            <text class="node-meta" :x="n.width - 9" :y="n.height - 5" text-anchor="end">{{ n.floatHrs > 0 ? Math.round(n.floatHrs / 8) + 'd float' : '0d float' }}</text>
+            <text class="node-meta" :x="n.width - 9" :y="n.height - 5" text-anchor="end" :class="{ 'node-meta-neg': n.negativeFloat }">{{ n.floatDaysLabel }}</text>
             <g
               v-if="n.hiddenCount > 0"
               class="expand-btn"
@@ -98,13 +100,14 @@
         <div>
           <span class="detail-code">{{ selected.task_code }}</span>
           <span class="detail-name">{{ selected.task_name }}</span>
+          <div v-if="selected.wbs_path" class="detail-wbs-path">{{ selected.wbs_path }}</div>
         </div>
         <button class="btn-tiny" @click="selectedId = null">Close</button>
       </div>
       <div class="detail-stats">
         <span><strong>{{ formatDate(selected.early_start) }}</strong> → <strong>{{ formatDate(selected.early_end) }}</strong></span>
-        <span>{{ formatHours(selected.duration_hrs) }} duration</span>
-        <span :class="selected.total_float_hrs === 0 ? 'float-crit' : ''">{{ formatFloat(selected.total_float_hrs) }} float</span>
+        <span>{{ formatHours(selected.duration_hrs, selected.calendar_hrs_per_day) }} duration</span>
+        <span :class="selected.is_negative_float ? 'float-neg' : (selected.total_float_hrs === 0 ? 'float-crit' : '')">{{ formatFloat(selected.total_float_hrs) }} float</span>
         <span>{{ statusLabel(selected.status) }}</span>
       </div>
       <div class="detail-rels">
@@ -121,7 +124,7 @@
               <span class="rel-type">{{ p.type }}</span>
               <template v-if="p.activity">
                 <span class="rel-dates">{{ formatDate(p.activity.early_start) }} → {{ formatDate(p.activity.early_end) }}</span>
-                <span class="rel-dur">{{ formatHours(p.activity.duration_hrs) }}</span>
+                <span class="rel-dur">{{ formatHours(p.activity.duration_hrs, p.activity.calendar_hrs_per_day) }}</span>
               </template>
               <span v-if="p.lag_hrs" class="rel-lag">+{{ p.lag_hrs }}h lag</span>
             </div>
@@ -140,7 +143,7 @@
               <span class="rel-type">{{ s.type }}</span>
               <template v-if="s.activity">
                 <span class="rel-dates">{{ formatDate(s.activity.early_start) }} → {{ formatDate(s.activity.early_end) }}</span>
-                <span class="rel-dur">{{ formatHours(s.activity.duration_hrs) }}</span>
+                <span class="rel-dur">{{ formatHours(s.activity.duration_hrs, s.activity.calendar_hrs_per_day) }}</span>
               </template>
               <span v-if="s.lag_hrs" class="rel-lag">+{{ s.lag_hrs }}h lag</span>
             </div>
@@ -350,8 +353,14 @@ export default {
           milestone: isMilestone(a),
           critical: crit.has(r.id),
           nearCritical: !crit.has(r.id) && this.baseVisibleIds.has(r.id),
+          negativeFloat: a.is_negative_float,
           floatHrs: a.total_float_hrs,
-          durationLabel: formatHours(a.duration_hrs),
+          durationLabel: formatHours(a.duration_hrs, a.calendar_hrs_per_day),
+          // total_float_hrs is null when P6 didn't compute a float (typically completed
+          // activities); a naive "> 0 ? ... : '0d float'" ternary would also silently
+          // show negative float as "0d", hiding exactly the activities that most need
+          // flagging — so every case (positive, zero, negative, null) is handled explicitly.
+          floatDaysLabel: a.total_float_hrs == null ? '— float' : `${Math.round(a.total_float_hrs / (a.calendar_hrs_per_day || 8))}d float`,
           dateRangeLabel: formatDateRange(a.early_start, a.early_end),
           fullRangeLabel: `${formatDate(a.early_start)} → ${formatDate(a.early_end)}`,
           hiddenCount,
@@ -408,6 +417,7 @@ export default {
         critical: n.critical,
         'near-critical': n.nearCritical,
         other: !n.critical && !n.nearCritical,
+        negative: n.negativeFloat,
         selected: this.selectedId === n.id,
         dimmed: this.selectedId != null && !this.isConnectedToSelected(n.id) && this.selectedId !== n.id,
       }
@@ -566,6 +576,7 @@ export default {
 .dot-critical { background: var(--crit); }
 .dot-near { background: var(--near); }
 .dot-other { background: var(--gray-500); }
+.dot-neg { background: var(--crit); box-shadow: 0 0 0 2px var(--white), 0 0 0 3px var(--crit); }
 .diamond { width: 8px; height: 8px; background: var(--milestone); display: inline-block; transform: rotate(45deg); }
 .toolbar-actions { display: flex; align-items: center; gap: var(--space-2); }
 .btn-tiny { padding: 3px 10px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); background: white; cursor: pointer; font: var(--text-small); color: var(--gray-700); }
@@ -596,6 +607,8 @@ export default {
 .node.critical .node-rect { fill: var(--crit-tint); stroke: var(--crit); stroke-width: 2.5; }
 .node.near-critical .node-rect { fill: var(--near-tint); stroke: var(--near); stroke-width: 2; }
 .node.other .node-rect { fill: var(--gray-100); stroke: var(--gray-300); }
+.node.negative .node-rect { stroke-width: 3.5; }
+.node-neg-flag { fill: var(--crit); }
 .node.selected .node-rect { stroke: var(--accent); stroke-width: 3; filter: drop-shadow(0 3px 8px rgba(46,92,138,0.4)); }
 .node.dimmed { opacity: 0.22; }
 .node:hover .node-rect { filter: drop-shadow(0 2px 6px rgba(20,33,61,0.14)); }
@@ -606,6 +619,7 @@ export default {
 .node-duration { font-family: var(--font-mono); font-size: 10px; font-weight: 600; fill: var(--gray-700); }
 .node-name { font-family: var(--font-ui); font-size: 12px; font-weight: 600; fill: var(--ink); }
 .node-meta { font-family: var(--font-mono); font-size: 10px; fill: var(--gray-700); }
+.node-meta.node-meta-neg { fill: var(--crit); font-weight: 700; }
 
 .expand-btn circle { fill: var(--accent); opacity: 0.92; }
 .expand-btn text { fill: white; font-size: 11px; font-weight: 700; }
@@ -615,8 +629,10 @@ export default {
 .detail-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: var(--space-2); }
 .detail-code { font-family: var(--font-mono); font-weight: 700; color: var(--accent); margin-right: var(--space-2); }
 .detail-name { font-weight: 600; color: var(--ink); }
+.detail-wbs-path { font: var(--text-micro); color: var(--gray-700); font-family: var(--font-mono); margin-top: 2px; }
 .detail-stats { display: flex; gap: 18px; font: var(--text-small); color: var(--gray-700); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .float-crit { color: var(--crit); font-weight: 700; }
+.float-neg { color: var(--white); background: var(--crit); font-weight: 700; padding: 1px 6px; border-radius: var(--radius-sm); }
 .detail-rels { display: flex; gap: var(--space-8); flex-wrap: wrap; }
 .rel-col { flex: 1; min-width: 200px; }
 .rel-col h4 { font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); letter-spacing: 0.04em; margin-bottom: var(--space-2); }
