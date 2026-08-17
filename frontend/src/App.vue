@@ -34,52 +34,54 @@
     </div>
 
     <!-- Dashboard -->
-    <div v-else class="dashboard">
-      <!-- Header -->
-      <header class="header">
-        <div class="header-left">
-          <h1>{{ data.project.proj_short_name }}</h1>
-          <span class="header-meta">{{ data.project.total_activities }} activities &middot; {{ data.project.total_wbs }} WBS nodes</span>
-        </div>
-        <div class="header-right">
-          <button class="btn-outline" @click="doExport(() => exportWorkbook(data))">
-            Export to Excel (.xlsx)
-          </button>
-          <button class="btn-outline" @click="data = null">Load another</button>
-        </div>
-      </header>
+    <div v-else class="dashboard" :class="{ 'header-collapsed': headerCollapsed }">
+      <template v-if="!headerCollapsed">
+        <!-- Header -->
+        <header class="header">
+          <div class="header-left">
+            <h1>{{ data.project.proj_short_name }}</h1>
+            <span class="header-meta">{{ data.project.total_activities }} activities &middot; {{ data.project.total_wbs }} WBS nodes</span>
+          </div>
+          <div class="header-right">
+            <button class="btn-outline" @click="doExport(() => exportWorkbook(data))">
+              Export to Excel (.xlsx)
+            </button>
+            <button class="btn-outline" @click="data = null">Load another</button>
+          </div>
+        </header>
 
-      <!-- Key stats row -->
-      <div class="stats-row">
-        <div class="stat-card">
-          <strong>{{ data.project.total_activities }}</strong>
-          <span>Activities</span>
+        <!-- Key stats row -->
+        <div class="stats-row">
+          <div class="stat-card">
+            <strong>{{ data.project.total_activities }}</strong>
+            <span>Activities</span>
+          </div>
+          <div class="stat-card">
+            <strong :style="{ color: data.project.total_critical > 0 ? '#c0392b' : '#27ae60' }">{{ data.project.total_critical }}</strong>
+            <span>Critical (TF=0)</span>
+          </div>
+          <div class="stat-card">
+            <strong :style="{ color: data.project.total_longest_path > 0 ? '#c0392b' : '#27ae60' }">{{ data.project.total_longest_path }}</strong>
+            <span>Longest Path</span>
+          </div>
+          <div class="stat-card">
+            <strong>{{ data.project.total_milestones }}</strong>
+            <span>Milestones</span>
+          </div>
+          <div class="stat-card">
+            <strong>{{ data.project.pct_complete }}%</strong>
+            <span>Complete</span>
+          </div>
+          <div class="stat-card">
+            <strong>{{ data.project.earliest_start ? formatDate(data.project.earliest_start) : '--' }}</strong>
+            <span>Earliest start</span>
+          </div>
+          <div class="stat-card">
+            <strong>{{ data.project.latest_end ? formatDate(data.project.latest_end) : '--' }}</strong>
+            <span>Latest end</span>
+          </div>
         </div>
-        <div class="stat-card">
-          <strong :style="{ color: data.project.total_critical > 0 ? '#c0392b' : '#27ae60' }">{{ data.project.total_critical }}</strong>
-          <span>Critical (TF=0)</span>
-        </div>
-        <div class="stat-card">
-          <strong :style="{ color: data.project.total_longest_path > 0 ? '#c0392b' : '#27ae60' }">{{ data.project.total_longest_path }}</strong>
-          <span>Longest Path</span>
-        </div>
-        <div class="stat-card">
-          <strong>{{ data.project.total_milestones }}</strong>
-          <span>Milestones</span>
-        </div>
-        <div class="stat-card">
-          <strong>{{ data.project.pct_complete }}%</strong>
-          <span>Complete</span>
-        </div>
-        <div class="stat-card">
-          <strong>{{ data.project.earliest_start ? formatDate(data.project.earliest_start) : '--' }}</strong>
-          <span>Earliest start</span>
-        </div>
-        <div class="stat-card">
-          <strong>{{ data.project.latest_end ? formatDate(data.project.latest_end) : '--' }}</strong>
-          <span>Latest end</span>
-        </div>
-      </div>
+      </template>
 
       <!-- Tab navigation -->
       <nav class="tabs">
@@ -87,11 +89,14 @@
         <button :class="{ active: tab === 'story' }" @click="tab = 'story'">Critical Path</button>
         <button :class="{ active: tab === 'table' }" @click="tab = 'table'">Activity Table</button>
         <button :class="{ active: tab === 'wbs' }" @click="tab = 'wbs'">WBS Tree</button>
+        <button class="btn-collapse" @click="headerCollapsed = !headerCollapsed" :title="headerCollapsed ? 'Show header' : 'Hide header for more room'">
+          {{ headerCollapsed ? '⌄ Show header' : '⌃ Hide header' }}
+        </button>
       </nav>
 
       <!-- Gantt Chart (primary view) -->
       <div v-if="tab === 'gantt'" class="section section-full">
-        <GanttChart :data="data" />
+        <GanttChart :data="data" :extra-room="headerCollapsed" />
       </div>
 
       <!-- Critical Path Graph -->
@@ -251,6 +256,7 @@ export default {
       loading: false,
       dragOver: false,
       tab: 'gantt',
+      headerCollapsed: false,
       search: '',
       statusFilter: '',
       showCriticalOnly: false,
@@ -406,6 +412,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
 /* ── Dashboard ── */
 .dashboard { max-width: 1200px; margin: 0 auto; padding: 24px; }
+.dashboard.header-collapsed { padding-top: 10px; }
 
 /* Header */
 .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #1a1a2e; }
@@ -423,10 +430,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .stat-card span { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.3px; }
 
 /* Tabs */
-.tabs { display: flex; gap: 4px; margin-bottom: 24px; border-bottom: 1px solid #e8e8e8; }
+.tabs { display: flex; align-items: center; gap: 4px; margin-bottom: 24px; border-bottom: 1px solid #e8e8e8; }
+.header-collapsed .tabs { margin-bottom: 12px; }
 .tabs button { padding: 8px 20px; border: none; background: none; cursor: pointer; font-size: 14px; color: #888; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 0.15s, border-color 0.2s; }
 .tabs button:hover { color: #555; }
 .tabs button.active { color: #1a1a2e; border-bottom-color: #2F5496; font-weight: 600; }
+.tabs .btn-collapse { margin-left: auto; padding: 6px 14px; font-size: 12px; color: #999; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 4px; }
+.tabs .btn-collapse:hover { color: #555; background: #f5f5f5; }
 
 /* Section */
 .section { margin-bottom: 40px; }

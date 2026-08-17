@@ -1,5 +1,5 @@
 <template>
-  <div class="gantt-wrap" :class="{ 'is-fullscreen': isFullscreen }" ref="wrapEl">
+  <div class="gantt-wrap" :class="{ 'is-fullscreen': isFullscreen, 'extra-room': extraRoom }" ref="wrapEl">
     <div class="gantt-toolbar">
       <div class="toolbar-title">
         <h2>Gantt Chart</h2>
@@ -172,6 +172,7 @@ export default {
   name: 'GanttChart',
   props: {
     data: { type: Object, required: true },
+    extraRoom: { type: Boolean, default: false },
   },
   data() {
     const start = this.data.project.earliest_start ? new Date(this.data.project.earliest_start) : new Date()
@@ -527,6 +528,7 @@ export default {
 .bar-wbs { width: 16px; height: 7px; border-radius: 3px; background: #5a6472; display: inline-block; }
 
 .gantt-scroll { overflow: auto; max-height: min(75vh, 900px); position: relative; }
+.gantt-wrap.extra-room .gantt-scroll { max-height: min(92vh, 1400px); }
 .gantt-grid { display: grid; position: relative; }
 
 .g-cell { min-width: 0; }
