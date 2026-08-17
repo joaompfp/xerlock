@@ -80,6 +80,7 @@
       <!-- Tab navigation -->
       <nav class="tabs">
         <button :class="{ active: tab === 'story' }" @click="tab = 'story'">Critical Path</button>
+        <button :class="{ active: tab === 'gantt' }" @click="tab = 'gantt'">Gantt Chart</button>
         <button :class="{ active: tab === 'table' }" @click="tab = 'table'">Activity Table</button>
         <button :class="{ active: tab === 'wbs' }" @click="tab = 'wbs'">WBS Tree</button>
       </nav>
@@ -118,6 +119,16 @@
             </tbody>
           </table>
         </div>
+      </div>
+
+      <!-- Gantt Chart -->
+      <div v-if="tab === 'gantt'" class="section">
+        <div class="story-header">
+          <h2>Gantt Chart</h2>
+          <p class="subtitle">Click a WBS row to expand/collapse. Scroll to pan, hover a bar for details.</p>
+        </div>
+
+        <GanttChart :data="data" />
       </div>
 
       <!-- Activity Table -->
@@ -161,13 +172,13 @@
               <tr
                 v-for="act in filteredActivities"
                 :key="act.task_id"
-                :class="{ critical: act.is_critical, milestone: act.task_type === 'TT_Mile' }"
+                :class="{ critical: act.is_critical, milestone: isMilestone(act) }"
                 @click="selectedAct = selectedAct?.task_id === act.task_id ? null : act"
               >
                 <td class="code">{{ act.task_code }}</td>
                 <td class="name-cell">
                   <span class="act-name">{{ act.task_name }}</span>
-                  <span v-if="act.task_type === 'TT_Mile'" class="badge-milestone">M</span>
+                  <span v-if="isMilestone(act)" class="badge-milestone">M</span>
                 </td>
                 <td><span class="status-badge" :class="act.status">{{ statusLabel(act.status) }}</span></td>
                 <td>
@@ -228,12 +239,13 @@
 <script>
 import WBSNode from './components/WBSNode.vue'
 import CriticalPathGraph from './components/CriticalPathGraph.vue'
-import { formatDate, formatHours, statusLabel } from './utils/format'
+import GanttChart from './components/GanttChart.vue'
+import { formatDate, formatHours, statusLabel, isMilestone } from './utils/format'
 import { exportWorkbook, exportActivitiesCsv } from './utils/export'
 
 export default {
   name: 'App',
-  components: { WBSNode, CriticalPathGraph },
+  components: { WBSNode, CriticalPathGraph, GanttChart },
   data() {
     return {
       data: null,
@@ -338,6 +350,7 @@ export default {
     formatDate,
     formatHours,
     statusLabel,
+    isMilestone,
     floatClass(f) {
       if (f === 0) return 'float-crit'
       if (f <= 40) return 'float-near'

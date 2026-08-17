@@ -14,3 +14,9 @@ export function statusLabel(s) {
   const map = { TK_Complete: 'Done', TK_Active: 'Active', TK_NotStart: 'Not started' }
   return map[s] || s
 }
+
+const MILESTONE_TYPES = new Set(['TT_Mile', 'TT_FinMile', 'TT_StartMile'])
+
+export function isMilestone(activity) {
+  return MILESTONE_TYPES.has(activity.task_type)
+}

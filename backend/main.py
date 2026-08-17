@@ -295,7 +295,7 @@ def parse_xer(filepath: str) -> ScheduleData:
     # Stats
     total = len(activities)
     critical = sum(1 for a in activities if a["is_critical"])
-    milestones = sum(1 for a in activities if a["task_type"] == "TT_Mile")
+    milestones = sum(1 for a in activities if a["task_type"] in ("TT_Mile", "TT_FinMile", "TT_StartMile"))
     complete = sum(1 for a in activities if a["status"] == "TK_Complete")
     active = sum(1 for a in activities if a["status"] == "TK_Active")
     not_started = sum(1 for a in activities if a["status"] == "TK_NotStart")

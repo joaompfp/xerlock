@@ -117,7 +117,7 @@
 
 <script>
 import dagre from 'dagre'
-import { formatDate, formatHours, statusLabel } from '../utils/format'
+import { formatDate, formatHours, statusLabel, isMilestone } from '../utils/format'
 
 const NEAR_CRITICAL_THRESHOLD_HRS = 80 // 10 working days
 const NODE_WIDTH = 210
@@ -299,7 +299,7 @@ export default {
           height: NODE_HEIGHT,
           code: a.task_code,
           name: a.task_name,
-          milestone: a.task_type === 'TT_Mile',
+          milestone: isMilestone(a),
           critical: crit.has(r.id),
           nearCritical: !crit.has(r.id) && this.baseVisibleIds.has(r.id),
           floatHrs: a.total_float_hrs,
