@@ -19,6 +19,12 @@ function round1(n) {
   return Math.round(n * 10) / 10
 }
 
+// total_float_hrs is null when P6 didn't compute a float (typically completed
+// activities) — must not export as "0", which reads as zero float / critical.
+function floatDays(hrs) {
+  return hrs == null ? '' : round1(hrs / 8)
+}
+
 function toDate(d) {
   if (!d) return null
   const dt = new Date(d)
@@ -111,7 +117,7 @@ function addActivitiesSheet(wb, activities, wbsLevelsMap, maxDepth, sheetName) {
       duration_d: round1(a.duration_hrs / 8),
       early_start: toDate(a.early_start),
       early_end: toDate(a.early_end),
-      total_float_d: round1(a.total_float_hrs / 8),
+      total_float_d: floatDays(a.total_float_hrs),
       free_float_d: round1(a.free_float_hrs / 8),
       calendar: a.calendar || '',
       critical_label: a.is_critical ? 'Yes' : '',
@@ -233,7 +239,7 @@ export function exportActivitiesCsv(data, activities, filename) {
       round1(a.duration_hrs / 8),
       a.early_start ? a.early_start.slice(0, 10) : '',
       a.early_end ? a.early_end.slice(0, 10) : '',
-      round1(a.total_float_hrs / 8),
+      floatDays(a.total_float_hrs),
       round1(a.free_float_hrs / 8),
       a.calendar || '',
       a.is_critical ? 'Yes' : '',

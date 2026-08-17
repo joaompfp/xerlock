@@ -1,15 +1,17 @@
 <template>
-  <div class="gantt-wrap">
+  <div class="gantt-wrap" :class="{ 'is-fullscreen': isFullscreen }" ref="wrapEl">
     <div class="gantt-toolbar">
-      <div class="legend">
-        <span class="legend-item"><i class="dot dot-critical"></i>Critical</span>
-        <span class="legend-item"><i class="dot dot-near"></i>Near-critical</span>
-        <span class="legend-item"><i class="dot dot-other"></i>Normal</span>
-        <span class="legend-item"><i class="diamond"></i>Milestone</span>
-        <span class="legend-item"><i class="bar-wbs"></i>WBS rollup</span>
+      <div class="toolbar-title">
+        <h2>Gantt Chart</h2>
+        <span class="toolbar-sub">{{ data.project.total_activities }} activities · click a WBS row to expand</span>
       </div>
       <div class="toolbar-actions">
-        <label class="filter-toggle"><input type="checkbox" v-model="showLinks" /> Critical links</label>
+        <div class="basis-group">
+          <span class="basis-label">Critical basis</span>
+          <button :class="{ active: criticalBasis === 'tf0' }" @click="criticalBasis = 'tf0'">TF = 0</button>
+          <button :class="{ active: criticalBasis === 'longest' }" @click="criticalBasis = 'longest'">Longest Path</button>
+        </div>
+        <label class="filter-toggle"><input type="checkbox" v-model="showLinks" /> Links</label>
         <div class="zoom-group">
           <button
             v-for="z in zoomLevels"
@@ -21,25 +23,49 @@
         <button class="btn-tiny" @click="expandAll">Expand all</button>
         <button class="btn-tiny" @click="collapseAll">Collapse all</button>
         <button class="btn-tiny" :disabled="todayX === null" @click="scrollToToday">Today</button>
+        <button class="btn-tiny btn-fullscreen" @click="toggleFullscreen">{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</button>
       </div>
+    </div>
+
+    <div class="legend">
+      <template v-if="criticalBasis === 'tf0'">
+        <span class="legend-item"><i class="dot dot-critical"></i>Critical (TF=0)</span>
+        <span class="legend-item"><i class="dot dot-near"></i>Near-critical</span>
+        <span class="legend-item"><i class="dot dot-other"></i>Normal</span>
+      </template>
+      <template v-else>
+        <span class="legend-item"><i class="dot dot-critical"></i>On longest path</span>
+        <span class="legend-item"><i class="dot dot-other"></i>Normal</span>
+      </template>
+      <span class="legend-item"><i class="diamond"></i>Milestone</span>
+      <span class="legend-item"><i class="bar-wbs"></i>WBS rollup</span>
     </div>
 
     <div class="gantt-scroll" ref="scrollEl">
       <div class="gantt-grid" :style="{ gridTemplateColumns: LABEL_COL_WIDTH + 'px ' + totalWidth + 'px' }">
-        <!-- Header -->
+        <!-- Header (two rows: year, then zoom-dependent detail) -->
         <div class="g-cell g-corner"></div>
         <div class="g-cell g-timeline-header" :style="{ width: totalWidth + 'px' }">
-          <div
-            v-for="m in monthTicks"
-            :key="m.x"
-            class="g-month-tick"
-            :style="{ left: m.x + 'px' }"
-          >
-            <span class="g-month-label">{{ m.label }}</span>
+          <div class="g-header-year-row">
+            <div
+              v-for="t in yearTicks"
+              :key="'y' + t.x"
+              class="g-year-tick"
+              :style="{ left: t.x + 'px' }"
+            >{{ t.label }}</div>
+          </div>
+          <div class="g-header-detail-row">
+            <div
+              v-for="t in detailTicks"
+              :key="'d' + t.x"
+              class="g-detail-tick"
+              :class="{ weekend: t.weekend }"
+              :style="{ left: t.x + 'px' }"
+            >{{ t.label }}</div>
           </div>
         </div>
 
-        <!-- Background layer: gridlines + critical links -->
+        <!-- Background layer: weekend shading + gridlines + links -->
         <svg
           class="g-overlay"
           :style="{ left: LABEL_COL_WIDTH + 'px', top: HEADER_HEIGHT + 'px', width: totalWidth + 'px', height: bodyHeight + 'px' }"
@@ -51,11 +77,23 @@
               <path d="M0 0L8 4L0 8z" fill="#e74c3c" />
             </marker>
           </defs>
+          <rect
+            v-for="r in weekendRects"
+            :key="'we' + r.x"
+            :x="r.x" y="0" :width="r.w" :height="bodyHeight"
+            class="g-weekend"
+          />
           <line
-            v-for="m in monthTicks"
-            :key="'gl' + m.x"
-            :x1="m.x" :x2="m.x" y1="0" :y2="bodyHeight"
+            v-for="t in detailTicks"
+            :key="'gl' + t.x"
+            :x1="t.x" :x2="t.x" y1="0" :y2="bodyHeight"
             class="g-gridline"
+          />
+          <line
+            v-for="t in secondaryMonthGridlines"
+            :key="'glm' + t.x"
+            :x1="t.x" :x2="t.x" y1="0" :y2="bodyHeight"
+            class="g-gridline-month"
           />
           <path
             v-for="l in links"
@@ -71,13 +109,13 @@
           v-if="todayX !== null"
           class="g-today-line"
           :style="{ left: (LABEL_COL_WIDTH + todayX) + 'px', top: HEADER_HEIGHT + 'px', height: bodyHeight + 'px' }"
-        ></div>
+        ><span class="g-today-flag">Today</span></div>
 
         <!-- Rows -->
         <template v-for="row in rows" :key="row.key">
           <div
             class="g-cell g-label"
-            :class="{ 'g-label-wbs': row.type === 'wbs', selected: row.type === 'activity' && row.activity.task_id === selectedTaskId }"
+            :class="{ 'g-label-wbs': row.type === 'wbs', stripe: row.index % 2 === 1, selected: row.type === 'activity' && row.activity.task_id === selectedTaskId }"
             :style="{ paddingLeft: (10 + row.level * 16) + 'px' }"
             @click="row.type === 'wbs' ? toggleWbs(row.wbsId) : selectActivity(row.activity)"
           >
@@ -91,7 +129,7 @@
               <span class="g-act-name">{{ row.activity.task_name }}</span>
             </template>
           </div>
-          <div class="g-cell g-timeline-row" :style="{ width: totalWidth + 'px' }">
+          <div class="g-cell g-timeline-row" :class="{ stripe: row.index % 2 === 1 }" :style="{ width: totalWidth + 'px' }">
             <div
               v-if="row.type === 'wbs'"
               class="g-bar-wbs"
@@ -123,11 +161,11 @@
 </template>
 
 <script>
-import { formatDate, formatHours, isMilestone } from '../utils/format'
+import { formatDate, formatHours, isMilestone, formatFloat } from '../utils/format'
 
 const LABEL_COL_WIDTH = 340
-const HEADER_HEIGHT = 34
-const ROW_HEIGHT = 28
+const HEADER_HEIGHT = 52
+const ROW_HEIGHT = 32
 const ZOOM_DAY_WIDTH = { day: 32, week: 9, month: 3, quarter: 1.1 }
 
 export default {
@@ -153,10 +191,18 @@ export default {
       HEADER_HEIGHT,
       zoom,
       zoomLevels: ['day', 'week', 'month', 'quarter'],
+      criticalBasis: 'tf0',
       expandedWbs,
       showLinks: true,
       selectedTaskId: null,
+      isFullscreen: false,
     }
+  },
+  mounted() {
+    document.addEventListener('fullscreenchange', this.onFullscreenChange)
+  },
+  beforeUnmount() {
+    document.removeEventListener('fullscreenchange', this.onFullscreenChange)
   },
   computed: {
     activitiesByWbs() {
@@ -224,34 +270,67 @@ export default {
     bodyHeight() {
       return this.rows.length * ROW_HEIGHT
     },
+    yearTicks() {
+      const ticks = []
+      const startY = this.rangeStart.getFullYear()
+      const endY = this.rangeEnd.getFullYear()
+      for (let y = startY; y <= endY; y++) {
+        const boundary = new Date(y, 0, 1)
+        const clamped = boundary < this.rangeStart ? this.rangeStart : boundary
+        if (clamped > this.rangeEnd) break
+        const x = Math.round(((clamped - this.rangeStart) / 86400000) * this.dayWidth)
+        ticks.push({ x, label: String(y) })
+      }
+      return ticks
+    },
     monthTicks() {
       const ticks = []
       let cur = new Date(this.rangeStart.getFullYear(), this.rangeStart.getMonth(), 1)
-      let first = true
       while (cur <= this.rangeEnd) {
         const x = Math.round(((cur - this.rangeStart) / 86400000) * this.dayWidth)
-        const label = cur.toLocaleDateString('en-GB', {
-          month: 'short',
-          year: first || cur.getMonth() === 0 ? 'numeric' : undefined,
-        })
-        ticks.push({ x, label })
-        first = false
+        ticks.push({ x, label: cur.toLocaleDateString('en-GB', { month: 'short' }) })
         cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
       }
       return ticks
+    },
+    weekTicks() {
+      const ticks = []
+      let cur = new Date(this.rangeStart)
+      while (cur <= this.rangeEnd) {
+        const x = Math.round(((cur - this.rangeStart) / 86400000) * this.dayWidth)
+        ticks.push({ x, label: cur.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) })
+        cur = new Date(cur.getTime() + 7 * 86400000)
+      }
+      return ticks
+    },
+    dayTicks() {
+      const ticks = []
+      const cur = new Date(this.rangeStart)
+      cur.setHours(0, 0, 0, 0)
+      while (cur <= this.rangeEnd) {
+        const x = Math.round(((cur - this.rangeStart) / 86400000) * this.dayWidth)
+        const dow = cur.getDay()
+        ticks.push({ x, label: String(cur.getDate()), weekend: dow === 0 || dow === 6 })
+        cur.setDate(cur.getDate() + 1)
+      }
+      return ticks
+    },
+    detailTicks() {
+      if (this.zoom === 'month' || this.zoom === 'quarter') return this.monthTicks
+      if (this.zoom === 'week') return this.weekTicks
+      return this.dayTicks
+    },
+    secondaryMonthGridlines() {
+      return this.zoom === 'day' || this.zoom === 'week' ? this.monthTicks : []
+    },
+    weekendRects() {
+      if (this.zoom !== 'day') return []
+      return this.dayTicks.filter(t => t.weekend).map(t => ({ x: t.x, w: this.dayWidth }))
     },
     todayX() {
       const today = new Date()
       if (today < this.rangeStart || today > this.rangeEnd) return null
       return Math.round(((today - this.rangeStart) / 86400000) * this.dayWidth)
-    },
-    allWbsIds() {
-      const ids = new Set()
-      const walk = (nodes) => {
-        for (const n of nodes) { ids.add(n.wbs_id); walk(n.children || []) }
-      }
-      walk(this.data.wbs_tree || [])
-      return ids
     },
     rows() {
       const rows = []
@@ -279,8 +358,6 @@ export default {
       }
       walk(this.data.wbs_tree || [], 0)
 
-      // True orphans only: activities whose wbs_id doesn't exist anywhere in the
-      // tree. Activities merely hidden behind a collapsed ancestor are not orphans.
       const orphans = this.data.activities.filter(a => !this.allWbsIds.has(a.wbs_id))
       if (orphans.length) {
         rows.push({ type: 'wbs', key: 'w-unassigned', wbsId: '__unassigned', level: 0, name: '(Unassigned)', count: orphans.length })
@@ -292,6 +369,14 @@ export default {
       rows.forEach((r, i) => { r.index = i })
       return rows
     },
+    allWbsIds() {
+      const ids = new Set()
+      const walk = (nodes) => {
+        for (const n of nodes) { ids.add(n.wbs_id); walk(n.children || []) }
+      }
+      walk(this.data.wbs_tree || [])
+      return ids
+    },
     rowIndexByTaskId() {
       const map = new Map()
       this.rows.forEach(r => { if (r.type === 'activity') map.set(r.activity.task_id, r.index) })
@@ -302,12 +387,12 @@ export default {
       const out = []
       const rowByIndex = this.rows
       for (const row of rowByIndex) {
-        if (row.type !== 'activity' || !row.activity.is_critical) continue
+        if (row.type !== 'activity' || !this.isBasisCritical(row.activity)) continue
         for (const p of row.activity.predecessors || []) {
           const predIdx = this.rowIndexByTaskId.get(p.task_id)
           if (predIdx === undefined) continue
           const predRow = rowByIndex[predIdx]
-          if (!predRow.activity.is_critical) continue
+          if (!this.isBasisCritical(predRow.activity)) continue
           const predX = this.dateToX(predRow.activity.early_end)
           const predY = predIdx * ROW_HEIGHT + ROW_HEIGHT / 2
           const succX = row.x
@@ -315,7 +400,7 @@ export default {
           if (predX === null || succX === null) continue
           const midX = predX + 8
           out.push({
-            id: p.task_id + '-' + row.activity.task_id,
+            id: `${p.task_id}-${row.activity.task_id}-${p.type}-${out.length}`,
             d: `M${predX},${predY} L${midX},${predY} L${midX},${succY} L${succX},${succY}`,
           })
         }
@@ -330,9 +415,12 @@ export default {
       if (isNaN(d)) return null
       return Math.round(((d - this.rangeStart) / 86400000) * this.dayWidth)
     },
+    isBasisCritical(a) {
+      return this.criticalBasis === 'longest' ? a.is_longest_path : a.is_critical
+    },
     classifyActivity(a) {
-      if (a.is_critical) return 'critical'
-      if (a.total_float_hrs > 0 && a.total_float_hrs <= 80) return 'near'
+      if (this.isBasisCritical(a)) return 'critical'
+      if (this.criticalBasis === 'tf0' && a.total_float_hrs > 0 && a.total_float_hrs <= 80) return 'near'
       return 'other'
     },
     buildActivityRow(a, level) {
@@ -377,80 +465,117 @@ export default {
       const el = this.$refs.scrollEl
       el.scrollTo({ left: Math.max(0, this.todayX - el.clientWidth / 2), behavior: 'smooth' })
     },
+    toggleFullscreen() {
+      if (document.fullscreenElement) {
+        document.exitFullscreen()
+      } else if (this.$refs.wrapEl.requestFullscreen) {
+        this.$refs.wrapEl.requestFullscreen()
+      }
+    },
+    onFullscreenChange() {
+      this.isFullscreen = !!document.fullscreenElement
+    },
     zoomLabel(z) {
       return z.charAt(0).toUpperCase() + z.slice(1)
     },
     barTitle(a) {
       return `${a.task_code} — ${a.task_name}\n${formatDate(a.early_start)} → ${formatDate(a.early_end)}\n` +
-        `Duration: ${formatHours(a.duration_hrs)} · Float: ${a.total_float_hrs}h · ${a.pct_complete}% complete`
+        `Duration: ${formatHours(a.duration_hrs)} · Float: ${formatFloat(a.total_float_hrs)} · ${a.pct_complete}% complete`
     },
     milestoneTitle(a) {
-      return `${a.task_code} — ${a.task_name}\n${formatDate(a.early_start)}\nFloat: ${a.total_float_hrs}h`
+      return `${a.task_code} — ${a.task_name}\n${formatDate(a.early_start)}\nFloat: ${formatFloat(a.total_float_hrs)}`
     },
   },
 }
 </script>
 
 <style scoped>
-.gantt-wrap { border: 1px solid #e8e8e8; border-radius: 10px; overflow: hidden; background: #fff; margin-bottom: 24px; }
-.gantt-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid #eee; background: #fafbfc; flex-wrap: wrap; gap: 8px; }
-.legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.gantt-wrap { border: 1px solid #e8e8e8; border-radius: 10px; overflow: hidden; background: #fff; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(26,26,46,0.06); }
+.gantt-wrap.is-fullscreen { border-radius: 0; display: flex; flex-direction: column; height: 100vh; }
+.gantt-wrap.is-fullscreen .gantt-scroll { flex: 1; max-height: none; }
+
+.gantt-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid #eee; background: #1a1a2e; flex-wrap: wrap; gap: 12px; }
+.toolbar-title h2 { font-size: 17px; font-weight: 700; color: #fff; margin: 0; }
+.toolbar-sub { font-size: 12px; color: #a8adc0; }
+.toolbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.filter-toggle { font-size: 12px; color: #d5d8e8; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+
+.basis-group { display: flex; align-items: center; gap: 6px; border: 1px solid #3a3f5c; border-radius: 6px; padding: 2px; }
+.basis-label { font-size: 11px; color: #8890ac; padding-left: 6px; text-transform: uppercase; letter-spacing: 0.3px; }
+.basis-group button { padding: 4px 10px; border: none; border-radius: 4px; background: none; cursor: pointer; font-size: 12px; color: #c5c9dc; }
+.basis-group button.active { background: #e74c3c; color: white; font-weight: 600; }
+.basis-group button:hover:not(.active) { background: #2a2f47; }
+
+.zoom-group { display: flex; border: 1px solid #3a3f5c; border-radius: 6px; overflow: hidden; }
+.zoom-group button { padding: 4px 10px; border: none; border-right: 1px solid #3a3f5c; background: none; cursor: pointer; font-size: 12px; color: #c5c9dc; }
+.zoom-group button:last-child { border-right: none; }
+.zoom-group button.active { background: #2f5496; color: white; }
+.zoom-group button:hover:not(.active) { background: #2a2f47; }
+.btn-tiny { padding: 4px 10px; border: 1px solid #3a3f5c; border-radius: 5px; background: none; cursor: pointer; font-size: 12px; color: #c5c9dc; }
+.btn-tiny:hover:not(:disabled) { background: #2a2f47; }
+.btn-tiny:disabled { opacity: 0.35; cursor: default; }
+.btn-fullscreen { border-color: #2f5496; color: #a9c2e8; }
+.btn-fullscreen:hover { background: #2f5496; color: white; }
+
+.legend { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; padding: 8px 18px; background: #fafbfc; border-bottom: 1px solid #eee; }
 .legend-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #666; }
 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .dot-critical { background: #e74c3c; }
 .dot-near { background: #d4a017; }
 .dot-other { background: #2f5496; }
 .diamond { width: 8px; height: 8px; background: #5a5f68; display: inline-block; transform: rotate(45deg); }
-.bar-wbs { width: 14px; height: 6px; border-radius: 3px; background: #7d8592; display: inline-block; }
-.toolbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.filter-toggle { font-size: 12px; color: #555; display: flex; align-items: center; gap: 4px; cursor: pointer; }
-.zoom-group { display: flex; border: 1px solid #ccc; border-radius: 6px; overflow: hidden; }
-.zoom-group button { padding: 4px 10px; border: none; border-right: 1px solid #ccc; background: white; cursor: pointer; font-size: 12px; color: #555; }
-.zoom-group button:last-child { border-right: none; }
-.zoom-group button.active { background: #2f5496; color: white; }
-.zoom-group button:hover:not(.active) { background: #f0f2f5; }
-.btn-tiny { padding: 3px 10px; border: 1px solid #ccc; border-radius: 5px; background: white; cursor: pointer; font-size: 12px; color: #555; }
-.btn-tiny:hover:not(:disabled) { background: #f0f2f5; }
-.btn-tiny:disabled { opacity: 0.4; cursor: default; }
+.bar-wbs { width: 16px; height: 7px; border-radius: 3px; background: #5a6472; display: inline-block; }
 
-.gantt-scroll { overflow: auto; max-height: 640px; position: relative; }
+.gantt-scroll { overflow: auto; max-height: min(75vh, 900px); position: relative; }
 .gantt-grid { display: grid; position: relative; }
 
 .g-cell { min-width: 0; }
-.g-corner { position: sticky; top: 0; left: 0; z-index: 6; background: #fafbfc; border-bottom: 1px solid #ddd; border-right: 1px solid #eee; height: 34px; }
-.g-timeline-header { position: sticky; top: 0; z-index: 5; background: #fafbfc; border-bottom: 1px solid #ddd; height: 34px; }
-.g-month-tick { position: absolute; top: 0; bottom: 0; border-left: 1px solid #ddd; }
-.g-month-label { position: absolute; top: 9px; left: 4px; font-size: 11px; color: #777; white-space: nowrap; font-weight: 600; }
+.g-corner { position: sticky; top: 0; left: 0; z-index: 6; background: #fafbfc; border-bottom: 1px solid #ddd; border-right: 1px solid #eee; height: 52px; }
+.g-timeline-header { position: sticky; top: 0; z-index: 5; background: #fafbfc; border-bottom: 1px solid #ddd; height: 52px; }
+.g-header-year-row { position: relative; height: 22px; border-bottom: 1px solid #eee; }
+.g-header-detail-row { position: relative; height: 30px; }
+.g-year-tick { position: absolute; top: 0; height: 100%; padding-left: 6px; padding-top: 3px; font-size: 12px; font-weight: 700; color: #1a1a2e; border-left: 1px solid #ccc; white-space: nowrap; }
+.g-detail-tick { position: absolute; top: 0; padding-top: 8px; padding-left: 4px; font-size: 11px; color: #888; white-space: nowrap; border-left: 1px solid #eee; height: 100%; box-sizing: border-box; }
+.g-detail-tick.weekend { color: #c0392b; font-weight: 600; }
 
 .g-overlay { position: absolute; pointer-events: none; z-index: 1; }
+.g-weekend { fill: #f5f6f8; }
 .g-gridline { stroke: #f0f1f3; stroke-width: 1; }
+.g-gridline-month { stroke: #dfe1e6; stroke-width: 1; }
 .g-link { fill: none; stroke: #e74c3c; stroke-width: 1.5; opacity: 0.6; }
 
-.g-today-line { position: absolute; width: 2px; background: #2f5496; z-index: 3; pointer-events: none; opacity: 0.55; }
+.g-today-line { position: absolute; width: 2px; background: #2f5496; z-index: 3; pointer-events: none; }
+.g-today-flag { position: absolute; top: -18px; left: 2px; font-size: 10px; font-weight: 700; color: #2f5496; white-space: nowrap; }
 
-.g-label { position: sticky; left: 0; z-index: 4; background: #fff; display: flex; align-items: center; gap: 6px; height: 28px; border-bottom: 1px solid #f2f2f2; font-size: 12px; white-space: nowrap; overflow: hidden; cursor: pointer; }
-.g-label:hover { background: #f5f6f8; }
-.g-label.selected { background: #eef1f7; }
-.g-label-wbs { font-weight: 600; background: #fafbfc; }
-.g-label-wbs:hover { background: #f0f2f5; }
+.g-label { position: sticky; left: 0; z-index: 4; background: #fff; display: flex; align-items: center; gap: 6px; height: 32px; border-bottom: 1px solid #f2f2f2; font-size: 12px; white-space: nowrap; overflow: hidden; cursor: pointer; }
+.g-label.stripe { background: #fafbfc; }
+.g-label:hover { background: #eef1f7; }
+.g-label.selected { background: #e4eaf6; }
+.g-label-wbs { font-weight: 700; background: #f0f2f6; }
+.g-label-wbs.stripe { background: #eceef3; }
+.g-label-wbs:hover { background: #e4e7ee; }
 .g-toggle { width: 12px; text-align: center; font-size: 9px; color: #888; flex-shrink: 0; }
 .g-wbs-name { overflow: hidden; text-overflow: ellipsis; color: #1a1a2e; }
 .g-wbs-count { margin-left: auto; padding-right: 8px; font-size: 10px; color: #aaa; flex-shrink: 0; }
 .g-act-code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; color: #888; flex-shrink: 0; }
 .g-act-name { overflow: hidden; text-overflow: ellipsis; color: #333; }
 
-.g-timeline-row { position: relative; height: 28px; border-bottom: 1px solid #f2f2f2; z-index: 2; }
+.g-timeline-row { position: relative; height: 32px; border-bottom: 1px solid #f2f2f2; z-index: 2; }
+.g-timeline-row.stripe { background: #fafbfc; }
 
-.g-bar { position: absolute; top: 6px; height: 16px; border-radius: 3px; overflow: hidden; background: #eef1f7; border: 1.5px solid #b9c0cc; box-sizing: border-box; }
-.g-bar.critical { background: #fdeeed; border-color: #e74c3c; }
-.g-bar.near { background: #fdf6e6; border-color: #d4a017; }
-.g-bar.other { background: #eef1f7; border-color: #7d93bd; }
-.g-bar.selected { box-shadow: 0 0 0 2px #2f5496; }
-.g-bar-progress { height: 100%; background: rgba(0,0,0,0.18); }
+.g-bar { position: absolute; top: 7px; height: 18px; border-radius: 4px; overflow: hidden; background: #aebbd6; border: 1.5px solid #2f5496; box-sizing: border-box; box-shadow: 0 1px 2px rgba(26,26,46,0.15); }
+.g-bar.critical { background: #f0a099; border-color: #e74c3c; }
+.g-bar.near { background: #f2d693; border-color: #d4a017; }
+.g-bar.other { background: #aebbd6; border-color: #2f5496; }
+.g-bar.selected { box-shadow: 0 0 0 2px #1a1a2e; }
+.g-bar-progress { height: 100%; background: rgba(0,0,0,0.28); }
 
-.g-bar-wbs { position: absolute; top: 10px; height: 8px; border-radius: 4px; background: #7d8592; }
+.g-bar-wbs { position: absolute; top: 12px; height: 9px; border-radius: 3px; background: #5a6472; }
+.g-bar-wbs::before, .g-bar-wbs::after { content: ''; position: absolute; top: 100%; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid #5a6472; }
+.g-bar-wbs::before { left: -1px; }
+.g-bar-wbs::after { right: -1px; }
 
-.g-milestone { position: absolute; top: 6px; width: 14px; height: 14px; margin-left: -7px; background: #5a5f68; transform: rotate(45deg); border-radius: 2px; }
+.g-milestone { position: absolute; top: 6px; width: 16px; height: 16px; margin-left: -8px; background: #5a5f68; transform: rotate(45deg); border-radius: 2px; box-shadow: 0 1px 2px rgba(26,26,46,0.2); }
 .g-milestone.critical { background: #e74c3c; }
 .g-milestone.near { background: #d4a017; }
 </style>

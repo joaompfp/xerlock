@@ -5,6 +5,7 @@ Parses Primavera P6 XER files and serves structured schedule data.
 
 import os
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -52,7 +53,7 @@ class ActivitySummary(BaseModel):
     early_end: Optional[str]
     late_start: Optional[str]
     late_end: Optional[str]
-    total_float_hrs: float
+    total_float_hrs: Optional[float]
     free_float_hrs: float
     duration_hrs: float
     task_type: str
@@ -60,6 +61,7 @@ class ActivitySummary(BaseModel):
     predecessors: list
     successors: list
     is_critical: bool
+    is_longest_path: bool
 
 class WBSNode(BaseModel):
     wbs_id: int
@@ -76,6 +78,7 @@ class ProjectSummary(BaseModel):
     total_activities: int
     total_wbs: int
     total_critical: int
+    total_longest_path: int
     total_milestones: int
     total_complete: int
     total_active: int
@@ -88,7 +91,6 @@ class ScheduleData(BaseModel):
     project: ProjectSummary
     wbs_tree: list
     activities: list
-    critical_path: list
 
 def safe_float(val, default=0.0):
     """Convert to float, handling None and falsy 0.0 correctly."""
@@ -170,83 +172,63 @@ def parse_xer(filepath: str) -> ScheduleData:
                     "lag_hrs": float(p.lag_hr_cnt or 0),
                 })
 
-    # Build activity lookup by task_id
-    act_lookup = {}
-    for a in project.activities:
-        act_lookup[a.task_id] = a
+    # "Longest Path" (P6's alternate critical-activity definition): trace backward
+    # from the true finish driver(s) through only the *driving* predecessor
+    # relationship(s) at each step — the link(s) whose implied date actually equals
+    # the successor's computed early date. This is different from (and usually a
+    # strict subset of) plain TF=0: a schedule can have many zero-float activities
+    # that aren't actually connected to what's driving the finish date (e.g. they
+    # carry their own explicit constraint), while Longest Path only follows the
+    # unbroken logic chain. Handles multiple parallel/converging critical chains
+    # correctly, unlike a single backward trace from one arbitrary start point.
+    act_lookup = {a.task_id: a for a in project.activities}
+    DRIVING_TOLERANCE_HRS = 1.0
 
-    # Compute critical path: longest path through TF=0 activities
-    # Step 1: compute path lengths (memoized)
-    memo = {}
+    def implied_date(pred_a, link_type, lag_hrs):
+        lag = timedelta(hours=lag_hrs)
+        if link_type == "PR_FS":
+            return pred_a.early_end_date, "start", lag
+        if link_type == "PR_SS":
+            return pred_a.early_start_date, "start", lag
+        if link_type == "PR_FF":
+            return pred_a.early_end_date, "finish", lag
+        if link_type == "PR_SF":
+            return pred_a.early_start_date, "finish", lag
+        return None, None, lag
 
-    def compute_path_length(task_id):
-        if task_id in memo:
-            return memo[task_id]
-        a = act_lookup.get(task_id)
-        if not a:
-            memo[task_id] = 0
-            return 0
-        dur = safe_float(a.target_drtn_hr_cnt)
-        preds = pred_map.get(task_id, [])
-        if not preds:
-            memo[task_id] = dur
-            return dur
-        max_len = 0
-        for p in preds:
-            plen = compute_path_length(p["task_id"])
-            if plen > max_len:
-                max_len = plen
-        memo[task_id] = dur + max_len
-        return dur + max_len
+    def is_driving(succ_a, pred_a, link_type, lag_hrs):
+        base, which, lag = implied_date(pred_a, link_type, lag_hrs)
+        if base is None:
+            return False
+        actual = succ_a.early_start_date if which == "start" else succ_a.early_end_date
+        if actual is None:
+            return False
+        delta_hrs = abs(((actual - base) - lag).total_seconds()) / 3600
+        return delta_hrs <= DRIVING_TOLERANCE_HRS
 
-    # Step 2: find end milestone (activity with no successors)
-    end_ids = [a.task_id for a in project.activities if not succ_map.get(a.task_id)]
-    if not end_ids:
-        end_ids = [a.task_id for a in project.activities]
+    end_activities = [
+        a for a in project.activities
+        if not succ_map.get(a.task_id) and a.early_end_date
+    ]
+    longest_path_ids = set()
+    if end_activities:
+        min_tf = min(safe_float_or(a.total_float_hr_cnt) for a in end_activities)
+        stack = [a.task_id for a in end_activities if safe_float_or(a.total_float_hr_cnt) == min_tf]
+        while stack:
+            tid = stack.pop()
+            if tid in longest_path_ids:
+                continue
+            longest_path_ids.add(tid)
+            succ_a = act_lookup.get(tid)
+            if not succ_a:
+                continue
+            for p in pred_map.get(tid, []):
+                pred_a = act_lookup.get(p["task_id"])
+                if pred_a and is_driving(succ_a, pred_a, p["type"], p["lag_hrs"]):
+                    stack.append(p["task_id"])
 
-    # Compute path lengths for all activities
-    for a in project.activities:
-        compute_path_length(a.task_id)
-
-    # Step 3: trace critical path from TF=0 activity with longest path
-    def find_critical_chain(start_id):
-        chain = []
-        current = start_id
-        visited = set()
-        while current and current not in visited:
-            visited.add(current)
-            chain.append(current)
-            a = act_lookup.get(current)
-            if not a:
-                break
-            preds = pred_map.get(current, [])
-            if not preds:
-                break
-            # Among TF=0 predecessors, pick the one with the longest path
-            best_pid = None
-            best_len = -1
-            for p in preds:
-                pa = act_lookup.get(p["task_id"])
-                if pa and safe_float_or(pa.total_float_hr_cnt) == 0:
-                    plen = memo.get(p["task_id"], 0)
-                    if plen > best_len:
-                        best_len = plen
-                        best_pid = p["task_id"]
-            if best_pid is None:
-                break
-            current = best_pid
-        return chain
-
-    # Find the TF=0 activity with the longest path
-    tf0_activities = [a for a in project.activities if safe_float_or(a.total_float_hr_cnt) == 0]
-    if tf0_activities:
-        best_start = max(tf0_activities, key=lambda a: memo.get(a.task_id, 0))
-        critical_chain = find_critical_chain(best_start.task_id)
-    else:
-        critical_chain = []
-    critical_set = set(critical_chain)
-
-    # Build activities list
+    # Build activities list. is_critical uses the standard TF=0 definition (every
+    # zero-float activity); is_longest_path uses the driving-chain trace above.
     activities = []
     wbs_act_count = {}
     for a in project.activities:
@@ -256,7 +238,7 @@ def parse_xer(filepath: str) -> ScheduleData:
         ls = str(a.late_start_date) if a.late_start_date else None
         le = str(a.late_end_date) if a.late_end_date else None
         cal_name = cal_dict.get(a.clndr_id, "")
-        tf = safe_float(a.total_float_hr_cnt)
+        tf = float(a.total_float_hr_cnt) if a.total_float_hr_cnt is not None else None
         activities.append({
             "task_id": a.task_id,
             "task_code": a.task_code,
@@ -276,7 +258,8 @@ def parse_xer(filepath: str) -> ScheduleData:
             "calendar": cal_name,
             "predecessors": pred_map.get(a.task_id, []),
             "successors": succ_map.get(a.task_id, []),
-            "is_critical": a.task_id in critical_set,
+            "is_critical": tf == 0,
+            "is_longest_path": a.task_id in longest_path_ids,
         })
 
     # Update WBS activity counts
@@ -295,6 +278,7 @@ def parse_xer(filepath: str) -> ScheduleData:
     # Stats
     total = len(activities)
     critical = sum(1 for a in activities if a["is_critical"])
+    longest_path = sum(1 for a in activities if a["is_longest_path"])
     milestones = sum(1 for a in activities if a["task_type"] in ("TT_Mile", "TT_FinMile", "TT_StartMile"))
     complete = sum(1 for a in activities if a["status"] == "TK_Complete")
     active = sum(1 for a in activities if a["status"] == "TK_Active")
@@ -305,27 +289,13 @@ def parse_xer(filepath: str) -> ScheduleData:
     earliest = min((a["early_start"] for a in dates), default=None)
     latest = max((a["early_end"] for a in activities if a["early_end"]), default=None)
 
-    # Critical path chain with details
-    cp_chain = []
-    for tid in critical_chain:
-        a = act_lookup.get(tid)
-        if a:
-            cp_chain.append({
-                "task_id": tid,
-                "task_code": a.task_code,
-                "task_name": a.task_name,
-                "duration_hrs": safe_float(a.target_drtn_hr_cnt),
-                "early_start": str(a.early_start_date) if a.early_start_date else None,
-                "early_end": str(a.early_end_date) if a.early_end_date else None,
-                "total_float_hrs": safe_float(a.total_float_hr_cnt),
-            })
-
     return ScheduleData(
         project=ProjectSummary(
             proj_short_name=project.proj_short_name,
             total_activities=total,
             total_wbs=len(wbs_dict),
             total_critical=critical,
+            total_longest_path=longest_path,
             total_milestones=milestones,
             total_complete=complete,
             total_active=active,
@@ -336,7 +306,6 @@ def parse_xer(filepath: str) -> ScheduleData:
         ),
         wbs_tree=wbs_tree,
         activities=activities,
-        critical_path=cp_chain,
     )
 
 

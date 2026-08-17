@@ -88,7 +88,7 @@
       <div class="detail-stats">
         <span><strong>{{ formatDate(selected.early_start) }}</strong> → <strong>{{ formatDate(selected.early_end) }}</strong></span>
         <span>{{ formatHours(selected.duration_hrs) }} duration</span>
-        <span :class="selected.total_float_hrs === 0 ? 'float-crit' : ''">{{ selected.total_float_hrs }}h float</span>
+        <span :class="selected.total_float_hrs === 0 ? 'float-crit' : ''">{{ formatFloat(selected.total_float_hrs) }} float</span>
         <span>{{ statusLabel(selected.status) }}</span>
       </div>
       <div class="detail-rels">
@@ -117,7 +117,7 @@
 
 <script>
 import dagre from 'dagre'
-import { formatDate, formatHours, statusLabel, isMilestone } from '../utils/format'
+import { formatDate, formatHours, statusLabel, isMilestone, formatFloat } from '../utils/format'
 
 const NEAR_CRITICAL_THRESHOLD_HRS = 80 // 10 working days
 const NODE_WIDTH = 210
@@ -349,6 +349,7 @@ export default {
     formatDate,
     formatHours,
     statusLabel,
+    formatFloat,
     truncate(s, n) {
       if (!s) return ''
       return s.length > n ? s.slice(0, n - 1) + '…' : s

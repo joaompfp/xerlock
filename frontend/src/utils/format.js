@@ -20,3 +20,9 @@ const MILESTONE_TYPES = new Set(['TT_Mile', 'TT_FinMile', 'TT_StartMile'])
 export function isMilestone(activity) {
   return MILESTONE_TYPES.has(activity.task_type)
 }
+
+// total_float_hrs is null when P6 didn't compute a float (typically completed
+// activities) — must not be displayed as "0h", which reads as zero float / critical.
+export function formatFloat(hrs) {
+  return hrs == null ? '—' : `${hrs}h`
+}

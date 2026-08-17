@@ -60,6 +60,10 @@
           <span>Critical (TF=0)</span>
         </div>
         <div class="stat-card">
+          <strong :style="{ color: data.project.total_longest_path > 0 ? '#c0392b' : '#27ae60' }">{{ data.project.total_longest_path }}</strong>
+          <span>Longest Path</span>
+        </div>
+        <div class="stat-card">
           <strong>{{ data.project.total_milestones }}</strong>
           <span>Milestones</span>
         </div>
@@ -79,11 +83,16 @@
 
       <!-- Tab navigation -->
       <nav class="tabs">
-        <button :class="{ active: tab === 'story' }" @click="tab = 'story'">Critical Path</button>
         <button :class="{ active: tab === 'gantt' }" @click="tab = 'gantt'">Gantt Chart</button>
+        <button :class="{ active: tab === 'story' }" @click="tab = 'story'">Critical Path</button>
         <button :class="{ active: tab === 'table' }" @click="tab = 'table'">Activity Table</button>
         <button :class="{ active: tab === 'wbs' }" @click="tab = 'wbs'">WBS Tree</button>
       </nav>
+
+      <!-- Gantt Chart (primary view) -->
+      <div v-if="tab === 'gantt'" class="section section-full">
+        <GanttChart :data="data" />
+      </div>
 
       <!-- Critical Path Graph -->
       <div v-if="tab === 'story'" class="section">
@@ -119,16 +128,6 @@
             </tbody>
           </table>
         </div>
-      </div>
-
-      <!-- Gantt Chart -->
-      <div v-if="tab === 'gantt'" class="section">
-        <div class="story-header">
-          <h2>Gantt Chart</h2>
-          <p class="subtitle">Click a WBS row to expand/collapse. Scroll to pan, hover a bar for details.</p>
-        </div>
-
-        <GanttChart :data="data" />
       </div>
 
       <!-- Activity Table -->
@@ -190,7 +189,7 @@
                 <td>{{ formatHours(act.duration_hrs) }}</td>
                 <td>{{ formatDate(act.early_start) }}</td>
                 <td>{{ formatDate(act.early_end) }}</td>
-                <td :class="floatClass(act.total_float_hrs)">{{ act.total_float_hrs }}h</td>
+                <td :class="floatClass(act.total_float_hrs)">{{ formatFloat(act.total_float_hrs) }}</td>
               </tr>
               <tr v-if="selectedAct" class="rel-row">
                 <td colspan="8">
@@ -240,7 +239,7 @@
 import WBSNode from './components/WBSNode.vue'
 import CriticalPathGraph from './components/CriticalPathGraph.vue'
 import GanttChart from './components/GanttChart.vue'
-import { formatDate, formatHours, statusLabel, isMilestone } from './utils/format'
+import { formatDate, formatHours, statusLabel, isMilestone, formatFloat } from './utils/format'
 import { exportWorkbook, exportActivitiesCsv } from './utils/export'
 
 export default {
@@ -251,7 +250,7 @@ export default {
       data: null,
       loading: false,
       dragOver: false,
-      tab: 'story',
+      tab: 'gantt',
       search: '',
       statusFilter: '',
       showCriticalOnly: false,
@@ -324,7 +323,7 @@ export default {
           throw new Error(err)
         }
         this.data = await res.json()
-        this.tab = 'story'
+        this.tab = 'gantt'
         this.search = ''
         this.statusFilter = ''
         this.showCriticalOnly = false
@@ -351,7 +350,9 @@ export default {
     formatHours,
     statusLabel,
     isMilestone,
+    formatFloat,
     floatClass(f) {
+      if (f == null) return ''
       if (f === 0) return 'float-crit'
       if (f <= 40) return 'float-near'
       if (f <= 80) return 'float-watch'
@@ -429,6 +430,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
 /* Section */
 .section { margin-bottom: 40px; }
+/* Break the Gantt out of the dashboard's max-width so it gets the full viewport
+   width to work with — it's the app's primary view and needs the room. */
+.section-full { width: 100vw; position: relative; left: 50%; right: 50%; margin-left: -50vw; margin-right: -50vw; padding: 0 24px; box-sizing: border-box; }
 .story-header { margin-bottom: 24px; }
 .story-header h2 { font-size: 20px; font-weight: 700; }
 .story-header .subtitle { font-size: 13px; color: #888; margin-top: 4px; }
