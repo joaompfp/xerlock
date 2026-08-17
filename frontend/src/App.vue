@@ -160,6 +160,10 @@
             <input type="checkbox" v-model="showCriticalOnly" />
             Critical only
           </label>
+          <select v-for="t in codeTypesAvailable" :key="t" v-model="codeFilters[t]" class="filter-select">
+            <option value="">All {{ t }}</option>
+            <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
+          </select>
           <button class="btn-outline btn-export-view" @click="doExport(() => exportActivitiesCsv(data, filteredActivities, slugName() + '-filtered.csv'))">
             Export view (.csv)
           </button>
@@ -287,6 +291,7 @@ export default {
       exporting: false,
       lastFile: loadLastFile(),
       pendingJump: null,
+      codeFilters: {},
     }
   },
   computed: {
@@ -305,6 +310,12 @@ export default {
       }
       if (this.showCriticalOnly) {
         acts = acts.filter(a => a.is_critical)
+      }
+      const activeCodeFilters = Object.entries(this.codeFilters).filter(([, v]) => v)
+      if (activeCodeFilters.length) {
+        acts = acts.filter(a =>
+          activeCodeFilters.every(([type, code]) => a.activity_codes.some(c => c.type === type && c.code === code))
+        )
       }
       // Sort
       acts.sort((a, b) => {
@@ -326,6 +337,22 @@ export default {
         .filter(a => !a.is_critical && a.total_float_hrs > 0 && a.total_float_hrs <= 80)
         .sort((a, b) => a.total_float_hrs - b.total_float_hrs)
         .slice(0, 15)
+    },
+    codeTypesAvailable() {
+      return this.data && this.data.project.has_activity_codes ? this.data.project.activity_code_types : []
+    },
+    codeValuesByType() {
+      const m = new Map()
+      for (const t of this.codeTypesAvailable) m.set(t, new Set())
+      if (this.data) {
+        for (const a of this.data.activities) {
+          for (const c of a.activity_codes) {
+            if (m.has(c.type)) m.get(c.type).add(c.code)
+          }
+        }
+      }
+      for (const [t, set] of m) m.set(t, [...set].sort())
+      return m
     },
   },
   methods: {
@@ -369,6 +396,7 @@ export default {
       this.statusFilter = ''
       this.showCriticalOnly = false
       this.selectedAct = null
+      this.codeFilters = {}
     },
     reopenLastFile() {
       if (!this.lastFile) return

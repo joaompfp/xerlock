@@ -64,6 +64,10 @@
         <option value="TK_Complete">Complete</option>
       </select>
       <label class="filter-check"><input type="checkbox" v-model="filterCriticalOnly" /> Critical only</label>
+      <select v-for="t in codeTypesAvailable" :key="t" v-model="filterCodes[t]" class="filter-select">
+        <option value="">All {{ t }}</option>
+        <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
+      </select>
       <span class="filter-count">{{ matchCount }} of {{ data.activities.length }} activities</span>
       <button class="btn-tiny-light" v-if="isFilterActive" @click="clearFilters">Clear filters</button>
     </div>
@@ -358,6 +362,7 @@ export default {
       filterText: '',
       filterStatus: '',
       filterCriticalOnly: false,
+      filterCodes: {},
       scrollLeftPx: 0,
       scrollTopPx: 0,
       panning: false,
@@ -522,8 +527,25 @@ export default {
       if (today < this.rangeStart || today > this.rangeEnd) return null
       return Math.round(((today - this.rangeStart) / 86400000) * this.dayWidth)
     },
+    codeTypesAvailable() {
+      return this.data.project.has_activity_codes ? this.data.project.activity_code_types : []
+    },
+    codeValuesByType() {
+      const m = new Map()
+      for (const t of this.codeTypesAvailable) m.set(t, new Set())
+      for (const a of this.data.activities) {
+        for (const c of a.activity_codes) {
+          if (m.has(c.type)) m.get(c.type).add(c.code)
+        }
+      }
+      for (const [t, set] of m) m.set(t, [...set].sort())
+      return m
+    },
+    activeCodeFilters() {
+      return Object.entries(this.filterCodes).filter(([, v]) => v)
+    },
     isFilterActive() {
-      return !!(this.filterText.trim() || this.filterStatus || this.filterCriticalOnly)
+      return !!(this.filterText.trim() || this.filterStatus || this.filterCriticalOnly || this.activeCodeFilters.length)
     },
     matchedTaskIds() {
       if (!this.isFilterActive) return null
@@ -533,6 +555,12 @@ export default {
         if (q && !(a.task_code.toLowerCase().includes(q) || a.task_name.toLowerCase().includes(q) || (a.wbs_path && a.wbs_path.toLowerCase().includes(q)))) continue
         if (this.filterStatus && a.status !== this.filterStatus) continue
         if (this.filterCriticalOnly && !this.isBasisCritical(a)) continue
+        if (this.activeCodeFilters.length) {
+          const matchesAll = this.activeCodeFilters.every(([type, code]) =>
+            a.activity_codes.some(c => c.type === type && c.code === code)
+          )
+          if (!matchesAll) continue
+        }
         ids.add(a.task_id)
       }
       return ids
@@ -755,6 +783,7 @@ export default {
       this.filterText = ''
       this.filterStatus = ''
       this.filterCriticalOnly = false
+      this.filterCodes = {}
     },
     scrollToToday() {
       if (this.todayX === null || !this.$refs.scrollEl) return
