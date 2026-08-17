@@ -227,11 +227,46 @@
         </template>
       </div>
     </div>
+
+    <div class="gantt-detail-panel" v-if="selectedActivity">
+      <div class="detail-header">
+        <div>
+          <span class="detail-code">{{ selectedActivity.task_code }}</span>
+          <span class="detail-name">{{ selectedActivity.task_name }}</span>
+        </div>
+        <button class="btn-tiny-light" @click="selectedTaskId = null">Close</button>
+      </div>
+      <div class="detail-stats">
+        <span><strong>{{ formatDate(selectedActivity.early_start) }}</strong> → <strong>{{ formatDate(selectedActivity.early_end) }}</strong></span>
+        <span>{{ formatHours(selectedActivity.duration_hrs) }} duration</span>
+        <span :class="selectedActivity.total_float_hrs === 0 ? 'float-crit' : ''">{{ formatFloat(selectedActivity.total_float_hrs) }} float</span>
+        <span>{{ statusLabel(selectedActivity.status) }}</span>
+        <span>{{ selectedActivity.pct_complete }}% complete</span>
+      </div>
+      <div class="detail-rels">
+        <div class="rel-col">
+          <h4>Predecessors ({{ selectedActivity.predecessors.length }})</h4>
+          <div v-if="selectedActivity.predecessors.length === 0" class="rel-empty">None</div>
+          <button v-for="p in selectedActivity.predecessors" :key="p.task_id" class="rel-item-btn" @click="revealAndSelect(p.task_id)">
+            <span class="rel-code">{{ codeFor(p.task_id) }}</span>
+            <span class="rel-type">{{ p.type }}</span>
+          </button>
+        </div>
+        <div class="rel-col">
+          <h4>Successors ({{ selectedActivity.successors.length }})</h4>
+          <div v-if="selectedActivity.successors.length === 0" class="rel-empty">None</div>
+          <button v-for="s in selectedActivity.successors" :key="s.task_id" class="rel-item-btn" @click="revealAndSelect(s.task_id)">
+            <span class="rel-code">{{ codeFor(s.task_id) }}</span>
+            <span class="rel-type">{{ s.type }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
-import { formatDate, formatHours, isMilestone, formatFloat } from '../utils/format'
+import { formatDate, formatHours, isMilestone, formatFloat, statusLabel } from '../utils/format'
 import IconChevron from './IconChevron.vue'
 
 const LABEL_COL_WIDTH_DEFAULT = 340
@@ -323,6 +358,23 @@ export default {
     dayWidthOverride() { this.persistView() },
   },
   computed: {
+    actLookup() {
+      const m = new Map()
+      for (const a of this.data.activities) m.set(a.task_id, a)
+      return m
+    },
+    selectedActivity() {
+      return this.selectedTaskId != null ? this.actLookup.get(this.selectedTaskId) : null
+    },
+    wbsParentOf() {
+      const map = new Map()
+      const walk = (node, parentId) => {
+        if (parentId != null) map.set(node.wbs_id, parentId)
+        for (const c of node.children || []) walk(c, node.wbs_id)
+      }
+      for (const root of this.data.wbs_tree || []) walk(root, null)
+      return map
+    },
     activitiesByWbs() {
       const map = new Map()
       for (const a of this.data.activities) {
@@ -699,6 +751,31 @@ export default {
     milestoneTitle(a) {
       return `${a.task_code} — ${a.task_name}\n${formatDate(a.early_start)}\nFloat: ${formatFloat(a.total_float_hrs)}`
     },
+    formatDate,
+    formatHours,
+    formatFloat,
+    statusLabel,
+    codeFor(id) {
+      const a = this.actLookup.get(id)
+      return a ? a.task_code : '?' + id
+    },
+    // Selects a predecessor/successor from the detail panel: expands every WBS
+    // ancestor so the row actually renders (it may be tucked under a collapsed
+    // branch, or hidden by an active filter), then scrolls to it.
+    revealAndSelect(taskId) {
+      const a = this.actLookup.get(taskId)
+      if (!a) return
+      if (this.isFilterActive) this.clearFilters()
+      const toExpand = new Set(this.expandedWbs)
+      let cur = a.wbs_id
+      while (cur != null) {
+        toExpand.add(cur)
+        cur = this.wbsParentOf.get(cur) ?? null
+      }
+      this.expandedWbs = toExpand
+      this.selectedTaskId = taskId
+      this.$nextTick(() => this.scrollToActivity(taskId))
+    },
 
     // ── Zoom (presets + continuous) ──────────────────────────────────────
     selectZoomPreset(z) {
@@ -917,6 +994,21 @@ export default {
 .g-milestone { position: absolute; top: 6px; width: 16px; height: 16px; margin-left: -8px; background: var(--milestone); transform: rotate(45deg); border-radius: 2px; box-shadow: 0 1px 2px rgba(20,33,61,0.2); }
 .g-milestone.critical { background: var(--crit); }
 .g-milestone.near { background: var(--near); }
+
+.gantt-detail-panel { border-top: 1px solid var(--gray-300); padding: var(--space-4); background: var(--gray-100); }
+.detail-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: var(--space-2); }
+.detail-code { font-family: var(--font-mono); font-weight: 700; color: var(--accent); margin-right: var(--space-2); }
+.detail-name { font-weight: 600; color: var(--ink); }
+.detail-stats { display: flex; gap: 18px; font: var(--text-small); color: var(--gray-700); margin-bottom: var(--space-3); flex-wrap: wrap; }
+.float-crit { color: var(--crit); font-weight: 700; }
+.detail-rels { display: flex; gap: var(--space-8); flex-wrap: wrap; }
+.rel-col { flex: 1; min-width: 200px; }
+.rel-col h4 { font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); letter-spacing: 0.04em; margin-bottom: var(--space-2); }
+.rel-empty { font: var(--text-small); color: var(--gray-500); font-style: italic; }
+.rel-item-btn { display: flex; gap: var(--space-2); align-items: center; font: var(--text-small); padding: 3px 6px; border: none; background: none; cursor: pointer; border-radius: var(--radius-sm); width: 100%; text-align: left; }
+.rel-item-btn:hover { background: var(--accent-soft); }
+.rel-code { font-family: var(--font-mono); font-weight: 600; color: var(--accent); min-width: 60px; }
+.rel-type { color: var(--gray-700); font: var(--text-micro); }
 
 @media print {
   @page { size: landscape; margin: 10mm; }
