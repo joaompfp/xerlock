@@ -1,52 +1,55 @@
 <template>
   <div class="gantt-wrap" :class="{ 'is-fullscreen': isFullscreen, 'extra-room': extraRoom }" ref="wrapEl">
-    <div class="gantt-toolbar">
-      <div class="toolbar-title">
+    <div class="gantt-strip">
+      <div class="strip-title">
         <h2>Gantt Chart</h2>
-        <span class="toolbar-sub">{{ data.project.total_activities }} activities · click a WBS row to expand · Ctrl+scroll or drag timeline to zoom/pan</span>
+        <span class="strip-sub">{{ data.project.total_activities }} activities</span>
       </div>
-      <div class="toolbar-actions">
-        <div class="basis-group">
-          <span class="basis-label">Critical basis</span>
-          <button :class="{ active: criticalBasis === 'tf0' }" @click="criticalBasis = 'tf0'">TF = 0</button>
-          <button :class="{ active: criticalBasis === 'longest' }" @click="criticalBasis = 'longest'">Longest Path</button>
-        </div>
-        <label class="filter-toggle"><input type="checkbox" v-model="showLinks" /> Links</label>
-        <label class="filter-toggle"><input type="checkbox" v-model="showProgressLine" /> Progress line</label>
-        <div class="zoom-group">
-          <button
-            v-for="z in zoomLevels"
-            :key="z"
-            :class="{ active: !dayWidthOverride && zoom === z }"
-            @click="selectZoomPreset(z)"
-          >{{ zoomLabel(z) }}</button>
-        </div>
-        <div class="zoom-adjust">
-          <button class="zbtn" title="Zoom out" @click="zoomOut">−</button>
-          <button class="zbtn" title="Fit to available width" @click="fitToWidth">Fit</button>
-          <button class="zbtn" title="Zoom in" @click="zoomIn">+</button>
-        </div>
-        <button class="btn-tiny" @click="expandAll">Expand all</button>
-        <button class="btn-tiny" @click="collapseAll">Collapse all</button>
-        <button class="btn-tiny" :disabled="todayX === null" @click="scrollToToday">Today</button>
-        <button class="btn-tiny btn-fullscreen" @click="toggleFullscreen">{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</button>
-        <button class="btn-tiny" @click="printGantt">Print</button>
+      <div class="basis-group">
+        <span class="basis-label">Critical basis</span>
+        <button :class="{ active: criticalBasis === 'tf0' }" @click="criticalBasis = 'tf0'">TF = 0</button>
+        <button :class="{ active: criticalBasis === 'longest' }" @click="criticalBasis = 'longest'">Longest Path</button>
       </div>
     </div>
 
-    <div class="legend">
-      <template v-if="criticalBasis === 'tf0'">
-        <span class="legend-item"><i class="dot dot-critical"></i>Critical (TF=0)</span>
-        <span class="legend-item"><i class="dot dot-near"></i>Near-critical</span>
-        <span class="legend-item"><i class="dot dot-other"></i>Normal</span>
-      </template>
-      <template v-else>
-        <span class="legend-item"><i class="dot dot-critical"></i>On longest path</span>
-        <span class="legend-item"><i class="dot dot-other"></i>Normal</span>
-      </template>
-      <span class="legend-item"><i class="diamond"></i>Milestone</span>
-      <span class="legend-item"><i class="bar-wbs"></i>WBS rollup</span>
-      <span class="legend-item" v-if="showProgressLine"><i class="progress-swatch"></i>Progress line</span>
+    <div class="gantt-controls">
+      <div class="legend">
+        <template v-if="criticalBasis === 'tf0'">
+          <span class="legend-item"><i class="dot dot-critical"></i>Critical (TF=0)</span>
+          <span class="legend-item"><i class="dot dot-near"></i>Near-critical</span>
+          <span class="legend-item"><i class="dot dot-other"></i>Normal</span>
+        </template>
+        <template v-else>
+          <span class="legend-item"><i class="dot dot-critical"></i>On longest path</span>
+          <span class="legend-item"><i class="dot dot-other"></i>Normal</span>
+        </template>
+        <span class="legend-item"><i class="diamond"></i>Milestone</span>
+        <span class="legend-item"><i class="bar-wbs"></i>WBS rollup</span>
+        <span class="legend-item" v-if="showProgressLine"><i class="progress-swatch"></i>Progress line</span>
+      </div>
+
+      <div class="control-divider"></div>
+
+      <label class="ctrl-toggle"><input type="checkbox" v-model="showLinks" /> Links</label>
+      <label class="ctrl-toggle"><input type="checkbox" v-model="showProgressLine" /> Progress line</label>
+      <div class="zoom-group">
+        <button
+          v-for="z in zoomLevels"
+          :key="z"
+          :class="{ active: !dayWidthOverride && zoom === z }"
+          @click="selectZoomPreset(z)"
+        >{{ zoomLabel(z) }}</button>
+      </div>
+      <div class="zoom-adjust">
+        <button class="zbtn" title="Zoom out" @click="zoomOut">−</button>
+        <button class="zbtn" title="Fit to available width" @click="fitToWidth">Fit</button>
+        <button class="zbtn" title="Zoom in" @click="zoomIn">+</button>
+      </div>
+      <button class="ctrl-btn" @click="expandAll">Expand all</button>
+      <button class="ctrl-btn" @click="collapseAll">Collapse all</button>
+      <button class="ctrl-btn" :disabled="todayX === null" @click="scrollToToday">Today</button>
+      <button class="ctrl-btn ctrl-btn-accent" @click="toggleFullscreen">{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</button>
+      <button class="ctrl-btn" @click="printGantt">Print</button>
     </div>
 
     <!-- Filter bar: narrows which rows are shown (not just dimmed), the way P6's activity filter works.
@@ -137,7 +140,7 @@
         >
           <defs>
             <marker id="gantt-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-              <path d="M0 0L8 4L0 8z" fill="#e74c3c" />
+              <path d="M0 0L8 4L0 8z" class="g-link-arrow" />
             </marker>
           </defs>
           <path
@@ -183,7 +186,7 @@
             @click="row.type === 'wbs' ? toggleWbs(row.wbsId) : selectActivity(row.activity)"
           >
             <template v-if="row.type === 'wbs'">
-              <span class="g-toggle">{{ expandedWbs.has(row.wbsId) ? '▼' : '▶' }}</span>
+              <IconChevron class="g-toggle" :expanded="expandedWbs.has(row.wbsId)" />
               <span class="g-wbs-name">{{ row.name }}</span>
               <span class="g-wbs-count">{{ row.count }}</span>
             </template>
@@ -229,6 +232,7 @@
 
 <script>
 import { formatDate, formatHours, isMilestone, formatFloat } from '../utils/format'
+import IconChevron from './IconChevron.vue'
 
 const LABEL_COL_WIDTH_DEFAULT = 340
 const LABEL_COL_MIN = 200
@@ -259,6 +263,7 @@ function saveView(view) {
 
 export default {
   name: 'GanttChart',
+  components: { IconChevron },
   props: {
     data: { type: Object, required: true },
     extraRoom: { type: Boolean, default: false },
@@ -795,54 +800,60 @@ export default {
 </script>
 
 <style scoped>
-.gantt-wrap { border: 1px solid #e8e8e8; border-radius: 10px; overflow: hidden; background: #fff; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(26,26,46,0.06); }
+.gantt-wrap { border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; background: var(--white); margin-bottom: var(--space-6); box-shadow: 0 1px 3px rgba(20,33,61,0.06); font-family: var(--font-ui); }
 .gantt-wrap.is-fullscreen { border-radius: 0; display: flex; flex-direction: column; height: 100vh; }
 .gantt-wrap.is-fullscreen .gantt-scroll { flex: 1; max-height: none; }
 
-.gantt-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid #eee; background: #1a1a2e; flex-wrap: wrap; gap: 12px; }
-.toolbar-title h2 { font-size: 17px; font-weight: 700; color: #fff; margin: 0; }
-.toolbar-sub { font-size: 12px; color: #a8adc0; }
-.toolbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.filter-toggle { font-size: 12px; color: #d5d8e8; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+/* Thin ink strip: title + the one highest-value toggle. Everything else lives in the
+   light control row below, so there's no large dark panel to justify visually. */
+.gantt-strip { display: flex; justify-content: space-between; align-items: center; padding: 8px 18px; background: var(--ink); gap: var(--space-3); }
+.strip-title { display: flex; align-items: baseline; gap: var(--space-2); }
+.strip-title h2 { font: var(--text-h2); color: var(--white); }
+.strip-sub { font: var(--text-micro); color: var(--gray-300); text-transform: uppercase; letter-spacing: 0.04em; }
 
-.basis-group { display: flex; align-items: center; gap: 6px; border: 1px solid #3a3f5c; border-radius: 6px; padding: 2px; }
-.basis-label { font-size: 11px; color: #8890ac; padding-left: 6px; text-transform: uppercase; letter-spacing: 0.3px; }
-.basis-group button { padding: 4px 10px; border: none; border-radius: 4px; background: none; cursor: pointer; font-size: 12px; color: #c5c9dc; }
-.basis-group button.active { background: #e74c3c; color: white; font-weight: 600; }
-.basis-group button:hover:not(.active) { background: #2a2f47; }
+.basis-group { display: flex; align-items: center; gap: 6px; border: 1px solid var(--ink-soft); border-radius: var(--radius-sm); padding: 2px; flex-shrink: 0; }
+.basis-label { font: var(--text-micro); color: var(--gray-500); padding-left: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+.basis-group button { padding: 4px 10px; border: none; border-radius: 3px; background: none; cursor: pointer; font: var(--text-small); color: var(--gray-300); }
+.basis-group button.active { background: var(--crit); color: white; font-weight: 700; }
+.basis-group button:hover:not(.active) { background: var(--ink-soft); }
 
-.zoom-group { display: flex; border: 1px solid #3a3f5c; border-radius: 6px; overflow: hidden; }
-.zoom-group button { padding: 4px 10px; border: none; border-right: 1px solid #3a3f5c; background: none; cursor: pointer; font-size: 12px; color: #c5c9dc; }
+/* Light control row: legend + every interactive control, directly adjoining the light
+   timeline header below — no light/dark/light seam. */
+.gantt-controls { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-2) 18px; background: var(--gray-100); border-bottom: 1px solid var(--gray-300); }
+.control-divider { width: 1px; align-self: stretch; background: var(--gray-300); margin: 2px 0; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.legend-item { display: flex; align-items: center; gap: 5px; font: var(--text-small); color: var(--gray-700); }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.dot-critical { background: var(--crit); }
+.dot-near { background: var(--near); }
+.dot-other { background: var(--accent); }
+.diamond { width: 8px; height: 8px; background: var(--milestone); display: inline-block; transform: rotate(45deg); }
+.bar-wbs { width: 16px; height: 7px; border-radius: 3px; background: var(--gray-700); display: inline-block; }
+.progress-swatch { width: 14px; height: 2px; background: var(--milestone); display: inline-block; }
+
+.ctrl-toggle { font: var(--text-small); color: var(--gray-700); display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.zoom-group { display: flex; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); overflow: hidden; }
+.zoom-group button { padding: 4px 10px; border: none; border-right: 1px solid var(--gray-300); background: var(--white); cursor: pointer; font: var(--text-small); color: var(--gray-700); }
 .zoom-group button:last-child { border-right: none; }
-.zoom-group button.active { background: #2f5496; color: white; }
-.zoom-group button:hover:not(.active) { background: #2a2f47; }
-.zoom-adjust { display: flex; border: 1px solid #3a3f5c; border-radius: 6px; overflow: hidden; }
-.zbtn { padding: 4px 10px; border: none; border-right: 1px solid #3a3f5c; background: none; cursor: pointer; font-size: 13px; color: #c5c9dc; font-weight: 700; }
+.zoom-group button.active { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.zoom-group button:hover:not(.active) { background: var(--gray-150); }
+.zoom-adjust { display: flex; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); overflow: hidden; }
+.zbtn { padding: 4px 10px; border: none; border-right: 1px solid var(--gray-300); background: var(--white); cursor: pointer; font-size: 13px; color: var(--gray-700); font-weight: 700; }
 .zbtn:last-child { border-right: none; }
-.zbtn:hover { background: #2a2f47; }
-.btn-tiny { padding: 4px 10px; border: 1px solid #3a3f5c; border-radius: 5px; background: none; cursor: pointer; font-size: 12px; color: #c5c9dc; }
-.btn-tiny:hover:not(:disabled) { background: #2a2f47; }
-.btn-tiny:disabled { opacity: 0.35; cursor: default; }
-.btn-fullscreen { border-color: #2f5496; color: #a9c2e8; }
-.btn-fullscreen:hover { background: #2f5496; color: white; }
+.zbtn:hover { background: var(--gray-150); }
+.ctrl-btn { padding: 4px 10px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); background: var(--white); cursor: pointer; font: var(--text-small); color: var(--gray-700); }
+.ctrl-btn:hover:not(:disabled) { background: var(--gray-150); }
+.ctrl-btn:disabled { opacity: 0.4; cursor: default; }
+.ctrl-btn-accent { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.ctrl-btn-accent:hover { background: var(--accent-soft); }
 
-.legend { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; padding: 8px 18px; background: #fafbfc; border-bottom: 1px solid #eee; }
-.legend-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #666; }
-.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-.dot-critical { background: #e74c3c; }
-.dot-near { background: #d4a017; }
-.dot-other { background: #2f5496; }
-.diamond { width: 8px; height: 8px; background: #5a5f68; display: inline-block; transform: rotate(45deg); }
-.bar-wbs { width: 16px; height: 7px; border-radius: 3px; background: #5a6472; display: inline-block; }
-.progress-swatch { width: 14px; height: 2px; background: #8e44ad; display: inline-block; }
-
-.filter-bar { display: flex; align-items: center; gap: 10px; padding: 10px 18px; background: #fff; border-bottom: 1px solid #eee; flex-wrap: wrap; }
-.filter-input { padding: 6px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; width: 240px; }
-.filter-select { padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px; background: white; }
-.filter-check { font-size: 12px; color: #555; display: flex; align-items: center; gap: 4px; cursor: pointer; }
-.filter-count { font-size: 12px; color: #888; margin-left: auto; }
-.btn-tiny-light { padding: 4px 10px; border: 1px solid #ccc; border-radius: 5px; background: white; cursor: pointer; font-size: 12px; color: #555; }
-.btn-tiny-light:hover { background: #f5f5f5; }
+.filter-bar { display: flex; align-items: center; gap: 10px; padding: 10px 18px; background: var(--white); border-bottom: 1px solid var(--gray-300); flex-wrap: wrap; }
+.filter-input { padding: 6px 12px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); width: 240px; }
+.filter-select { padding: 6px 8px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: white; }
+.filter-check { font: var(--text-small); color: var(--gray-700); display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.filter-count { font: var(--text-small); color: var(--gray-500); margin-left: auto; }
+.btn-tiny-light { padding: 4px 10px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); background: white; cursor: pointer; font: var(--text-small); color: var(--gray-700); }
+.btn-tiny-light:hover { background: var(--gray-150); }
 
 .gantt-scroll { overflow: auto; max-height: min(75vh, 900px); position: relative; cursor: grab; }
 .gantt-scroll.panning { cursor: grabbing; }
@@ -850,65 +861,66 @@ export default {
 .gantt-grid { display: grid; grid-template-rows: 52px; grid-auto-rows: 32px; position: relative; }
 
 .g-cell { min-width: 0; }
-.g-corner { position: absolute; z-index: 7; background: #fafbfc; border-bottom: 1px solid #ddd; border-right: 1px solid #eee; height: 52px; }
-.g-timeline-header { position: absolute; z-index: 6; background: #fafbfc; border-bottom: 1px solid #ddd; height: 52px; }
-.g-header-year-row { position: relative; height: 22px; border-bottom: 1px solid #eee; }
+.g-corner { position: absolute; z-index: 7; background: var(--gray-100); border-bottom: 1px solid var(--gray-300); border-right: 1px solid var(--gray-150); height: 52px; }
+.g-timeline-header { position: absolute; z-index: 6; background: var(--gray-100); border-bottom: 1px solid var(--gray-300); height: 52px; }
+.g-header-year-row { position: relative; height: 22px; border-bottom: 1px solid var(--gray-150); }
 .g-header-detail-row { position: relative; height: 30px; }
-.g-year-tick { position: absolute; top: 0; height: 100%; padding-left: 6px; padding-top: 3px; font-size: 12px; font-weight: 700; color: #1a1a2e; border-left: 1px solid #ccc; white-space: nowrap; }
-.g-detail-tick { position: absolute; top: 0; padding-top: 8px; padding-left: 4px; font-size: 11px; color: #888; white-space: nowrap; border-left: 1px solid #eee; height: 100%; box-sizing: border-box; }
-.g-detail-tick.weekend { color: #c0392b; font-weight: 600; }
+.g-year-tick { position: absolute; top: 0; height: 100%; padding-left: 6px; padding-top: 3px; font: var(--text-small); font-weight: 700; color: var(--ink); border-left: 1px solid var(--gray-300); white-space: nowrap; }
+.g-detail-tick { position: absolute; top: 0; padding-top: 8px; padding-left: 4px; font: var(--text-micro); color: var(--gray-700); white-space: nowrap; border-left: 1px solid var(--gray-150); height: 100%; box-sizing: border-box; }
+.g-detail-tick.weekend { color: var(--crit); font-weight: 700; }
 
 .g-overlay { position: absolute; pointer-events: none; }
 .g-overlay-bg { z-index: 1; }
 .g-overlay-fg { z-index: 3; }
-.g-weekend { fill: #f5f6f8; }
-.g-gridline { stroke: #f0f1f3; stroke-width: 1; }
-.g-gridline-month { stroke: #dfe1e6; stroke-width: 1; }
-.g-link { fill: none; stroke: #e74c3c; stroke-width: 1.5; opacity: 0.75; }
-.g-progress-line { fill: none; stroke: #8e44ad; stroke-width: 2; stroke-dasharray: 4 3; opacity: 0.9; }
-.g-progress-dot { fill: #8e44ad; }
+.g-weekend { fill: var(--gray-150); }
+.g-gridline { stroke: var(--gray-150); stroke-width: 1; }
+.g-gridline-month { stroke: var(--gray-300); stroke-width: 1; }
+.g-link { fill: none; stroke: var(--crit); stroke-width: 1.5; opacity: 0.75; }
+.g-link-arrow { fill: var(--crit); }
+.g-progress-line { fill: none; stroke: var(--milestone); stroke-width: 2; stroke-dasharray: 4 3; opacity: 0.9; }
+.g-progress-dot { fill: var(--milestone); }
 
-.g-today-line { position: absolute; width: 2px; background: #2f5496; z-index: 4; pointer-events: none; }
-.g-today-flag { position: absolute; top: -18px; left: 2px; font-size: 10px; font-weight: 700; color: #2f5496; white-space: nowrap; }
+.g-today-line { position: absolute; width: 2px; background: var(--accent); z-index: 4; pointer-events: none; }
+.g-today-flag { position: absolute; top: -18px; left: 2px; font: var(--text-micro); font-weight: 700; color: var(--accent); white-space: nowrap; }
 
 .g-resize-handle { position: absolute; top: 0; width: 7px; margin-left: -3px; cursor: col-resize; z-index: 8; background: transparent; }
-.g-resize-handle:hover, .g-resize-handle.resizing { background: rgba(47,84,150,0.3); }
+.g-resize-handle:hover, .g-resize-handle.resizing { background: var(--accent-soft); }
 
-.g-label { position: absolute; z-index: 5; background: #fff; display: flex; align-items: center; gap: 6px; height: 32px; border-bottom: 1px solid #f2f2f2; font-size: 12px; white-space: nowrap; overflow: hidden; cursor: pointer; box-sizing: border-box; }
-.g-label.stripe { background: #fafbfc; }
-.g-label:hover { background: #eef1f7; }
-.g-label.selected { background: #e4eaf6; }
-.g-label-wbs { font-weight: 700; background: #f0f2f6; }
-.g-label-wbs.stripe { background: #eceef3; }
-.g-label-wbs:hover { background: #e4e7ee; }
-.g-toggle { width: 12px; text-align: center; font-size: 9px; color: #888; flex-shrink: 0; }
-.g-wbs-name { overflow: hidden; text-overflow: ellipsis; color: #1a1a2e; }
-.g-wbs-count { margin-left: auto; padding-right: 8px; font-size: 10px; color: #aaa; flex-shrink: 0; }
-.g-act-code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; color: #888; flex-shrink: 0; }
-.g-act-name { overflow: hidden; text-overflow: ellipsis; color: #333; }
+.g-label { position: absolute; z-index: 5; background: var(--white); display: flex; align-items: center; gap: 6px; height: 32px; border-bottom: 1px solid var(--gray-150); font: var(--text-small); white-space: nowrap; overflow: hidden; cursor: pointer; box-sizing: border-box; }
+.g-label.stripe { background: var(--gray-100); }
+.g-label:hover { background: var(--accent-soft); }
+.g-label.selected { background: var(--accent-soft); }
+.g-label-wbs { font-weight: 700; background: var(--gray-150); }
+.g-label-wbs.stripe { background: var(--gray-150); }
+.g-label-wbs:hover { background: var(--accent-soft); }
+.g-toggle { color: var(--gray-500); flex-shrink: 0; }
+.g-wbs-name { overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.g-wbs-count { margin-left: auto; padding-right: 8px; font: var(--text-micro); color: var(--gray-500); flex-shrink: 0; }
+.g-act-code { font-family: var(--font-mono); font-size: 11px; color: var(--gray-500); flex-shrink: 0; }
+.g-act-name { overflow: hidden; text-overflow: ellipsis; color: var(--ink-soft); }
 
-.g-timeline-row { position: relative; height: 32px; border-bottom: 1px solid #f2f2f2; z-index: 2; }
-.g-timeline-row.stripe { background: #fafbfc; }
+.g-timeline-row { position: relative; height: 32px; border-bottom: 1px solid var(--gray-150); z-index: 2; }
+.g-timeline-row.stripe { background: var(--gray-100); }
 
-.g-bar { position: absolute; top: 7px; height: 18px; border-radius: 4px; overflow: hidden; background: #aebbd6; border: 1.5px solid #2f5496; box-sizing: border-box; box-shadow: 0 1px 2px rgba(26,26,46,0.15); }
-.g-bar.critical { background: #f0a099; border-color: #e74c3c; }
-.g-bar.near { background: #f2d693; border-color: #d4a017; }
-.g-bar.other { background: #aebbd6; border-color: #2f5496; }
-.g-bar.selected { box-shadow: 0 0 0 2px #1a1a2e; }
-.g-bar-progress { height: 100%; background: rgba(0,0,0,0.28); }
+.g-bar { position: absolute; top: 7px; height: 18px; border-radius: var(--radius-sm); overflow: hidden; background: var(--accent-soft); border: 1.5px solid var(--accent); box-sizing: border-box; box-shadow: 0 1px 2px rgba(20,33,61,0.15); }
+.g-bar.critical { background: var(--crit-tint); border-color: var(--crit); }
+.g-bar.near { background: var(--near-tint); border-color: var(--near); }
+.g-bar.other { background: var(--accent-soft); border-color: var(--accent); }
+.g-bar.selected { box-shadow: 0 0 0 2px var(--ink); }
+.g-bar-progress { height: 100%; background: rgba(20,33,61,0.28); }
 
-.g-bar-wbs { position: absolute; top: 12px; height: 9px; border-radius: 3px; background: #5a6472; }
-.g-bar-wbs::before, .g-bar-wbs::after { content: ''; position: absolute; top: 100%; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid #5a6472; }
+.g-bar-wbs { position: absolute; top: 12px; height: 9px; border-radius: 3px; background: var(--gray-700); }
+.g-bar-wbs::before, .g-bar-wbs::after { content: ''; position: absolute; top: 100%; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--gray-700); }
 .g-bar-wbs::before { left: -1px; }
 .g-bar-wbs::after { right: -1px; }
 
-.g-milestone { position: absolute; top: 6px; width: 16px; height: 16px; margin-left: -8px; background: #5a5f68; transform: rotate(45deg); border-radius: 2px; box-shadow: 0 1px 2px rgba(26,26,46,0.2); }
-.g-milestone.critical { background: #e74c3c; }
-.g-milestone.near { background: #d4a017; }
+.g-milestone { position: absolute; top: 6px; width: 16px; height: 16px; margin-left: -8px; background: var(--milestone); transform: rotate(45deg); border-radius: 2px; box-shadow: 0 1px 2px rgba(20,33,61,0.2); }
+.g-milestone.critical { background: var(--crit); }
+.g-milestone.near { background: var(--near); }
 
 @media print {
   @page { size: landscape; margin: 10mm; }
-  .gantt-toolbar, .filter-bar { display: none; }
+  .gantt-strip, .gantt-controls, .filter-bar { display: none; }
   .gantt-wrap, .gantt-wrap.is-fullscreen { border: none; box-shadow: none; height: auto; display: block; }
   .gantt-scroll { max-height: none !important; overflow: visible; cursor: default; }
   .g-corner, .g-timeline-header, .g-label { position: static; }
