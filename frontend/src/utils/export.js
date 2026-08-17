@@ -1,6 +1,9 @@
-import { statusLabel } from './format'
+import { statusLabel, formatDate } from './format'
+import { SEVERITY_LABELS } from './annotations'
 
 const REL_TYPE_LABELS = { PR_FS: 'FS', PR_SS: 'SS', PR_FF: 'FF', PR_SF: 'SF' }
+const REPORT_SEVERITY_ORDER = ['logic', 'risk', 'query', 'resolved']
+const SEVERITY_FILL = { logic: 'FFF8E3E1', risk: 'FFF6ECD2', query: 'FFDCE6F0', resolved: 'FFE1EBE4' }
 
 const HEADER_FILL = 'FF2F5496'
 const CRITICAL_FONT = 'FFC0392B'
@@ -203,6 +206,81 @@ export async function exportWorkbook(data) {
   addRelationshipsSheet(wb, data.activities, actLookup, 'Relationships')
 
   await downloadWorkbook(wb, `${slug(data.project.proj_short_name)}-schedule.xlsx`)
+}
+
+/**
+ * A reviewer's working notes — every annotated activity, grouped by severity
+ * (Logic Issue / Risk / Query first, Resolved last), with the underlying
+ * schedule data (dates, float, WBS) alongside the note so the report stands
+ * on its own without needing the app open.
+ */
+export async function exportReviewReport(data, annotations) {
+  const wb = await newWorkbook()
+  const actLookup = new Map(data.activities.map(a => [a.task_id, a]))
+  const wbsLevelsMap = buildWbsLevelsMap(data.wbs_tree)
+
+  const ws = wb.addWorksheet('Review Report')
+  ws.columns = [
+    { header: 'Severity', key: 'severity', width: 13 },
+    { header: 'Activity ID', key: 'task_code', width: 14 },
+    { header: 'Activity Name', key: 'task_name', width: 42 },
+    { header: 'WBS Path', key: 'wbs_path', width: 40 },
+    { header: 'Start', key: 'early_start', width: 12, style: { numFmt: 'dd-mmm-yy' } },
+    { header: 'Finish', key: 'early_end', width: 12, style: { numFmt: 'dd-mmm-yy' } },
+    { header: 'Float (d)', key: 'float_d', width: 9 },
+    { header: 'Note', key: 'note', width: 60 },
+    { header: 'Last updated', key: 'updated', width: 16, style: { numFmt: 'dd-mmm-yy hh:mm' } },
+  ]
+
+  ws.mergeCells('A1:I1')
+  ws.getCell('A1').value = `Review Report — ${data.project.proj_short_name}`
+  ws.getCell('A1').font = { bold: true, size: 14 }
+  ws.mergeCells('A2:I2')
+  ws.getCell('A2').value =
+    `${data.project.total_activities} activities · data date ${data.project.data_date ? formatDate(data.project.data_date) : 'unknown'} · ` +
+    `${Object.keys(annotations).length} annotated activities, generated ${new Date().toLocaleString('en-GB')}`
+  ws.getCell('A2').font = { italic: true, color: { argb: 'FF6B7280' } }
+  ws.addRow([])
+
+  const headerRowNum = 4
+  ws.spliceRows(headerRowNum, 0, ws.columns.map(c => c.header))
+  const headerRow = ws.getRow(headerRowNum)
+  headerRow.eachCell(cell => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_FILL } }
+  })
+  ws.views = [{ state: 'frozen', ySplit: headerRowNum }]
+
+  const entries = Object.entries(annotations)
+    .map(([taskId, ann]) => ({ activity: actLookup.get(Number(taskId)), ann }))
+    .filter(e => e.activity)
+    .sort((a, b) => {
+      const oa = REPORT_SEVERITY_ORDER.indexOf(a.ann.severity)
+      const ob = REPORT_SEVERITY_ORDER.indexOf(b.ann.severity)
+      if (oa !== ob) return (oa === -1 ? 99 : oa) - (ob === -1 ? 99 : ob)
+      return a.activity.task_code.localeCompare(b.activity.task_code)
+    })
+
+  entries.forEach(({ activity: a, ann }) => {
+    const row = ws.addRow({
+      severity: SEVERITY_LABELS[ann.severity] || '—',
+      task_code: a.task_code,
+      task_name: a.task_name,
+      wbs_path: a.wbs_path || (wbsLevelsMap.get(a.wbs_id) || []).join(' / '),
+      early_start: toDate(a.early_start),
+      early_end: toDate(a.early_end),
+      float_d: floatDays(a.total_float_hrs, a.calendar_hrs_per_day),
+      note: ann.note || '',
+      updated: ann.updatedAt ? new Date(ann.updatedAt) : null,
+    })
+    const fill = SEVERITY_FILL[ann.severity]
+    if (fill) {
+      row.getCell('severity').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } }
+    }
+  })
+  ws.autoFilter = { from: { row: headerRowNum, column: 1 }, to: { row: headerRowNum, column: ws.columns.length } }
+
+  await downloadWorkbook(wb, `${slug(data.project.proj_short_name)}-review-report.xlsx`)
 }
 
 function csvEscape(v) {
