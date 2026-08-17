@@ -21,8 +21,8 @@ function round1(n) {
 
 // total_float_hrs is null when P6 didn't compute a float (typically completed
 // activities) — must not export as "0", which reads as zero float / critical.
-function floatDays(hrs) {
-  return hrs == null ? '' : round1(hrs / 8)
+function floatDays(hrs, hrsPerDay = 8) {
+  return hrs == null ? '' : round1(hrs / (hrsPerDay || 8))
 }
 
 function toDate(d) {
@@ -114,11 +114,11 @@ function addActivitiesSheet(wb, activities, wbsLevelsMap, maxDepth, sheetName) {
       ...wbsLevelValues(wbsLevelsMap, a.wbs_id, maxDepth),
       status_label: statusLabel(a.status),
       pct_complete: a.pct_complete,
-      duration_d: round1(a.duration_hrs / 8),
+      duration_d: round1(a.duration_hrs / (a.calendar_hrs_per_day || 8)),
       early_start: toDate(a.early_start),
       early_end: toDate(a.early_end),
-      total_float_d: floatDays(a.total_float_hrs),
-      free_float_d: round1(a.free_float_hrs / 8),
+      total_float_d: floatDays(a.total_float_hrs, a.calendar_hrs_per_day),
+      free_float_d: round1(a.free_float_hrs / (a.calendar_hrs_per_day || 8)),
       calendar: a.calendar || '',
       critical_label: a.is_critical ? 'Yes' : '',
     })
@@ -147,7 +147,7 @@ function addRelationshipsSheet(wb, activities, actLookup, sheetName) {
         pred_code: pa ? pa.task_code : String(p.task_id),
         pred_name: pa ? pa.task_name : '',
         type: relTypeLabel(p.type),
-        lag_d: round1(p.lag_hrs / 8),
+        lag_d: round1(p.lag_hrs / (a.calendar_hrs_per_day || 8)),
         succ_code: a.task_code,
         succ_name: a.task_name,
       })
@@ -236,11 +236,11 @@ export function exportActivitiesCsv(data, activities, filename) {
       ...wbsCells,
       statusLabel(a.status),
       a.pct_complete,
-      round1(a.duration_hrs / 8),
+      round1(a.duration_hrs / (a.calendar_hrs_per_day || 8)),
       a.early_start ? a.early_start.slice(0, 10) : '',
       a.early_end ? a.early_end.slice(0, 10) : '',
-      floatDays(a.total_float_hrs),
-      round1(a.free_float_hrs / 8),
+      floatDays(a.total_float_hrs, a.calendar_hrs_per_day),
+      round1(a.free_float_hrs / (a.calendar_hrs_per_day || 8)),
       a.calendar || '',
       a.is_critical ? 'Yes' : '',
     ]

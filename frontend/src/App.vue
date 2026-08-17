@@ -70,7 +70,11 @@
           </div>
           <div class="metric">
             <strong :class="data.project.total_critical > 0 ? 'is-crit' : 'is-ok'">{{ data.project.total_critical }}</strong>
-            <span>Critical (TF=0)</span>
+            <span>Critical (TF&le;0)</span>
+          </div>
+          <div class="metric" v-if="data.project.total_negative_float > 0">
+            <strong class="is-crit">{{ data.project.total_negative_float }}</strong>
+            <span>Negative Float</span>
           </div>
           <div class="metric">
             <strong :class="data.project.total_longest_path > 0 ? 'is-crit' : 'is-ok'">{{ data.project.total_longest_path }}</strong>
@@ -127,7 +131,7 @@
                 <td class="code">{{ act.task_code }}</td>
                 <td class="name-cell">{{ act.task_name }}</td>
                 <td class="float-cell num-cell">{{ act.total_float_hrs }}h</td>
-                <td class="num-cell">{{ formatHours(act.duration_hrs) }}</td>
+                <td class="num-cell">{{ formatHours(act.duration_hrs, act.calendar_hrs_per_day) }}</td>
                 <td class="num-cell">{{ formatDate(act.early_end) }}</td>
               </tr>
             </tbody>
@@ -141,7 +145,7 @@
           <input
             type="text"
             v-model="search"
-            placeholder="Search code or name..."
+            placeholder="Search code, name, or WBS..."
             class="search-input"
           />
           <select v-model="statusFilter" class="filter-select">
@@ -176,7 +180,7 @@
               <tr
                 v-for="act in filteredActivities"
                 :key="act.task_id"
-                :class="{ critical: act.is_critical, milestone: isMilestone(act) }"
+                :class="{ critical: act.is_critical, 'negative-float': act.is_negative_float, milestone: isMilestone(act) }"
                 @click="selectedAct = selectedAct?.task_id === act.task_id ? null : act"
               >
                 <td class="code">{{ act.task_code }}</td>
@@ -191,13 +195,14 @@
                   </div>
                   <span class="prog-text">{{ act.pct_complete }}%</span>
                 </td>
-                <td class="num-cell">{{ formatHours(act.duration_hrs) }}</td>
+                <td class="num-cell">{{ formatHours(act.duration_hrs, act.calendar_hrs_per_day) }}</td>
                 <td class="num-cell">{{ formatDate(act.early_start) }}</td>
                 <td class="num-cell">{{ formatDate(act.early_end) }}</td>
                 <td class="num-cell" :class="floatClass(act.total_float_hrs)">{{ formatFloat(act.total_float_hrs) }}</td>
               </tr>
               <tr v-if="selectedAct" class="rel-row">
                 <td colspan="8">
+                  <div class="rel-wbs-path" v-if="selectedAct.wbs_path">{{ selectedAct.wbs_path }}</div>
                   <div class="rel-panel">
                     <div class="rel-col">
                       <h4>Predecessors ({{ selectedAct.predecessors.length }})</h4>
@@ -276,7 +281,8 @@ export default {
         const q = this.search.toLowerCase()
         acts = acts.filter(a =>
           a.task_code.toLowerCase().includes(q) ||
-          a.task_name.toLowerCase().includes(q)
+          a.task_name.toLowerCase().includes(q) ||
+          (a.wbs_path && a.wbs_path.toLowerCase().includes(q))
         )
       }
       if (this.statusFilter) {
@@ -380,6 +386,7 @@ export default {
     // every view instead of each surface inventing its own float-banding scheme.
     floatClass(f) {
       if (f == null) return ''
+      if (f < 0) return 'float-neg'
       if (f === 0) return 'float-crit'
       if (f <= 80) return 'float-near'
       return ''
@@ -551,6 +558,7 @@ body { font-family: var(--font-ui); background: var(--white); color: var(--ink);
 .data-table td { padding: 6px var(--space-3); border-bottom: 1px solid var(--gray-150); vertical-align: middle; white-space: nowrap; }
 .data-table tbody tr:hover td { background: var(--gray-100); }
 .data-table tbody tr.critical td { border-left: 3px solid var(--crit); }
+.data-table tbody tr.negative-float td { background: var(--crit-tint); }
 .data-table tbody tr.milestone td { border-left: 3px solid var(--milestone); }
 .data-table .code { color: var(--gray-700); }
 .data-table .name-cell { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
@@ -576,9 +584,11 @@ body { font-family: var(--font-ui); background: var(--white); color: var(--ink);
 /* Float colors — same crit/near tokens as every other surface */
 .float-crit { color: var(--crit); font-weight: 700; }
 .float-near { color: var(--near); font-weight: 600; }
+.float-neg { color: var(--white); background: var(--crit); font-weight: 700; padding: 1px 6px; border-radius: var(--radius-sm); }
 
 /* Relationship panel (inline) */
 .rel-row td { background: var(--gray-100) !important; padding: var(--space-3) var(--space-4); }
+.rel-wbs-path { font: var(--text-small); color: var(--gray-700); margin-bottom: var(--space-3); font-family: var(--font-mono); }
 .rel-panel { display: flex; gap: var(--space-8); }
 .rel-col { flex: 1; }
 .rel-col h4 { font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); letter-spacing: 0.04em; margin-bottom: var(--space-2); }

@@ -58,10 +58,23 @@ class ActivitySummary(BaseModel):
     duration_hrs: float
     task_type: str
     calendar: Optional[str]
+    calendar_hrs_per_day: float
     predecessors: list
     successors: list
     is_critical: bool
     is_longest_path: bool
+    is_negative_float: bool
+    driving_path_flag: bool
+    cstr_type: Optional[str]
+    cstr_date: Optional[str]
+    cstr_type2: Optional[str]
+    cstr_date2: Optional[str]
+    act_start: Optional[str]
+    act_end: Optional[str]
+    target_start: Optional[str]
+    target_end: Optional[str]
+    activity_codes: list
+    resource_names: list
 
 class WBSNode(BaseModel):
     wbs_id: int
@@ -79,6 +92,7 @@ class ProjectSummary(BaseModel):
     total_wbs: int
     total_critical: int
     total_longest_path: int
+    total_negative_float: int
     total_milestones: int
     total_complete: int
     total_active: int
@@ -86,6 +100,10 @@ class ProjectSummary(BaseModel):
     pct_complete: float
     earliest_start: Optional[str]
     latest_end: Optional[str]
+    data_date: Optional[str]
+    has_resources: bool
+    has_activity_codes: bool
+    activity_code_types: list
 
 class ScheduleData(BaseModel):
     project: ProjectSummary
@@ -145,10 +163,59 @@ def parse_xer(filepath: str) -> ScheduleData:
     for rid in root_ids:
         assign_level(rid, 0)
 
+    # WBS breadcrumb per node (e.g. "MAIN WORKS / Level 01 / Electrical"), memoized
+    # since many activities share the same WBS chain.
+    wbs_path_cache = {}
+    def wbs_path_for(wid):
+        if wid is None or wid not in wbs_dict:
+            return ""
+        if wid in wbs_path_cache:
+            return wbs_path_cache[wid]
+        node = wbs_dict[wid]
+        if node["level"] == 0:
+            # The root WBS node is the project itself, already shown in the page header —
+            # omit it so breadcrumbs start from the first real WBS level.
+            path = ""
+        else:
+            parent_path = wbs_path_for(node["parent_wbs_id"])
+            path = f"{parent_path} / {node['wbs_name']}" if parent_path else node["wbs_name"]
+        wbs_path_cache[wid] = path
+        return path
+
     # Build activity lookup
     cal_dict = {}
+    cal_hrs_dict = {}
     for c in reader.calendars:
         cal_dict[c.clndr_id] = c.clndr_name if hasattr(c, "clndr_name") else str(c.clndr_id)
+        cal_hrs_dict[c.clndr_id] = float(c.day_hr_cnt) if getattr(c, "day_hr_cnt", None) else 8.0
+
+    # Activity codes: xerparser's property names are swapped relative to what the XER
+    # table names suggest — reader.acttypes holds the code CATEGORIES (ACTVTYPE, e.g.
+    # "Phase"/"Area"), reader.actvcodes holds the code VALUES (ACTVCODE, e.g. "Main
+    # Contract"), and reader.activitycodes holds the per-task code ASSIGNMENTS (TASKACTV).
+    actv_type_names = {t.actv_code_type_id: t.actv_code_type for t in reader.acttypes}
+    actv_code_lookup = {c.actv_code_id: (c.actv_code_type_id, c.actv_code_name) for c in reader.actvcodes}
+    task_codes_map = {}
+    for assignment in reader.activitycodes:
+        entry = actv_code_lookup.get(assignment.actv_code_id)
+        if not entry:
+            continue
+        type_id, code_name = entry
+        type_name = actv_type_names.get(type_id, "")
+        if not type_name or not code_name:
+            continue
+        task_codes_map.setdefault(assignment.task_id, []).append({"type": type_name, "code": code_name})
+
+    # Resources: task.resources looks up TASKRSRC rows for the activity; resolve each to
+    # its RSRC name. Many contractor XER exports carry no resource data at all — degrade
+    # to empty lists/flags rather than erroring.
+    rsrc_names = {res.rsrc_id: res.rsrc_name for res in reader.resources if res.rsrc_id}
+    def resource_names_for(a):
+        try:
+            names = {rsrc_names.get(tr.rsrc_id) for tr in a.resources if tr.rsrc_id}
+        except Exception:
+            return []
+        return sorted(n for n in names if n)
 
     # Build predecessor/successor maps
     pred_map = {}
@@ -244,7 +311,7 @@ def parse_xer(filepath: str) -> ScheduleData:
             "task_code": a.task_code,
             "task_name": a.task_name,
             "wbs_id": a.wbs_id,
-            "wbs_path": "",
+            "wbs_path": wbs_path_for(a.wbs_id),
             "status": a.status_code or "",
             "pct_complete": safe_float(a.phys_complete_pct),
             "early_start": es,
@@ -256,10 +323,26 @@ def parse_xer(filepath: str) -> ScheduleData:
             "duration_hrs": safe_float(a.target_drtn_hr_cnt),
             "task_type": a.task_type or "",
             "calendar": cal_name,
+            "calendar_hrs_per_day": cal_hrs_dict.get(a.clndr_id, 8.0),
             "predecessors": pred_map.get(a.task_id, []),
             "successors": succ_map.get(a.task_id, []),
-            "is_critical": tf == 0,
+            # Standard planning convention: the critical path is float <= 0, not just == 0.
+            # Activities already behind an imposed date (negative float) are critical too —
+            # is_negative_float lets the frontend give them a visually distinct treatment.
+            "is_critical": tf is not None and tf <= 0,
             "is_longest_path": a.task_id in longest_path_ids,
+            "is_negative_float": tf is not None and tf < 0,
+            "driving_path_flag": a.driving_path_flag == "Y",
+            "cstr_type": a.cstr_type,
+            "cstr_date": str(a.cstr_date) if a.cstr_date else None,
+            "cstr_type2": a.cstr_type2,
+            "cstr_date2": str(a.cstr_date2) if a.cstr_date2 else None,
+            "act_start": str(a.act_start_date) if a.act_start_date else None,
+            "act_end": str(a.act_end_date) if a.act_end_date else None,
+            "target_start": str(a.target_start_date) if a.target_start_date else None,
+            "target_end": str(a.target_end_date) if a.target_end_date else None,
+            "activity_codes": task_codes_map.get(a.task_id, []),
+            "resource_names": resource_names_for(a),
         })
 
     # Update WBS activity counts
@@ -279,6 +362,7 @@ def parse_xer(filepath: str) -> ScheduleData:
     total = len(activities)
     critical = sum(1 for a in activities if a["is_critical"])
     longest_path = sum(1 for a in activities if a["is_longest_path"])
+    negative_float = sum(1 for a in activities if a["is_negative_float"])
     milestones = sum(1 for a in activities if a["task_type"] in ("TT_Mile", "TT_FinMile", "TT_StartMile"))
     complete = sum(1 for a in activities if a["status"] == "TK_Complete")
     active = sum(1 for a in activities if a["status"] == "TK_Active")
@@ -289,6 +373,9 @@ def parse_xer(filepath: str) -> ScheduleData:
     earliest = min((a["early_start"] for a in dates), default=None)
     latest = max((a["early_end"] for a in activities if a["early_end"]), default=None)
 
+    has_resources = len(rsrc_names) > 0
+    activity_code_types = sorted(set(actv_type_names.values()))
+
     return ScheduleData(
         project=ProjectSummary(
             proj_short_name=project.proj_short_name,
@@ -296,6 +383,7 @@ def parse_xer(filepath: str) -> ScheduleData:
             total_wbs=len(wbs_dict),
             total_critical=critical,
             total_longest_path=longest_path,
+            total_negative_float=negative_float,
             total_milestones=milestones,
             total_complete=complete,
             total_active=active,
@@ -303,6 +391,10 @@ def parse_xer(filepath: str) -> ScheduleData:
             pct_complete=round(pct, 1),
             earliest_start=earliest,
             latest_end=latest,
+            data_date=str(project.last_recalc_date) if project.last_recalc_date else None,
+            has_resources=has_resources,
+            has_activity_codes=len(activity_code_types) > 0,
+            activity_code_types=activity_code_types,
         ),
         wbs_tree=wbs_tree,
         activities=activities,
