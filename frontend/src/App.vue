@@ -102,6 +102,7 @@
         <button :class="{ active: tab === 'wbs' }" @click="tab = 'wbs'">WBS Tree</button>
         <button :class="{ active: tab === 'progress' }" @click="tab = 'progress'">Progress</button>
         <button :class="{ active: tab === 'health' }" @click="tab = 'health'">Health Check</button>
+        <button :class="{ active: tab === 'compare' }" @click="tab = 'compare'">Compare</button>
         <button class="btn-collapse" @click="headerCollapsed = !headerCollapsed" :title="headerCollapsed ? 'Show header' : 'Hide header for more room'">
           {{ headerCollapsed ? '⌄ Show header' : '⌃ Hide header' }}
         </button>
@@ -276,6 +277,38 @@
       <div v-if="tab === 'health'" class="section section-full">
         <HealthCheck :data="data" @jump="jumpToActivity" />
       </div>
+
+      <!-- Compare -->
+      <div v-if="tab === 'compare'" class="section section-full">
+        <CompareView
+          v-if="compareData"
+          :current="data"
+          :baseline="compareData"
+          :baseline-filename="compareFilename"
+          @jump="jumpToActivity"
+          @reset="compareData = null"
+        />
+        <div v-else class="compare-upload-card">
+          <h2>Compare against a previous snapshot</h2>
+          <p class="subtitle">Upload an earlier export of this same project (e.g. last month's contractor submission) to see what changed — slipped dates, float erosion, logic changes, and critical path movement.</p>
+          <div
+            class="drop-zone"
+            @dragover.prevent="compareDragOver = true"
+            @dragleave="compareDragOver = false"
+            @drop.prevent="handleCompareDrop"
+            :class="{ active: compareDragOver }"
+          >
+            <input type="file" accept=".xer" @change="handleCompareFile" id="compareFileInput" />
+            <label for="compareFileInput">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              <span v-if="!compareLoading">Drop a .xer file here, or click to browse</span>
+              <span v-else class="loading">Parsing schedule...</span>
+            </label>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -286,6 +319,7 @@ import CriticalPathGraph from './components/CriticalPathGraph.vue'
 import GanttChart from './components/GanttChart.vue'
 import HealthCheck from './components/HealthCheck.vue'
 import ProgressView from './components/ProgressView.vue'
+import CompareView from './components/CompareView.vue'
 import { formatDate, formatHours, statusLabel, isMilestone, formatFloat, timeAgo } from './utils/format'
 import { exportWorkbook, exportActivitiesCsv, exportReviewReport } from './utils/export'
 import { loadLastFile, saveLastFile, clearLastFile } from './utils/lastFile'
@@ -293,7 +327,7 @@ import { loadAnnotations, saveAnnotation, removeAnnotation } from './utils/annot
 
 export default {
   name: 'App',
-  components: { WBSNode, CriticalPathGraph, GanttChart, HealthCheck, ProgressView },
+  components: { WBSNode, CriticalPathGraph, GanttChart, HealthCheck, ProgressView, CompareView },
   data() {
     return {
       data: null,
@@ -312,6 +346,10 @@ export default {
       pendingJump: null,
       codeFilters: {},
       annotations: {},
+      compareData: null,
+      compareFilename: '',
+      compareLoading: false,
+      compareDragOver: false,
     }
   },
   computed: {
@@ -391,6 +429,37 @@ export default {
       const file = e.target.files[0]
       if (file) await this.uploadFile(file)
     },
+    async handleCompareDrop(e) {
+      this.compareDragOver = false
+      const file = e.dataTransfer.files[0]
+      if (file) await this.uploadCompareFile(file)
+    },
+    async handleCompareFile(e) {
+      const file = e.target.files[0]
+      if (file) await this.uploadCompareFile(file)
+    },
+    async uploadCompareFile(file) {
+      if (!file.name.toLowerCase().endsWith('.xer')) {
+        alert('Only .xer files are accepted')
+        return
+      }
+      this.compareLoading = true
+      const form = new FormData()
+      form.append('file', file)
+      try {
+        const res = await fetch('/api/upload', { method: 'POST', body: form })
+        if (!res.ok) {
+          const err = await res.text()
+          throw new Error(err)
+        }
+        this.compareData = await res.json()
+        this.compareFilename = file.name
+      } catch (e) {
+        alert('Failed to parse: ' + e.message)
+      } finally {
+        this.compareLoading = false
+      }
+    },
     async uploadFile(file) {
       if (!file.name.toLowerCase().endsWith('.xer')) {
         alert('Only .xer files are accepted')
@@ -424,6 +493,8 @@ export default {
       this.selectedAct = null
       this.codeFilters = {}
       this.annotations = loadAnnotations(parsed.project.proj_short_name)
+      this.compareData = null
+      this.compareFilename = ''
     },
     reopenLastFile() {
       if (!this.lastFile) return
@@ -573,6 +644,9 @@ body { font-family: var(--font-ui); background: var(--white); color: var(--ink);
 .reopen-actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
 .btn-forget { border: none; background: none; color: var(--gray-500); font-size: 18px; line-height: 1; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm); }
 .btn-forget:hover { background: var(--white); color: var(--crit); }
+.compare-upload-card { max-width: 560px; margin: var(--space-8) auto; text-align: center; }
+.compare-upload-card h2 { font: var(--text-h2); color: var(--ink); margin-bottom: var(--space-2); }
+.compare-upload-card .subtitle { color: var(--gray-700); margin-bottom: var(--space-5); }
 .drop-zone { border: 1px solid var(--gray-300); border-radius: var(--radius-md); padding: 48px var(--space-6); cursor: pointer; transition: all 0.2s; background: var(--gray-100); }
 .drop-zone:hover, .drop-zone.active { border-color: var(--accent); background: var(--accent-soft); }
 .drop-zone input { display: none; }
