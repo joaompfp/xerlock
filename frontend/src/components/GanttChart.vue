@@ -245,19 +245,39 @@
       </div>
       <div class="detail-rels">
         <div class="rel-col">
-          <h4>Predecessors ({{ selectedActivity.predecessors.length }})</h4>
-          <div v-if="selectedActivity.predecessors.length === 0" class="rel-empty">None</div>
-          <button v-for="p in selectedActivity.predecessors" :key="p.task_id" class="rel-item-btn" @click="revealAndSelect(p.task_id)">
-            <span class="rel-code">{{ codeFor(p.task_id) }}</span>
-            <span class="rel-type">{{ p.type }}</span>
+          <h4>Predecessors ({{ selectedPredecessors.length }})</h4>
+          <div v-if="selectedPredecessors.length === 0" class="rel-empty">None</div>
+          <button v-for="p in selectedPredecessors" :key="p.task_id" class="rel-item-btn" @click="revealAndSelect(p.task_id)">
+            <div class="rel-item-row">
+              <span class="rel-code">{{ p.activity ? p.activity.task_code : '?' + p.task_id }}</span>
+              <span class="rel-item-name">{{ p.activity ? p.activity.task_name : '' }}</span>
+            </div>
+            <div class="rel-item-row rel-item-sub">
+              <span class="rel-type">{{ p.type }}</span>
+              <template v-if="p.activity">
+                <span class="rel-dates">{{ formatDate(p.activity.early_start) }} → {{ formatDate(p.activity.early_end) }}</span>
+                <span class="rel-dur">{{ formatHours(p.activity.duration_hrs) }}</span>
+              </template>
+              <span v-if="p.lag_hrs" class="rel-lag">+{{ p.lag_hrs }}h lag</span>
+            </div>
           </button>
         </div>
         <div class="rel-col">
-          <h4>Successors ({{ selectedActivity.successors.length }})</h4>
-          <div v-if="selectedActivity.successors.length === 0" class="rel-empty">None</div>
-          <button v-for="s in selectedActivity.successors" :key="s.task_id" class="rel-item-btn" @click="revealAndSelect(s.task_id)">
-            <span class="rel-code">{{ codeFor(s.task_id) }}</span>
-            <span class="rel-type">{{ s.type }}</span>
+          <h4>Successors ({{ selectedSuccessors.length }})</h4>
+          <div v-if="selectedSuccessors.length === 0" class="rel-empty">None</div>
+          <button v-for="s in selectedSuccessors" :key="s.task_id" class="rel-item-btn" @click="revealAndSelect(s.task_id)">
+            <div class="rel-item-row">
+              <span class="rel-code">{{ s.activity ? s.activity.task_code : '?' + s.task_id }}</span>
+              <span class="rel-item-name">{{ s.activity ? s.activity.task_name : '' }}</span>
+            </div>
+            <div class="rel-item-row rel-item-sub">
+              <span class="rel-type">{{ s.type }}</span>
+              <template v-if="s.activity">
+                <span class="rel-dates">{{ formatDate(s.activity.early_start) }} → {{ formatDate(s.activity.early_end) }}</span>
+                <span class="rel-dur">{{ formatHours(s.activity.duration_hrs) }}</span>
+              </template>
+              <span v-if="s.lag_hrs" class="rel-lag">+{{ s.lag_hrs }}h lag</span>
+            </div>
           </button>
         </div>
       </div>
@@ -365,6 +385,14 @@ export default {
     },
     selectedActivity() {
       return this.selectedTaskId != null ? this.actLookup.get(this.selectedTaskId) : null
+    },
+    selectedPredecessors() {
+      if (!this.selectedActivity) return []
+      return this.selectedActivity.predecessors.map(p => ({ ...p, activity: this.actLookup.get(p.task_id) || null }))
+    },
+    selectedSuccessors() {
+      if (!this.selectedActivity) return []
+      return this.selectedActivity.successors.map(s => ({ ...s, activity: this.actLookup.get(s.task_id) || null }))
     },
     wbsParentOf() {
       const map = new Map()
@@ -755,10 +783,6 @@ export default {
     formatHours,
     formatFloat,
     statusLabel,
-    codeFor(id) {
-      const a = this.actLookup.get(id)
-      return a ? a.task_code : '?' + id
-    },
     // Selects a predecessor/successor from the detail panel: expands every WBS
     // ancestor so the row actually renders (it may be tucked under a collapsed
     // branch, or hidden by an active filter), then scrolls to it.
@@ -1005,10 +1029,16 @@ export default {
 .rel-col { flex: 1; min-width: 200px; }
 .rel-col h4 { font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); letter-spacing: 0.04em; margin-bottom: var(--space-2); }
 .rel-empty { font: var(--text-small); color: var(--gray-500); font-style: italic; }
-.rel-item-btn { display: flex; gap: var(--space-2); align-items: center; font: var(--text-small); padding: 3px 6px; border: none; background: none; cursor: pointer; border-radius: var(--radius-sm); width: 100%; text-align: left; }
+.rel-item-btn { display: flex; flex-direction: column; gap: 2px; font: var(--text-small); padding: 5px 6px; border: none; background: none; cursor: pointer; border-radius: var(--radius-sm); width: 100%; text-align: left; }
 .rel-item-btn:hover { background: var(--accent-soft); }
-.rel-code { font-family: var(--font-mono); font-weight: 600; color: var(--accent); min-width: 60px; }
-.rel-type { color: var(--gray-700); font: var(--text-micro); }
+.rel-item-row { display: flex; gap: var(--space-2); align-items: baseline; }
+.rel-item-name { color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rel-item-sub { color: var(--gray-700); }
+.rel-code { font-family: var(--font-mono); font-weight: 600; color: var(--accent); min-width: 60px; flex-shrink: 0; }
+.rel-type { color: var(--gray-700); font: var(--text-micro); min-width: 60px; flex-shrink: 0; }
+.rel-dates { font-family: var(--font-mono); font: var(--text-micro); color: var(--gray-700); }
+.rel-dur { font-family: var(--font-mono); font: var(--text-micro); color: var(--gray-700); margin-left: auto; }
+.rel-lag { font: var(--text-micro); color: var(--gray-500); font-style: italic; }
 
 @media print {
   @page { size: landscape; margin: 10mm; }
