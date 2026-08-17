@@ -64,6 +64,8 @@
             :transform="`translate(${n.x - n.width / 2}, ${n.y - n.height / 2})`"
             @click.stop="selectNode(n)"
           >
+            <title>{{ n.code }} — {{ n.name }}
+{{ n.fullRangeLabel }} ({{ n.durationLabel }})</title>
             <rect :width="n.width" :height="n.height" rx="2" class="node-rect" />
             <!-- Top row: code + duration, divided from the name/footer below -->
             <rect v-if="n.milestone" x="7" y="6" width="8" height="8" class="node-mile-icon" transform="rotate(45 11 10)" />
@@ -75,7 +77,7 @@
             <!-- Bottom strip: Start | Float -->
             <line x1="0" :x2="n.width" :y1="n.height - 18" :y2="n.height - 18" class="node-rule" />
             <line :x1="n.width / 2" :x2="n.width / 2" :y1="n.height - 18" :y2="n.height" class="node-rule" />
-            <text class="node-meta" x="9" :y="n.height - 5">{{ n.dateLabel || '—' }}</text>
+            <text class="node-meta" x="9" :y="n.height - 5">{{ n.dateRangeLabel }}</text>
             <text class="node-meta" :x="n.width - 9" :y="n.height - 5" text-anchor="end">{{ n.floatHrs > 0 ? Math.round(n.floatHrs / 8) + 'd float' : '0d float' }}</text>
             <g
               v-if="n.hiddenCount > 0"
@@ -151,7 +153,7 @@
 
 <script>
 import dagre from 'dagre'
-import { formatDate, formatHours, statusLabel, isMilestone, formatFloat } from '../utils/format'
+import { formatDate, formatHours, statusLabel, isMilestone, formatFloat, formatDateRange } from '../utils/format'
 
 const NEAR_CRITICAL_THRESHOLD_HRS = 80 // 10 working days
 const NODE_WIDTH = 210
@@ -350,7 +352,8 @@ export default {
           nearCritical: !crit.has(r.id) && this.baseVisibleIds.has(r.id),
           floatHrs: a.total_float_hrs,
           durationLabel: formatHours(a.duration_hrs),
-          dateLabel: a.early_start ? formatDate(a.early_start) : '',
+          dateRangeLabel: formatDateRange(a.early_start, a.early_end),
+          fullRangeLabel: `${formatDate(a.early_start)} → ${formatDate(a.early_end)}`,
           hiddenCount,
         })
         maxX = Math.max(maxX, pos.x + NODE_WIDTH / 2)
