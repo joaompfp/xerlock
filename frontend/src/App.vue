@@ -97,6 +97,7 @@
         <button :class="{ active: tab === 'story' }" @click="tab = 'story'">Critical Path</button>
         <button :class="{ active: tab === 'table' }" @click="tab = 'table'">Activity Table</button>
         <button :class="{ active: tab === 'wbs' }" @click="tab = 'wbs'">WBS Tree</button>
+        <button :class="{ active: tab === 'health' }" @click="tab = 'health'">Health Check</button>
         <button class="btn-collapse" @click="headerCollapsed = !headerCollapsed" :title="headerCollapsed ? 'Show header' : 'Hide header for more room'">
           {{ headerCollapsed ? '⌄ Show header' : '⌃ Hide header' }}
         </button>
@@ -104,7 +105,7 @@
 
       <!-- Gantt Chart (primary view) -->
       <div v-if="tab === 'gantt'" class="section section-full">
-        <GanttChart :data="data" :extra-room="headerCollapsed" />
+        <GanttChart :data="data" :extra-room="headerCollapsed" :jump-to="pendingJump" @jumped="pendingJump = null" />
       </div>
 
       <!-- Critical Path Graph -->
@@ -242,6 +243,11 @@
           />
         </div>
       </div>
+
+      <!-- Health Check -->
+      <div v-if="tab === 'health'" class="section section-full">
+        <HealthCheck :data="data" @jump="jumpToActivity" />
+      </div>
     </div>
   </div>
 </template>
@@ -250,13 +256,14 @@
 import WBSNode from './components/WBSNode.vue'
 import CriticalPathGraph from './components/CriticalPathGraph.vue'
 import GanttChart from './components/GanttChart.vue'
+import HealthCheck from './components/HealthCheck.vue'
 import { formatDate, formatHours, statusLabel, isMilestone, formatFloat, timeAgo } from './utils/format'
 import { exportWorkbook, exportActivitiesCsv } from './utils/export'
 import { loadLastFile, saveLastFile, clearLastFile } from './utils/lastFile'
 
 export default {
   name: 'App',
-  components: { WBSNode, CriticalPathGraph, GanttChart },
+  components: { WBSNode, CriticalPathGraph, GanttChart, HealthCheck },
   data() {
     return {
       data: null,
@@ -272,6 +279,7 @@ export default {
       selectedAct: null,
       exporting: false,
       lastFile: loadLastFile(),
+      pendingJump: null,
     }
   },
   computed: {
@@ -394,6 +402,10 @@ export default {
     getActCode(tid) {
       const a = this.data.activities.find(a => a.task_id === tid)
       return a ? a.task_code : '?' + tid
+    },
+    jumpToActivity(taskId) {
+      this.tab = 'gantt'
+      this.pendingJump = taskId
     },
     slugName() {
       return (this.data.project.proj_short_name || 'schedule')
