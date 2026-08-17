@@ -27,6 +27,18 @@ export function formatFloat(hrs) {
   return hrs == null ? '—' : `${hrs}h`
 }
 
+export function formatDateShort(d) {
+  if (!d) return '—'
+  const dt = new Date(d)
+  return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+}
+
+export function formatDateRange(start, end) {
+  if (!start) return '—'
+  if (!end || start === end) return formatDateShort(start)
+  return `${formatDateShort(start)}–${formatDateShort(end)}`
+}
+
 export function timeAgo(timestamp) {
   const diffMs = Date.now() - timestamp
   const min = Math.floor(diffMs / 60000)
