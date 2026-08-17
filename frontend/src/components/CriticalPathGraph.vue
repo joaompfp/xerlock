@@ -1,18 +1,27 @@
 <template>
-  <div class="graph-wrap">
+  <div class="graph-wrap" :class="{ 'is-fullscreen': isFullscreen, 'extra-room': extraRoom }" ref="wrapEl">
+    <div class="graph-strip">
+      <div class="strip-title">
+        <h2>Critical Path</h2>
+        <span class="strip-sub">{{ activities.length }} activities &middot; {{ visibleIds.size }} shown</span>
+      </div>
+      <button class="ctrl-btn ctrl-btn-accent" @click="toggleFullscreen">{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</button>
+    </div>
+
     <div class="graph-toolbar">
       <div class="legend">
         <span class="legend-item"><i class="dot dot-critical"></i>Critical (TF=0)</span>
-        <span class="legend-item"><i class="dot dot-near"></i>Near-critical (≤10d float)</span>
+        <span class="legend-item"><i class="dot dot-near"></i>Near-critical (&le;10d float)</span>
         <span class="legend-item"><i class="dot dot-other"></i>Expanded</span>
-        <span class="legend-item"><i class="dot dot-mile"></i>◆ Milestone</span>
+        <span class="legend-item"><i class="diamond"></i>Milestone</span>
       </div>
       <div class="toolbar-actions">
-        <span class="node-count">{{ visibleIds.size }} of {{ activities.length }} activities shown</span>
         <button class="btn-tiny" :disabled="expandedExtra.size === 0" @click="resetGraph">Reset to critical path</button>
-        <button class="btn-tiny" @click="zoomBy(1.3)">+</button>
-        <button class="btn-tiny" @click="zoomBy(1 / 1.3)">−</button>
-        <button class="btn-tiny" @click="resetView">Fit</button>
+        <div class="zoom-adjust">
+          <button class="zbtn" @click="zoomBy(1 / 1.3)">−</button>
+          <button class="zbtn" @click="resetView">Fit</button>
+          <button class="zbtn" @click="zoomBy(1.3)">+</button>
+        </div>
       </div>
     </div>
 
@@ -29,10 +38,10 @@
       <svg :width="svgWidth" :height="svgHeight">
         <defs>
           <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-            <path d="M0 0L10 5L0 10z" fill="#98a0ac" />
+            <path d="M0 0L10 5L0 10z" class="arrow-normal" />
           </marker>
           <marker id="arrow-critical" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-            <path d="M0 0L10 5L0 10z" fill="#e74c3c" />
+            <path d="M0 0L10 5L0 10z" class="arrow-critical" />
           </marker>
         </defs>
         <g class="viewport" :class="{ 'viewport-animated': animating }" :transform="`translate(${tx},${ty}) scale(${scale})`">
@@ -55,14 +64,19 @@
             :transform="`translate(${n.x - n.width / 2}, ${n.y - n.height / 2})`"
             @click.stop="selectNode(n)"
           >
-            <rect :width="n.width" :height="n.height" rx="9" class="node-rect" />
-            <text v-if="n.milestone" class="node-mile-icon" x="11" y="19">◆</text>
-            <text class="node-code" :x="n.milestone ? 24 : 11" y="19">{{ n.code }}</text>
-            <text class="node-name" x="11" y="38">{{ truncate(n.name, 28) }}</text>
-            <text class="node-meta" x="11" y="55">
-              {{ n.durationLabel }}<template v-if="n.dateLabel"> · {{ n.dateLabel }}</template>
-              <template v-if="n.floatHrs > 0"> · float {{ Math.round(n.floatHrs / 8) }}d</template>
-            </text>
+            <rect :width="n.width" :height="n.height" rx="2" class="node-rect" />
+            <!-- Top row: code + duration, divided from the name/footer below -->
+            <rect v-if="n.milestone" x="7" y="6" width="8" height="8" class="node-mile-icon" transform="rotate(45 11 10)" />
+            <text class="node-code" :x="n.milestone ? 22 : 9" y="15">{{ n.code }}</text>
+            <text class="node-duration" :x="n.width - 9" y="15" text-anchor="end">{{ n.durationLabel }}</text>
+            <line x1="0" :x2="n.width" y1="20" y2="20" class="node-rule" />
+            <!-- Name -->
+            <text class="node-name" x="9" y="38">{{ truncate(n.name, 30) }}</text>
+            <!-- Bottom strip: Start | Float -->
+            <line x1="0" :x2="n.width" :y1="n.height - 18" :y2="n.height - 18" class="node-rule" />
+            <line :x1="n.width / 2" :x2="n.width / 2" :y1="n.height - 18" :y2="n.height" class="node-rule" />
+            <text class="node-meta" x="9" :y="n.height - 5">{{ n.dateLabel || '—' }}</text>
+            <text class="node-meta" :x="n.width - 9" :y="n.height - 5" text-anchor="end">{{ n.floatHrs > 0 ? Math.round(n.floatHrs / 8) + 'd float' : '0d float' }}</text>
             <g
               v-if="n.hiddenCount > 0"
               class="expand-btn"
@@ -132,6 +146,7 @@ export default {
   name: 'CriticalPathGraph',
   props: {
     activities: { type: Array, required: true },
+    extraRoom: { type: Boolean, default: false },
   },
   data() {
     return {
@@ -144,6 +159,7 @@ export default {
       panStart: null,
       animating: false,
       canvasWidth: 900,
+      isFullscreen: false,
     }
   },
   mounted() {
@@ -154,11 +170,13 @@ export default {
       })
       this._resizeObserver.observe(this.$refs.canvas)
     }
+    document.addEventListener('fullscreenchange', this.onFullscreenChange)
     this.$nextTick(this.resetView)
   },
   beforeUnmount() {
     this._resizeObserver?.disconnect()
     clearTimeout(this._animTimer)
+    document.removeEventListener('fullscreenchange', this.onFullscreenChange)
   },
   watch: {
     activities() {
@@ -457,7 +475,13 @@ export default {
         return
       }
       const pad = 30
-      const s = Math.min((el.clientWidth - pad * 2) / gw, (el.clientHeight - pad * 2) / gh, 1.2)
+      const widthScale = (el.clientWidth - pad * 2) / gw
+      const heightScale = (el.clientHeight - pad * 2) / gh
+      // Prioritize using the full canvas width — a tall (many-row) graph shouldn't
+      // collapse horizontal usage just because it also doesn't fit vertically; the
+      // canvas is scrollable/pannable, so let height overflow instead of shrinking
+      // everything down to fit, which used to leave 60-70% of the width empty.
+      const s = Math.min(widthScale, Math.max(heightScale, widthScale * 0.85), 1.2)
       this.scale = Math.max(0.1, s)
       this.tx = (el.clientWidth - gw * this.scale) / 2
       this.ty = (el.clientHeight - gh * this.scale) / 2
@@ -481,27 +505,52 @@ export default {
       this.panning = false
       this.panStart = null
     },
+    toggleFullscreen() {
+      if (document.fullscreenElement) {
+        document.exitFullscreen()
+      } else if (this.$refs.wrapEl.requestFullscreen) {
+        this.$refs.wrapEl.requestFullscreen()
+      }
+    },
+    onFullscreenChange() {
+      this.isFullscreen = !!document.fullscreenElement
+      this.$nextTick(this.resetView)
+    },
   },
 }
 </script>
 
 <style scoped>
-.graph-wrap { border: 1px solid #e8e8e8; border-radius: 10px; overflow: hidden; background: #fff; margin-bottom: 24px; }
-.graph-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid #eee; background: #fafbfc; flex-wrap: wrap; gap: 8px; }
-.legend { display: flex; gap: 14px; flex-wrap: wrap; }
-.legend-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #666; }
-.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-.dot-critical { background: #e74c3c; }
-.dot-near { background: #d4a017; }
-.dot-other { background: #b3b8c2; }
-.dot-mile { background: #8e44ad; }
-.toolbar-actions { display: flex; align-items: center; gap: 8px; }
-.node-count { font-size: 11px; color: #999; margin-right: 4px; }
-.btn-tiny { padding: 3px 10px; border: 1px solid #ccc; border-radius: 5px; background: white; cursor: pointer; font-size: 12px; color: #555; }
-.btn-tiny:hover:not(:disabled) { background: #f0f2f5; }
-.btn-tiny:disabled { opacity: 0.4; cursor: default; }
+.graph-wrap { border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; background: var(--white); margin-bottom: var(--space-6); font-family: var(--font-ui); }
+.graph-wrap.is-fullscreen { border-radius: 0; display: flex; flex-direction: column; height: 100vh; }
+.graph-wrap.is-fullscreen .graph-canvas { flex: 1; height: auto; }
 
-.graph-canvas { position: relative; overflow: hidden; height: 560px; background: radial-gradient(#eef0f4 1.5px, transparent 1.5px) 0 0 / 18px 18px, #fff; cursor: grab; }
+.graph-strip { display: flex; justify-content: space-between; align-items: center; padding: 8px 18px; background: var(--ink); gap: var(--space-3); }
+.strip-title { display: flex; align-items: baseline; gap: var(--space-2); }
+.strip-title h2 { font: var(--text-h2); color: var(--white); }
+.strip-sub { font: var(--text-micro); color: var(--gray-300); text-transform: uppercase; letter-spacing: 0.04em; }
+.ctrl-btn-accent { padding: 4px 10px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: none; cursor: pointer; font: var(--text-small); color: var(--accent-soft); }
+.ctrl-btn-accent:hover { background: var(--ink-soft); }
+
+.graph-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 8px 18px; border-bottom: 1px solid var(--gray-300); background: var(--gray-100); flex-wrap: wrap; gap: var(--space-2); }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; }
+.legend-item { display: flex; align-items: center; gap: 5px; font: var(--text-small); color: var(--gray-700); }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.dot-critical { background: var(--crit); }
+.dot-near { background: var(--near); }
+.dot-other { background: var(--gray-500); }
+.diamond { width: 8px; height: 8px; background: var(--milestone); display: inline-block; transform: rotate(45deg); }
+.toolbar-actions { display: flex; align-items: center; gap: var(--space-2); }
+.btn-tiny { padding: 3px 10px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); background: white; cursor: pointer; font: var(--text-small); color: var(--gray-700); }
+.btn-tiny:hover:not(:disabled) { background: var(--gray-150); }
+.btn-tiny:disabled { opacity: 0.4; cursor: default; }
+.zoom-adjust { display: flex; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); overflow: hidden; }
+.zbtn { padding: 3px 10px; border: none; border-right: 1px solid var(--gray-300); background: white; cursor: pointer; font-size: 13px; color: var(--gray-700); font-weight: 700; }
+.zbtn:last-child { border-right: none; }
+.zbtn:hover { background: var(--gray-150); }
+
+.graph-canvas { position: relative; overflow: hidden; height: min(75vh, 900px); background: radial-gradient(var(--gray-150) 1.5px, transparent 1.5px) 0 0 / 18px 18px, var(--white); cursor: grab; }
+.graph-wrap.extra-room .graph-canvas { height: min(92vh, 1400px); }
 .graph-canvas.dragging { cursor: grabbing; }
 
 /* No transition by default — dragging/wheel-zoom must track the pointer instantly.
@@ -509,41 +558,45 @@ export default {
    fit, select, expand) so those glide instead of snapping. */
 .viewport-animated { transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1); }
 
-.edge { fill: none; stroke: #98a0ac; stroke-width: 1.8; transition: opacity 0.15s, stroke 0.15s; }
-.edge.edge-critical { stroke: #e74c3c; stroke-width: 3; }
+.arrow-normal { fill: var(--gray-500); }
+.arrow-critical { fill: var(--crit); }
+.edge { fill: none; stroke: var(--gray-500); stroke-width: 1.8; transition: opacity 0.15s, stroke 0.15s; }
+.edge.edge-critical { stroke: var(--crit); stroke-width: 3; }
 .edge.dimmed { opacity: 0.12; }
 
 .node { cursor: pointer; }
-.node .node-rect { fill: #fafbfc; stroke: #d5d8de; stroke-width: 1.5; transition: filter 0.15s, opacity 0.15s; }
-.node.critical .node-rect { fill: #fdeeed; stroke: #e74c3c; stroke-width: 2.5; }
-.node.near-critical .node-rect { fill: #fdf6e6; stroke: #d4a017; stroke-width: 2; }
-.node.other .node-rect { fill: #f5f6f8; stroke: #c9cdd4; }
-.node.selected .node-rect { stroke: #2f5496; stroke-width: 3; filter: drop-shadow(0 3px 8px rgba(47,84,150,0.4)); }
+.node .node-rect { fill: var(--gray-100); stroke: var(--gray-300); stroke-width: 1.5; transition: filter 0.15s, opacity 0.15s; }
+.node.critical .node-rect { fill: var(--crit-tint); stroke: var(--crit); stroke-width: 2.5; }
+.node.near-critical .node-rect { fill: var(--near-tint); stroke: var(--near); stroke-width: 2; }
+.node.other .node-rect { fill: var(--gray-100); stroke: var(--gray-300); }
+.node.selected .node-rect { stroke: var(--accent); stroke-width: 3; filter: drop-shadow(0 3px 8px rgba(46,92,138,0.4)); }
 .node.dimmed { opacity: 0.22; }
-.node:hover .node-rect { filter: drop-shadow(0 2px 6px rgba(0,0,0,0.14)); }
+.node:hover .node-rect { filter: drop-shadow(0 2px 6px rgba(20,33,61,0.14)); }
 
-.node-mile-icon { font-size: 12px; fill: #8e44ad; }
-.node-code { font-size: 11px; font-weight: 700; fill: #5a5f68; text-transform: uppercase; letter-spacing: 0.3px; }
-.node-name { font-size: 13px; font-weight: 600; fill: #1a1a2e; }
-.node-meta { font-size: 11px; fill: #888; }
+.node-mile-icon { fill: var(--milestone); }
+.node-rule { stroke: var(--gray-300); stroke-width: 1; }
+.node-code { font-family: var(--font-mono); font-size: 11px; font-weight: 700; fill: var(--ink); letter-spacing: 0.02em; }
+.node-duration { font-family: var(--font-mono); font-size: 10px; font-weight: 600; fill: var(--gray-700); }
+.node-name { font-family: var(--font-ui); font-size: 12px; font-weight: 600; fill: var(--ink); }
+.node-meta { font-family: var(--font-mono); font-size: 10px; fill: var(--gray-700); }
 
-.expand-btn circle { fill: #2f5496; opacity: 0.92; }
+.expand-btn circle { fill: var(--accent); opacity: 0.92; }
 .expand-btn text { fill: white; font-size: 11px; font-weight: 700; }
-.expand-btn:hover circle { fill: #1f3b6e; }
+.expand-btn:hover circle { fill: var(--ink-soft); }
 
-.detail-panel { border-top: 1px solid #eee; padding: 16px 18px; background: #f8f9fc; }
-.detail-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
-.detail-code { font-family: monospace; font-weight: 700; color: #2f5496; margin-right: 8px; }
-.detail-name { font-weight: 600; color: #1a1a2e; }
-.detail-stats { display: flex; gap: 18px; font-size: 12px; color: #666; margin-bottom: 12px; flex-wrap: wrap; }
-.float-crit { color: #c0392b; font-weight: 700; }
-.detail-rels { display: flex; gap: 32px; flex-wrap: wrap; }
+.detail-panel { border-top: 1px solid var(--gray-300); padding: var(--space-4); background: var(--gray-100); }
+.detail-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: var(--space-2); }
+.detail-code { font-family: var(--font-mono); font-weight: 700; color: var(--accent); margin-right: var(--space-2); }
+.detail-name { font-weight: 600; color: var(--ink); }
+.detail-stats { display: flex; gap: 18px; font: var(--text-small); color: var(--gray-700); margin-bottom: var(--space-3); flex-wrap: wrap; }
+.float-crit { color: var(--crit); font-weight: 700; }
+.detail-rels { display: flex; gap: var(--space-8); flex-wrap: wrap; }
 .rel-col { flex: 1; min-width: 200px; }
-.rel-col h4 { font-size: 11px; text-transform: uppercase; color: #888; letter-spacing: 0.3px; margin-bottom: 6px; }
-.rel-empty { font-size: 12px; color: #aaa; font-style: italic; }
-.rel-item-btn { display: flex; gap: 8px; align-items: center; font-size: 12px; padding: 3px 6px; border: none; background: none; cursor: pointer; border-radius: 4px; width: 100%; text-align: left; }
-.rel-item-btn:hover { background: #eef1f7; }
-.rel-code { font-family: monospace; font-weight: 600; color: #2f5496; min-width: 60px; }
-.rel-type { color: #888; font-size: 11px; }
-.rel-hidden { color: #b3b8c2; font-size: 10px; font-style: italic; margin-left: auto; }
+.rel-col h4 { font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); letter-spacing: 0.04em; margin-bottom: var(--space-2); }
+.rel-empty { font: var(--text-small); color: var(--gray-500); font-style: italic; }
+.rel-item-btn { display: flex; gap: var(--space-2); align-items: center; font: var(--text-small); padding: 3px 6px; border: none; background: none; cursor: pointer; border-radius: var(--radius-sm); width: 100%; text-align: left; }
+.rel-item-btn:hover { background: var(--accent-soft); }
+.rel-code { font-family: var(--font-mono); font-weight: 600; color: var(--accent); min-width: 60px; }
+.rel-type { color: var(--gray-700); font: var(--text-micro); }
+.rel-hidden { color: var(--gray-500); font: var(--text-micro); font-style: italic; margin-left: auto; }
 </style>

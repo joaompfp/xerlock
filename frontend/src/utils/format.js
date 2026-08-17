@@ -26,3 +26,15 @@ export function isMilestone(activity) {
 export function formatFloat(hrs) {
   return hrs == null ? '—' : `${hrs}h`
 }
+
+export function timeAgo(timestamp) {
+  const diffMs = Date.now() - timestamp
+  const min = Math.floor(diffMs / 60000)
+  if (min < 1) return 'just now'
+  if (min < 60) return `${min} min ago`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr}h ago`
+  const day = Math.floor(hr / 24)
+  if (day < 7) return `${day}d ago`
+  return new Date(timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
