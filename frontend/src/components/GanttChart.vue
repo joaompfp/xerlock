@@ -196,6 +196,7 @@
               <span class="g-wbs-count">{{ row.count }}</span>
             </template>
             <template v-else>
+              <i v-if="annotations[row.activity.task_id]" class="annotation-flag" :class="'sev-' + annotations[row.activity.task_id].severity" :title="annotations[row.activity.task_id].note"></i>
               <span class="g-act-code">{{ row.activity.task_code }}</span>
               <span class="g-act-name">{{ row.activity.task_name }}</span>
             </template>
@@ -287,6 +288,11 @@
           </button>
         </div>
       </div>
+      <AnnotationEditor
+        :annotation="annotations[selectedActivity.task_id] || null"
+        @save="patch => $emit('annotate', selectedActivity.task_id, patch)"
+        @remove="$emit('unannotate', selectedActivity.task_id)"
+      />
     </div>
   </div>
 </template>
@@ -294,6 +300,7 @@
 <script>
 import { formatDate, formatHours, isMilestone, formatFloat, statusLabel } from '../utils/format'
 import IconChevron from './IconChevron.vue'
+import AnnotationEditor from './AnnotationEditor.vue'
 
 const LABEL_COL_WIDTH_DEFAULT = 340
 const LABEL_COL_MIN = 200
@@ -324,13 +331,14 @@ function saveView(view) {
 
 export default {
   name: 'GanttChart',
-  components: { IconChevron },
+  components: { IconChevron, AnnotationEditor },
   props: {
     data: { type: Object, required: true },
     extraRoom: { type: Boolean, default: false },
     jumpTo: { type: [Number, String], default: null },
+    annotations: { type: Object, default: () => ({}) },
   },
-  emits: ['jumped'],
+  emits: ['jumped', 'annotate', 'unannotate'],
   data() {
     const saved = loadSavedView()
 
@@ -1043,6 +1051,11 @@ export default {
 .g-wbs-name { overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
 .g-wbs-count { margin-left: auto; padding-right: 8px; font: var(--text-micro); color: var(--gray-500); flex-shrink: 0; }
 .g-act-code { font-family: var(--font-mono); font-size: 11px; color: var(--gray-500); flex-shrink: 0; }
+.annotation-flag { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--gray-500); }
+.annotation-flag.sev-query { background: var(--accent); }
+.annotation-flag.sev-risk { background: var(--near); }
+.annotation-flag.sev-logic { background: var(--crit); }
+.annotation-flag.sev-resolved { background: var(--ok); }
 .g-act-name { overflow: hidden; text-overflow: ellipsis; color: var(--ink-soft); }
 
 .g-timeline-row { position: relative; height: 32px; border-bottom: 1px solid var(--gray-150); z-index: 2; }

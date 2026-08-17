@@ -69,6 +69,9 @@
 {{ n.fullRangeLabel }} ({{ n.durationLabel }})</title>
             <rect :width="n.width" :height="n.height" rx="2" class="node-rect" />
             <rect v-if="n.negativeFloat" :width="n.width" height="4" class="node-neg-flag" />
+            <circle v-if="annotations[n.id]" :cx="n.width - 8" cy="29" r="3.5" class="node-annotation-flag" :class="'sev-' + annotations[n.id].severity">
+              <title>{{ annotations[n.id].note }}</title>
+            </circle>
             <!-- Top row: code + duration, divided from the name/footer below -->
             <rect v-if="n.milestone" x="7" y="6" width="8" height="8" class="node-mile-icon" transform="rotate(45 11 10)" />
             <text class="node-code" :x="n.milestone ? 22 : 9" y="15">{{ n.code }}</text>
@@ -150,12 +153,18 @@
           </button>
         </div>
       </div>
+      <AnnotationEditor
+        :annotation="annotations[selected.task_id] || null"
+        @save="patch => $emit('annotate', selected.task_id, patch)"
+        @remove="$emit('unannotate', selected.task_id)"
+      />
     </div>
   </div>
 </template>
 
 <script>
 import dagre from 'dagre'
+import AnnotationEditor from './AnnotationEditor.vue'
 import { formatDate, formatHours, statusLabel, isMilestone, formatFloat, formatDateRange } from '../utils/format'
 
 const NEAR_CRITICAL_THRESHOLD_HRS = 80 // 10 working days
@@ -172,7 +181,10 @@ export default {
   props: {
     activities: { type: Array, required: true },
     extraRoom: { type: Boolean, default: false },
+    annotations: { type: Object, default: () => ({}) },
   },
+  emits: ['annotate', 'unannotate'],
+  components: { AnnotationEditor },
   data() {
     return {
       expandedExtra: new Set(), // task_ids manually revealed beyond critical+near-critical
@@ -609,6 +621,11 @@ export default {
 .node.other .node-rect { fill: var(--gray-100); stroke: var(--gray-300); }
 .node.negative .node-rect { stroke-width: 3.5; }
 .node-neg-flag { fill: var(--crit); }
+.node-annotation-flag { fill: var(--gray-500); stroke: var(--white); stroke-width: 1; }
+.node-annotation-flag.sev-query { fill: var(--accent); }
+.node-annotation-flag.sev-risk { fill: var(--near); }
+.node-annotation-flag.sev-logic { fill: var(--crit); }
+.node-annotation-flag.sev-resolved { fill: var(--ok); }
 .node.selected .node-rect { stroke: var(--accent); stroke-width: 3; filter: drop-shadow(0 3px 8px rgba(46,92,138,0.4)); }
 .node.dimmed { opacity: 0.22; }
 .node:hover .node-rect { filter: drop-shadow(0 2px 6px rgba(20,33,61,0.14)); }

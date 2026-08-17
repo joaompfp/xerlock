@@ -55,6 +55,9 @@
             <span class="header-meta">{{ data.project.total_activities }} activities &middot; {{ data.project.total_wbs }} WBS nodes &middot; {{ data.project.earliest_start ? formatDate(data.project.earliest_start) : '—' }} &rarr; {{ data.project.latest_end ? formatDate(data.project.latest_end) : '—' }}</span>
           </div>
           <div class="header-right">
+            <button class="btn-outline" v-if="annotationCount > 0" @click="doExport(() => exportReviewReport(data, annotations))">
+              Export Review Report ({{ annotationCount }})
+            </button>
             <button class="btn-outline" @click="doExport(() => exportWorkbook(data))">
               Export to Excel (.xlsx)
             </button>
@@ -106,12 +109,26 @@
 
       <!-- Gantt Chart (primary view) -->
       <div v-if="tab === 'gantt'" class="section section-full">
-        <GanttChart :data="data" :extra-room="headerCollapsed" :jump-to="pendingJump" @jumped="pendingJump = null" />
+        <GanttChart
+          :data="data"
+          :extra-room="headerCollapsed"
+          :jump-to="pendingJump"
+          :annotations="annotations"
+          @jumped="pendingJump = null"
+          @annotate="setAnnotation"
+          @unannotate="removeAnnotationFor"
+        />
       </div>
 
       <!-- Critical Path Graph -->
       <div v-if="tab === 'story'" class="section section-full">
-        <CriticalPathGraph :activities="data.activities" :extra-room="headerCollapsed" />
+        <CriticalPathGraph
+          :activities="data.activities"
+          :extra-room="headerCollapsed"
+          :annotations="annotations"
+          @annotate="setAnnotation"
+          @unannotate="removeAnnotationFor"
+        />
       </div>
       <div v-if="tab === 'story'" class="section">
         <!-- Near-critical watchlist -->
@@ -191,6 +208,7 @@
               >
                 <td class="code">{{ act.task_code }}</td>
                 <td class="name-cell">
+                  <i v-if="annotations[act.task_id]" class="annotation-dot" :class="'sev-' + annotations[act.task_id].severity" :title="annotations[act.task_id].note"></i>
                   <span class="act-name">{{ act.task_name }}</span>
                   <span v-if="isMilestone(act)" class="badge-milestone">M</span>
                 </td>
@@ -269,8 +287,9 @@ import GanttChart from './components/GanttChart.vue'
 import HealthCheck from './components/HealthCheck.vue'
 import ProgressView from './components/ProgressView.vue'
 import { formatDate, formatHours, statusLabel, isMilestone, formatFloat, timeAgo } from './utils/format'
-import { exportWorkbook, exportActivitiesCsv } from './utils/export'
+import { exportWorkbook, exportActivitiesCsv, exportReviewReport } from './utils/export'
 import { loadLastFile, saveLastFile, clearLastFile } from './utils/lastFile'
+import { loadAnnotations, saveAnnotation, removeAnnotation } from './utils/annotations'
 
 export default {
   name: 'App',
@@ -292,6 +311,7 @@ export default {
       lastFile: loadLastFile(),
       pendingJump: null,
       codeFilters: {},
+      annotations: {},
     }
   },
   computed: {
@@ -337,6 +357,12 @@ export default {
         .filter(a => !a.is_critical && a.total_float_hrs > 0 && a.total_float_hrs <= 80)
         .sort((a, b) => a.total_float_hrs - b.total_float_hrs)
         .slice(0, 15)
+    },
+    projectKey() {
+      return this.data ? this.data.project.proj_short_name : null
+    },
+    annotationCount() {
+      return Object.keys(this.annotations).length
     },
     codeTypesAvailable() {
       return this.data && this.data.project.has_activity_codes ? this.data.project.activity_code_types : []
@@ -397,6 +423,7 @@ export default {
       this.showCriticalOnly = false
       this.selectedAct = null
       this.codeFilters = {}
+      this.annotations = loadAnnotations(parsed.project.proj_short_name)
     },
     reopenLastFile() {
       if (!this.lastFile) return
@@ -461,6 +488,13 @@ export default {
     },
     exportWorkbook,
     exportActivitiesCsv,
+    exportReviewReport,
+    setAnnotation(taskId, patch) {
+      this.annotations = saveAnnotation(this.projectKey, taskId, patch)
+    },
+    removeAnnotationFor(taskId) {
+      this.annotations = removeAnnotation(this.projectKey, taskId)
+    },
   },
 }
 </script>
@@ -611,6 +645,11 @@ body { font-family: var(--font-ui); background: var(--white); color: var(--ink);
 .data-table .name-cell { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
 .data-table .name-col { min-width: 200px; }
 .act-name { font-weight: 500; }
+.annotation-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--gray-500); margin-right: 5px; vertical-align: middle; }
+.annotation-dot.sev-query { background: var(--accent); }
+.annotation-dot.sev-risk { background: var(--near); }
+.annotation-dot.sev-logic { background: var(--crit); }
+.annotation-dot.sev-resolved { background: var(--ok); }
 .badge-milestone { display: inline-block; padding: 0 5px; border-radius: var(--radius-sm); font: var(--text-micro); background: color-mix(in srgb, var(--milestone) 12%, white); color: var(--milestone); margin-left: var(--space-1); vertical-align: middle; }
 
 /* Status badges */
