@@ -218,13 +218,18 @@ def parse_xer(filepath: str) -> ScheduleData:
             return []
         return sorted(n for n in names if n)
 
-    # Build predecessor/successor maps
+    # Build predecessor/successor maps. succ_map is derived from pred_map in a
+    # separate pass (rather than populated inline while building pred_map) because
+    # every activity unconditionally resets its own succ_map[tid] = [] when its turn
+    # in the project.activities loop comes up — if that reset ran after an earlier
+    # activity had already recorded itself as tid's successor, the earlier entry
+    # would be silently wiped. Deriving succ_map by inverting the completed pred_map
+    # afterward makes the result independent of iteration order.
     pred_map = {}
-    succ_map = {}
+    succ_map = {tid: [] for tid in (a.task_id for a in project.activities)}
     for a in project.activities:
         tid = a.task_id
         pred_map[tid] = []
-        succ_map[tid] = []
         if hasattr(a, "predecessors") and a.predecessors:
             for p in a.predecessors:
                 pred_map[tid].append({
@@ -232,13 +237,13 @@ def parse_xer(filepath: str) -> ScheduleData:
                     "type": p.pred_type,
                     "lag_hrs": float(p.lag_hr_cnt or 0),
                 })
-                if p.pred_task_id not in succ_map:
-                    succ_map[p.pred_task_id] = []
-                succ_map[p.pred_task_id].append({
-                    "task_id": tid,
-                    "type": p.pred_type,
-                    "lag_hrs": float(p.lag_hr_cnt or 0),
-                })
+    for tid, preds in pred_map.items():
+        for p in preds:
+            succ_map.setdefault(p["task_id"], []).append({
+                "task_id": tid,
+                "type": p["type"],
+                "lag_hrs": p["lag_hrs"],
+            })
 
     # "Longest Path" (P6's alternate critical-activity definition): trace backward
     # from the true finish driver(s) through only the *driving* predecessor
@@ -250,7 +255,15 @@ def parse_xer(filepath: str) -> ScheduleData:
     # unbroken logic chain. Handles multiple parallel/converging critical chains
     # correctly, unlike a single backward trace from one arbitrary start point.
     act_lookup = {a.task_id: a for a in project.activities}
-    DRIVING_TOLERANCE_HRS = 1.0
+    # A small epsilon on top of the closest gap, not a fixed absolute tolerance:
+    # predecessor/successor calendars routinely differ (a 7-day milestone calendar
+    # reacting to a 5-day construction calendar, working-hour offsets, etc.), which
+    # can put even the true driving link a full calendar day or more away from an
+    # exact date match. Picking whichever predecessor(s) come closest to explaining
+    # the successor's computed date is robust to that; a fixed ~1hr tolerance is not
+    # — it silently produces zero driving predecessors on any link crossing a
+    # calendar boundary, truncating the backward trace after a single step.
+    DRIVING_EPSILON_HRS = 1.0
 
     def implied_date(pred_a, link_type, lag_hrs):
         lag = timedelta(hours=lag_hrs)
@@ -264,15 +277,18 @@ def parse_xer(filepath: str) -> ScheduleData:
             return pred_a.early_start_date, "finish", lag
         return None, None, lag
 
-    def is_driving(succ_a, pred_a, link_type, lag_hrs):
+    def driving_gap_hrs(succ_a, pred_a, link_type, lag_hrs):
         base, which, lag = implied_date(pred_a, link_type, lag_hrs)
         if base is None:
-            return False
+            return None
         actual = succ_a.early_start_date if which == "start" else succ_a.early_end_date
         if actual is None:
-            return False
-        delta_hrs = abs(((actual - base) - lag).total_seconds()) / 3600
-        return delta_hrs <= DRIVING_TOLERANCE_HRS
+            return None
+        # Only a predecessor whose implied date is at or before the successor's
+        # actual date can be driving it forward; one implying a later date than
+        # what's observed isn't consistent with driving this particular link.
+        gap = ((actual - base) - lag).total_seconds() / 3600
+        return gap if gap >= -DRIVING_EPSILON_HRS else None
 
     end_activities = [
         a for a in project.activities
@@ -290,10 +306,19 @@ def parse_xer(filepath: str) -> ScheduleData:
             succ_a = act_lookup.get(tid)
             if not succ_a:
                 continue
+            gaps = []
             for p in pred_map.get(tid, []):
                 pred_a = act_lookup.get(p["task_id"])
-                if pred_a and is_driving(succ_a, pred_a, p["type"], p["lag_hrs"]):
-                    stack.append(p["task_id"])
+                if not pred_a:
+                    continue
+                gap = driving_gap_hrs(succ_a, pred_a, p["type"], p["lag_hrs"])
+                if gap is not None:
+                    gaps.append((gap, p["task_id"]))
+            if gaps:
+                min_gap = min(g for g, _ in gaps)
+                for gap, ptid in gaps:
+                    if gap <= min_gap + DRIVING_EPSILON_HRS:
+                        stack.append(ptid)
 
     # Build activities list. is_critical uses the standard TF=0 definition (every
     # zero-float activity); is_longest_path uses the driving-chain trace above.
