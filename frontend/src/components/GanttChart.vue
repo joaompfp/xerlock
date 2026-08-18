@@ -75,13 +75,20 @@
         </select>
       </span>
       <span class="date-range-filter" title="Show only activities whose dates touch this window">
-        <input type="date" v-model="filterFrom" class="filter-date" title="Window start — activities finishing before this are hidden" />
+        <span class="code-filter-group">
+          <span class="code-filter-src" aria-hidden="true">From</span>
+          <input type="date" v-model="filterFrom" class="filter-date" title="Window start — activities finishing before this are hidden" />
+        </span>
         <span class="date-range-sep">&ndash;</span>
-        <input type="date" v-model="filterTo" class="filter-date" title="Window end — activities starting after this are hidden" />
-        <template v-if="data.project.data_date">
+        <span class="code-filter-group">
+          <span class="code-filter-src" aria-hidden="true">To</span>
+          <input type="date" v-model="filterTo" class="filter-date" title="Window end — activities starting after this are hidden" />
+        </span>
+        <span v-if="data.project.data_date" class="code-filter-group la-group">
+          <span class="code-filter-src" aria-hidden="true">Look-ahead</span>
           <button class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(28) }" @click="setLookAhead(28)" title="4-week look-ahead from the data date">4 wk</button>
           <button class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(56) }" @click="setLookAhead(56)" title="8-week look-ahead from the data date">8 wk</button>
-        </template>
+        </span>
       </span>
       <button v-if="returnTab" class="return-chip" @click="$emit('return-to-origin')">&larr; Back to {{ returnTab }}</button>
       <span v-if="isolationActive" class="isolation-chip">
