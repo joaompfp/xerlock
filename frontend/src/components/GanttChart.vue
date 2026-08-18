@@ -68,7 +68,7 @@
       </select>
       <label class="filter-check"><input type="checkbox" v-model="filterCriticalOnly" /> Critical only</label>
       <span v-for="t in codeTypesAvailable" :key="t" class="code-filter-group">
-        <span class="code-filter-src" aria-hidden="true">ACTVTYPE</span>
+        <span class="code-filter-src" aria-hidden="true">{{ t }}</span>
         <select v-model="filterCodes[t]" class="filter-select" :title="`P6 activity code category '${t}' — name and values read verbatim from this file's ACTVTYPE/ACTVCODE tables`">
           <option value="">All {{ t }}</option>
           <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
@@ -487,7 +487,7 @@ export default {
       filterCriticalOnly: false,
       filterFrom: '',
       filterTo: '',
-      filterCodes: {},
+      filterCodes: Object.fromEntries((this.data.project.activity_code_types || []).map(t => [t, ''])),
       // Chain tracing: null = off; a Set of task_ids = show ONLY these activities.
       // Grown one activity at a time by clicking predecessors/successors in the drawer,
       // letting a reviewer reconstruct a driving chain link by link.
@@ -521,6 +521,11 @@ export default {
     window.removeEventListener('mouseup', this.onResizeEnd)
   },
   watch: {
+    // The component survives file swaps (tabs use v-show), so reseed the per-category
+    // filter keys for the new file — an undefined v-model renders the select blank.
+    data() {
+      this.clearFilters()
+    },
     zoom() { this.persistView() },
     criticalBasis() { this.persistView() },
     showLinks() { this.persistView() },
@@ -1023,7 +1028,8 @@ export default {
       this.filterCriticalOnly = false
       this.filterFrom = ''
       this.filterTo = ''
-      this.filterCodes = {}
+      // Reseed one '' entry per category — an undefined v-model renders the select blank.
+      this.filterCodes = Object.fromEntries((this.data.project.activity_code_types || []).map(t => [t, '']))
       this.isolatedIds = null
     },
     // Look-ahead: the window every site meeting asks for — data date + N days.

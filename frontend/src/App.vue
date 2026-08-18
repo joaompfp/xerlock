@@ -219,7 +219,7 @@
             Critical only
           </label>
           <span v-for="t in codeTypesAvailable" :key="t" class="code-filter-group">
-            <span class="code-filter-src" aria-hidden="true">ACTVTYPE</span>
+            <span class="code-filter-src" aria-hidden="true">{{ t }}</span>
             <select v-model="codeFilters[t]" class="filter-select" :title="`P6 activity code category '${t}' — name and values read verbatim from this file's ACTVTYPE/ACTVCODE tables`">
               <option value="">All {{ t }}</option>
               <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
@@ -442,7 +442,7 @@ export default {
       exporting: false,
       lastFile: loadLastFile(),
       pendingJump: null,
-      codeFilters: {},
+      codeFilters: {},  // seeded per file in activateData
       annotations: {},
       compareData: null,
       snapshots: [],
@@ -668,7 +668,7 @@ export default {
       this.statusFilter = ''
       this.showCriticalOnly = false
       this.selectedAct = null
-      this.codeFilters = {}
+      this.codeFilters = Object.fromEntries((parsed.project.activity_code_types || []).map(t => [t, '']))
       this.annotations = loadAnnotations(parsed.project.proj_short_name)
       this.dismissedWarnings = []
       this.compareData = null
@@ -1063,7 +1063,7 @@ th.num { text-align: right !important; }
 /* Code-filter provenance eyebrow: these dropdowns are generated from the file's own
    ACTVTYPE table — the tag says so at a glance, the tooltip spells it out. */
 .code-filter-group { position: relative; display: inline-flex; }
-.code-filter-src { position: absolute; top: -5px; left: 7px; padding: 0 3px; font-family: var(--font-mono); font-size: 8px; font-weight: 600; letter-spacing: 0.08em; color: var(--gray-500); background: var(--white); line-height: 1; pointer-events: none; z-index: 1; }
+.code-filter-src { position: absolute; top: -5px; left: 7px; padding: 0 3px; font-family: var(--font-mono); font-size: 8px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gray-500); background: var(--white); line-height: 1; pointer-events: none; z-index: 1; max-width: calc(100% - 20px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ── Small screens ────────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
