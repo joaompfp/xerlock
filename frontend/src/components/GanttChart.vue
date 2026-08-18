@@ -33,6 +33,10 @@
       <div class="control-divider"></div>
 
       <label class="ctrl-toggle"><input type="checkbox" v-model="showLinks" /> Links</label>
+      <select v-if="showLinks" v-model="linksScope" class="filter-select linkscope-select" title="Which relationships to draw">
+        <option value="critical">Critical only</option>
+        <option value="all">All logic</option>
+      </select>
       <label class="ctrl-toggle"><input type="checkbox" v-model="showProgressLine" /> Progress line</label>
       <label v-if="baseline" class="ctrl-toggle" title="Ghost bars at each activity's position in the compared snapshot"><input type="checkbox" v-model="showBaseline" /> Baseline</label>
       <div class="zoom-group">
@@ -402,6 +406,7 @@ export default {
       filterCollapsed: new Set(),
       showBaseline: true,
       showLinks: saved.showLinks ?? true,
+      linksScope: saved.linksScope || 'critical',
       showProgressLine: saved.showProgressLine ?? false,
       selectedTaskId: null,
       isFullscreen: false,
@@ -452,6 +457,7 @@ export default {
     zoom() { this.persistView() },
     criticalBasis() { this.persistView() },
     showLinks() { this.persistView() },
+    linksScope() { this.persistView() },
     showProgressLine() { this.persistView() },
     dayWidthOverride() { this.persistView() },
     jumpTo: {
@@ -722,16 +728,18 @@ export default {
       const rowByIndex = this.rows
       for (const row of rowByIndex) {
         if (row.type !== 'activity') continue
-        // Normal mode: only critical-to-critical links (per the selected basis).
-        // Isolation mode: every relationship between two traced activities, with
-        // non-critical ones styled as "chain" links so the critical core still stands out.
-        if (!this.isolationActive && !this.isBasisCritical(row.activity)) continue
+        // Normal mode: "Critical only" scope draws just critical-to-critical links (per
+        // the selected basis) to keep large schedules legible; "All logic" draws every
+        // relationship. Isolation mode always draws every relationship between traced
+        // activities, with non-critical ones styled as "chain" links.
+        const criticalScope = !this.isolationActive && this.linksScope === 'critical'
+        if (criticalScope && !this.isBasisCritical(row.activity)) continue
         for (const p of row.activity.predecessors || []) {
           const predIdx = this.rowIndexByTaskId.get(p.task_id)
           if (predIdx === undefined) continue
           const predRow = rowByIndex[predIdx]
           const bothCritical = this.isBasisCritical(row.activity) && this.isBasisCritical(predRow.activity)
-          if (!this.isolationActive && !bothCritical) continue
+          if (criticalScope && !bothCritical) continue
           const predX = this.dateToX(displayEnd(predRow.activity))
           const predY = predIdx * ROW_HEIGHT + ROW_HEIGHT / 2
           const succX = row.x
@@ -1043,6 +1051,7 @@ export default {
         zoom: this.zoom,
         criticalBasis: this.criticalBasis,
         showLinks: this.showLinks,
+        linksScope: this.linksScope,
         showProgressLine: this.showProgressLine,
         labelColWidth: this.labelColWidth,
         dayWidthOverride: this.dayWidthOverride,
