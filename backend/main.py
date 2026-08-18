@@ -3,6 +3,8 @@ Schedule App — FastAPI backend with PyP6XER
 Parses Primavera P6 XER files and serves structured schedule data.
 """
 
+import codecs
+import logging
 import os
 import tempfile
 from datetime import timedelta
@@ -10,11 +12,17 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from xerparser.reader import Reader
+
+logger = logging.getLogger("schedule-app")
+
+# Generous for a text format (a ~20k-activity XER is well under this), but bounded so a
+# single oversized upload can't exhaust the server's memory.
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 app = FastAPI(
     title="Schedule App",
@@ -23,13 +31,8 @@ app = FastAPI(
     "(activities, WBS tree, project stats, longest-path trace) as JSON. Nothing is persisted.",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# No CORS middleware: the frontend is served same-origin by this app in production, and the
+# Vite dev server proxies /api. Cross-origin API consumers should host their own instance.
 
 
 @app.middleware("http")
@@ -115,6 +118,7 @@ class ScheduleData(BaseModel):
     project: ProjectSummary
     wbs_tree: list
     activities: list
+    warnings: list = []
 
 def safe_float(val, default=0.0):
     """Convert to float, handling None and falsy 0.0 correctly."""
@@ -130,12 +134,20 @@ def safe_float_or(val, default=999.0):
 
 def parse_xer(filepath: str) -> ScheduleData:
     reader = Reader(filepath)
-    project = None
-    for p in reader.projects:
-        project = p
-        break
-    if not project:
+    # Deliberately single-project: this is a one-file, one-programme review tool. When an
+    # export carries several projects (common with embedded baselines), take the first and
+    # say so rather than silently showing partial data.
+    projects = list(reader.projects)
+    if not projects:
         raise ValueError("No projects found in XER file")
+    project = projects[0]
+    warnings = []
+    if len(projects) > 1:
+        others = ", ".join(p.proj_short_name or "?" for p in projects[1:])
+        warnings.append(
+            f"This file contains {len(projects)} projects — showing "
+            f"'{project.proj_short_name}' only (also present: {others})."
+        )
 
     # Build WBS tree
     wbs_dict = {}
@@ -401,9 +413,13 @@ def parse_xer(filepath: str) -> ScheduleData:
     not_started = sum(1 for a in activities if a["status"] == "TK_NotStart")
     pct = (complete / total * 100) if total > 0 else 0
 
-    dates = [a for a in activities if a["early_start"]]
-    earliest = min((a["early_start"] for a in dates), default=None)
-    latest = max((a["early_end"] for a in activities if a["early_end"]), default=None)
+    # Project range uses the display-date convention (actual once started/finished,
+    # early otherwise): completed work's early dates are reset to the data date by P6,
+    # so an early-dates-only range would exclude everything already built.
+    starts = [(a["act_start"] or a["early_start"]) for a in activities]
+    ends = [(a["act_end"] or a["early_end"]) for a in activities]
+    earliest = min((d for d in starts if d), default=None)
+    latest = max((d for d in ends if d), default=None)
 
     has_resources = len(rsrc_names) > 0
     activity_code_types = sorted(set(actv_type_names.values()))
@@ -430,6 +446,7 @@ def parse_xer(filepath: str) -> ScheduleData:
         ),
         wbs_tree=wbs_tree,
         activities=activities,
+        warnings=warnings,
     )
 
 
@@ -445,20 +462,47 @@ async def upload_xer(file: UploadFile = File(...)):
     if not file.filename or not file.filename.lower().endswith(".xer"):
         raise HTTPException(400, "Only .xer files are accepted")
 
-    # Save to temp file
-    suffix = ".xer"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        content = await file.read()
-        tmp.write(content)
+    # Stream to a temp file in chunks, enforcing the size cap as bytes arrive rather than
+    # slurping an unbounded body into memory first. Along the way, incrementally validate
+    # UTF-8: PyP6XER opens files with errors='ignore', which silently DROPS any bytes that
+    # aren't valid UTF-8 — and P6 commonly exports cp1252/latin-1, so accented characters
+    # in activity names would vanish without a trace. We can't fix the upstream decode,
+    # but we can tell the user their names may be mangled.
+    utf8_checker = codecs.getincrementaldecoder("utf-8")()
+    encoding_ok = True
+    size = 0
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".xer") as tmp:
         tmp_path = tmp.name
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > MAX_UPLOAD_BYTES:
+                os.unlink(tmp_path)
+                raise HTTPException(413, f"File exceeds the {MAX_UPLOAD_BYTES // (1024*1024)} MB upload limit")
+            if encoding_ok:
+                try:
+                    utf8_checker.decode(chunk)
+                except UnicodeDecodeError:
+                    encoding_ok = False
+            tmp.write(chunk)
 
     try:
-        data = parse_xer(tmp_path)
-    except Exception as e:
+        # The parse is CPU-bound and can take seconds-to-minutes on large schedules;
+        # run it off the event loop so one upload doesn't freeze the server for everyone.
+        data = await run_in_threadpool(parse_xer, tmp_path)
+    except ValueError as e:
+        # Deliberate validation errors (e.g. "no projects") are safe to show verbatim.
+        raise HTTPException(422, str(e))
+    except Exception:
+        logger.exception("Failed to parse uploaded XER %r", file.filename)
+        raise HTTPException(422, "Could not parse this file as a valid P6 .xer export")
+    finally:
         os.unlink(tmp_path)
-        raise HTTPException(422, f"Failed to parse XER: {str(e)}")
 
-    os.unlink(tmp_path)
+    if not encoding_ok:
+        data.warnings.append(
+            "This file is not valid UTF-8 (P6 often exports cp1252/latin-1). Accented or "
+            "special characters in activity names may be missing."
+        )
     return data
 
 

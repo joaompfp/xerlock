@@ -52,7 +52,7 @@
               <td class="name-cell">{{ a.task_name }}</td>
               <td class="num-cell">{{ formatDate(a.early_start) }}</td>
               <td class="num-cell">{{ formatDate(a.early_end) }}</td>
-              <td class="num-cell" :class="a.is_negative_float ? 'lag-neg' : ''">{{ formatFloat(a.total_float_hrs) }}</td>
+              <td class="num-cell" :class="a.is_negative_float ? 'lag-neg' : ''">{{ formatFloat(a.total_float_hrs, a.calendar_hrs_per_day) }}</td>
               <td class="num-cell">{{ a.pct_complete }}%</td>
               <td class="num-cell">{{ formatHours(a.remain_duration_hrs, a.calendar_hrs_per_day) }} / {{ formatHours(a.duration_hrs, a.calendar_hrs_per_day) }}</td>
             </tr>
@@ -92,6 +92,7 @@
 
 <script>
 import { formatDate, formatHours, formatFloat, isMilestone } from '../utils/format'
+import { displayEnd } from '../utils/p6'
 
 const STATUS_LABELS = { achieved: 'Achieved', 'on-track': 'On track', watch: 'Watch', 'at-risk': 'At risk', unknown: 'Unknown' }
 
@@ -121,7 +122,7 @@ export default {
       return this.data.activities
         .filter(isMilestone)
         .map(a => {
-          const forecast = a.early_end || a.early_start
+          const forecast = displayEnd(a) || a.act_start || a.early_start
           const target = a.target_end || a.target_start
           const achieved = a.status === 'TK_Complete' || !!a.act_end || !!a.act_start
           let varianceDays = null
