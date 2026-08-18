@@ -2,8 +2,8 @@
 
 Prepared as a pre-sprint design review. Part 1 is the critique (evidence-based, from reading
 `App.vue`, `GanttChart.vue`, `CriticalPathGraph.vue`, `WBSNode.vue` and from live screenshots of
-the app loaded with real LIS1 schedule data — `LIS10-Draft 19.xer`, 483 activities). Part 2 is an
-implementable spec for the next sprint.
+the app loaded with a real-world construction schedule — a 483-activity `.xer` export). Part 2 is
+an implementable spec for the next sprint.
 
 ---
 

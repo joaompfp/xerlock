@@ -1,0 +1,9 @@
+services:
+  schedule-app:
+    build: .
+    container_name: schedule-app
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    # The app is stateless — uploads are parsed in memory and discarded,
+    # so no volumes are needed.
