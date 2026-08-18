@@ -15,15 +15,15 @@
     <div class="gantt-controls">
       <div class="legend">
         <template v-if="criticalBasis === 'tf0'">
-          <span class="legend-item"><i class="dot dot-critical"></i>Critical (TF&le;0)</span>
-          <span class="legend-item"><i class="dot dot-near"></i>Near-critical</span>
-          <span class="legend-item"><i class="dot dot-other"></i>Normal</span>
+          <span class="legend-item"><i class="lg-bar lg-critical"></i>Critical (TF&le;0)</span>
+          <span class="legend-item"><i class="lg-bar lg-near"></i>Near-critical</span>
+          <span class="legend-item"><i class="lg-bar lg-normal"></i>Normal</span>
         </template>
         <template v-else>
-          <span class="legend-item"><i class="dot dot-critical"></i>On longest path</span>
-          <span class="legend-item"><i class="dot dot-other"></i>Normal</span>
+          <span class="legend-item"><i class="lg-bar lg-critical"></i>On longest path</span>
+          <span class="legend-item"><i class="lg-bar lg-normal"></i>Normal</span>
         </template>
-        <span class="legend-item"><i class="dot dot-neg"></i>Negative float</span>
+        <span class="legend-item"><i class="lg-bar lg-negative"></i>Negative float (late)</span>
         <span class="legend-item"><i class="diamond"></i>Milestone</span>
         <span class="legend-item"><i class="bar-wbs"></i>WBS rollup</span>
         <span class="legend-item" v-if="showProgressLine"><i class="progress-swatch"></i>Progress line</span>
@@ -1098,11 +1098,13 @@ export default {
 .control-divider { width: 1px; align-self: stretch; background: var(--gray-300); margin: 2px 0; }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
 .legend-item { display: flex; align-items: center; gap: 5px; font: var(--text-small); color: var(--gray-700); }
-.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
-.dot-critical { background: var(--crit); }
-.dot-near { background: var(--near); }
-.dot-other { background: var(--accent); }
-.dot-neg { background: var(--crit); box-shadow: 0 0 0 2px var(--white), 0 0 0 3px var(--crit); }
+/* Legend swatches ARE miniature bars — same fills and borders as the chart itself, so
+   the legend teaches the encoding instead of adding a second one to decode. */
+.lg-bar { width: 20px; height: 10px; border-radius: 3px; display: inline-block; box-sizing: border-box; border: 1.5px solid; }
+.lg-critical { background: var(--crit-tint); border-color: var(--crit); }
+.lg-near { background: var(--near-tint); border-color: var(--near); }
+.lg-normal { background: var(--accent-soft); border-color: var(--accent); }
+.lg-negative { background: repeating-linear-gradient(135deg, rgba(255,255,255,0.45) 0 2px, transparent 2px 5px), var(--crit); border-color: #6E150D; }
 .diamond { width: 8px; height: 8px; background: var(--milestone); display: inline-block; transform: rotate(45deg); }
 .bar-wbs { width: 16px; height: 7px; border-radius: 3px; background: var(--gray-700); display: inline-block; }
 .progress-swatch { width: 14px; height: 2px; background: var(--milestone); display: inline-block; }
@@ -1201,7 +1203,8 @@ export default {
 .g-bar.critical { background: var(--crit-tint); border-color: var(--crit); }
 .g-bar.near { background: var(--near-tint); border-color: var(--near); }
 .g-bar.other { background: var(--accent-soft); border-color: var(--accent); }
-.g-bar.negative { box-shadow: inset 0 -2px 0 0 var(--crit), 0 1px 2px rgba(28,25,23,0.15); }
+.g-bar.negative { background: repeating-linear-gradient(135deg, rgba(255,255,255,0.45) 0 2px, transparent 2px 5px), var(--crit); border-color: #6E150D; }
+.g-bar.negative .g-bar-progress { background: rgba(28,25,23,0.45); }
 .g-bar.selected { box-shadow: 0 0 0 2px var(--ink); }
 .g-bar-progress { height: 100%; background: rgba(28,25,23,0.28); }
 
@@ -1213,6 +1216,7 @@ export default {
 .g-milestone { position: absolute; top: 5px; width: 10px; height: 10px; margin-left: -5px; background: var(--milestone); transform: rotate(45deg); border-radius: 2px; box-shadow: 0 1px 2px rgba(28,25,23,0.2); }
 .g-milestone.critical { background: var(--crit); }
 .g-milestone.near { background: var(--near); }
+.g-milestone.negative { background: var(--crit); box-shadow: 0 0 0 2px var(--white), 0 0 0 3.5px var(--crit); }
 
 /* Right-side drawer, anchored to .gantt-body so it spans exactly the scroll viewport's
    height regardless of the header/controls/filter-bar above it. */
