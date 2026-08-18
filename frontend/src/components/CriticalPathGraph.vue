@@ -36,6 +36,9 @@
       @mousemove="onPanMove"
       @mouseup="onPanEnd"
       @mouseleave="onPanEnd"
+      @touchstart="onTouchStart"
+      @touchmove.prevent="onTouchMove"
+      @touchend="onTouchEnd"
       :class="{ dragging: panning }"
     >
       <!-- Fills the canvas rather than sizing to the graph layout: pan/zoom happens via the
@@ -621,6 +624,50 @@ export default {
       this.panning = false
       this.panStart = null
     },
+    // Touch: one finger pans, two fingers pinch-zoom around the midpoint.
+    onTouchStart(e) {
+      if (e.touches.length === 1) {
+        this.panStart = { x: e.touches[0].clientX - this.tx, y: e.touches[0].clientY - this.ty }
+        this.panning = true
+        this._pinch = null
+      } else if (e.touches.length >= 2) {
+        this.panning = false
+        this.panStart = null
+        this._pinch = this._pinchState(e)
+      }
+    },
+    onTouchMove(e) {
+      if (e.touches.length === 1 && this.panStart) {
+        this.tx = e.touches[0].clientX - this.panStart.x
+        this.ty = e.touches[0].clientY - this.panStart.y
+      } else if (e.touches.length >= 2 && this._pinch) {
+        const p = this._pinchState(e)
+        const rect = this.$refs.canvas.getBoundingClientRect()
+        this.zoomAt(p.mx - rect.left, p.my - rect.top, this.scale * (p.dist / this._pinch.dist))
+        this.tx += p.mx - this._pinch.mx
+        this.ty += p.my - this._pinch.my
+        this._pinch = p
+      }
+    },
+    onTouchEnd(e) {
+      if (e.touches.length === 0) {
+        this.panning = false
+        this.panStart = null
+        this._pinch = null
+      } else if (e.touches.length === 1) {
+        this._pinch = null
+        this.panStart = { x: e.touches[0].clientX - this.tx, y: e.touches[0].clientY - this.ty }
+        this.panning = true
+      }
+    },
+    _pinchState(e) {
+      const [a, b] = [e.touches[0], e.touches[1]]
+      return {
+        dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+        mx: (a.clientX + b.clientX) / 2,
+        my: (a.clientY + b.clientY) / 2,
+      }
+    },
     toggleFullscreen() {
       if (document.fullscreenElement) {
         document.exitFullscreen()
@@ -668,8 +715,12 @@ export default {
 .zbtn:last-child { border-right: none; }
 .zbtn:hover { background: var(--gray-150); }
 
-.graph-canvas { position: relative; overflow: hidden; height: min(75vh, 900px); background: radial-gradient(var(--gray-150) 1.5px, transparent 1.5px) 0 0 / 18px 18px, var(--white); cursor: grab; }
-.graph-wrap.extra-room .graph-canvas { height: min(92vh, 1400px); }
+.graph-canvas { position: relative; overflow: hidden; touch-action: none; height: min(75vh, 900px); background: radial-gradient(var(--gray-150) 1.5px, transparent 1.5px) 0 0 / 18px 18px, var(--white); cursor: grab; }
+.graph-wrap.extra-room .graph-canvas { height: calc(100dvh - 208px); min-height: 320px; }
+/* Toolbar rows stack taller on narrow screens — leave more room above the canvas */
+@media (max-width: 900px) {
+  .graph-canvas, .graph-wrap.extra-room .graph-canvas { height: calc(100dvh - 260px); min-height: 320px; }
+}
 .graph-canvas.dragging { cursor: grabbing; }
 
 /* No transition by default — dragging/wheel-zoom must track the pointer instantly.

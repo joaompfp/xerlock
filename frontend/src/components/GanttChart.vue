@@ -429,7 +429,7 @@ export default {
       zoom: saved.zoom || autoZoom,
       zoomLevels: ['day', 'week', 'month', 'quarter'],
       dayWidthOverride: saved.dayWidthOverride ?? null,
-      labelColWidth: saved.labelColWidth || LABEL_COL_WIDTH_DEFAULT,
+      labelColWidth: Math.min(saved.labelColWidth || LABEL_COL_WIDTH_DEFAULT, Math.max(220, Math.floor(window.innerWidth * 0.55))),
       criticalBasis: saved.criticalBasis || 'tf0',
       expandedWbs,
       showLinks: saved.showLinks ?? true,
@@ -1178,7 +1178,11 @@ export default {
    viewport keeps the full working area available no matter how much is expanded. */
 .gantt-scroll { overflow: auto; scrollbar-width: thin; scrollbar-color: var(--gray-300) transparent; height: min(75vh, 900px); position: relative; cursor: grab; }
 .gantt-scroll.panning { cursor: grabbing; }
-.gantt-wrap.extra-room .gantt-scroll { height: min(92vh, 1400px); }
+.gantt-wrap.extra-room .gantt-scroll { height: calc(100dvh - 258px); min-height: 320px; }
+/* Controls + filter bar wrap taller on narrow screens — leave more room above the grid */
+@media (max-width: 900px) {
+  .gantt-scroll, .gantt-wrap.extra-room .gantt-scroll { height: calc(100dvh - 445px); min-height: 320px; }
+}
 .gantt-grid { display: grid; grid-template-rows: 52px; grid-auto-rows: 20px; position: relative; }
 
 .g-cell { min-width: 0; }
