@@ -13,7 +13,7 @@
         </div>
         <h1>XERlock</h1>
         <p class="subtitle">Review Primavera P6 schedules — no P6 license required.</p>
-        <p class="feature-strip">Interactive Gantt &middot; critical-path network &middot; DCMA-14 health checks &middot; snapshot compare &middot; Excel review reports</p>
+        <p class="feature-strip">Interactive Gantt &middot; critical-path network &middot; configurable health checks &middot; calendar &amp; raw-table audit &middot; snapshot compare &middot; Excel review reports</p>
 
         <div class="reopen-card" v-if="lastFile">
           <div class="reopen-info">

@@ -63,7 +63,7 @@
           <span><i class="lg lg-work"></i> Working day</span>
           <span><i class="lg lg-nonwork"></i> Non-working</span>
           <span><i class="lg lg-holiday"></i> Holiday exception</span>
-          <span><i class="lg lg-workexc"></i> Working exception <em>(works a normally non-working day — verify!)</em></span>
+          <span><i class="lg lg-workexc"></i> Working exception <em>(date deliberately marked to work — often a worked holiday, verify!)</em></span>
         </div>
 
         <!-- Exception register -->
@@ -151,10 +151,10 @@ export default {
         let cls, periods
         if (exc) {
           periods = exc.periods
-          // A working exception on a day the weekly pattern already works is just an
-          // hours override; on a pattern non-working day it's the suspicious case.
-          if (periods.length > 0) cls = weekPeriods.length > 0 ? 'cal-work' : 'cal-workexc'
-          else cls = 'cal-holiday'
+          // Any dated exception that works is a deliberate author decision — often a
+          // public holiday marked to be worked through — so it always gets the loud
+          // treatment, matching the exception register below.
+          cls = periods.length > 0 ? 'cal-workexc' : 'cal-holiday'
         } else {
           periods = weekPeriods
           cls = periods.length > 0 ? 'cal-work' : 'cal-nonwork'
