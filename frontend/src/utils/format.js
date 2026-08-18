@@ -58,3 +58,12 @@ export function timeAgo(timestamp) {
   if (day < 7) return `${day}d ago`
   return new Date(timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
+
+// Lags are stored in hours in the XER; planners think in working days. Uses the
+// successor's calendar where the caller has it, else the standard 8h day.
+export function formatLag(lagHrs, hrsPerDay = 8) {
+  if (!lagHrs) return ''
+  const d = lagHrs / (hrsPerDay || 8)
+  const v = Number.isInteger(d) ? d : Math.round(d * 10) / 10
+  return (v > 0 ? '+' : '') + v + 'd'
+}

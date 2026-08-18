@@ -13,6 +13,7 @@
       <div class="score-item" :class="{ fail: added.length > 0 }"><div class="score-count">{{ added.length }}</div><div class="score-label">Added</div></div>
       <div class="score-item" :class="{ fail: removed.length > 0 }"><div class="score-count">{{ removed.length }}</div><div class="score-label">Removed</div></div>
       <div class="score-item" :class="stability.pct === 100 ? 'pass' : 'fail'"><div class="score-count">{{ stability.pct }}%</div><div class="score-label">Critical Path Stability</div></div>
+      <div class="score-item" :class="{ fail: durationChanges.length > 0 }"><div class="score-count">{{ durationChanges.length }}</div><div class="score-label">Duration Changes</div></div>
       <div class="score-item" :class="{ fail: floatErosion.length > 0 }"><div class="score-count">{{ floatErosion.length }}</div><div class="score-label">Float Erosion</div></div>
       <div class="score-item" :class="{ fail: logicChanges.length > 0 }"><div class="score-count">{{ logicChanges.length }}</div><div class="score-label">Logic Changes</div></div>
     </div>
@@ -39,6 +40,30 @@
               <td class="name-cell">{{ d.cur.task_name }}</td>
               <td class="num-cell">{{ formatDate(displayEnd(d.base)) }}</td>
               <td class="num-cell">{{ formatDate(displayEnd(d.cur)) }}</td>
+              <td class="num-cell" :class="d.deltaDays > 0 ? 'lag-neg' : 'lag-pos'">{{ d.deltaDays > 0 ? '+' : '' }}{{ d.deltaDays }}d</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Duration changes -->
+    <section class="compare-section">
+      <button class="section-head" @click="toggle('durations')">
+        <span class="section-title">Duration Changes <em>({{ durationChanges.length }})</em></span>
+        <span class="section-hint">Activities whose original duration was edited since the baseline</span>
+        <span class="chevron" :class="{ open: expanded.durations }">&rsaquo;</span>
+      </button>
+      <div v-if="expanded.durations" class="section-body">
+        <div v-if="durationChanges.length === 0" class="empty-state">No duration changes.</div>
+        <table v-else class="compare-table">
+          <thead><tr><th>Code</th><th>Activity</th><th class="num">Baseline Dur</th><th class="num">Current Dur</th><th class="num">Change</th></tr></thead>
+          <tbody>
+            <tr v-for="d in durationChanges" :key="d.code" class="jump-row" title="Show in Gantt" @click="$emit('jump', d.cur.task_id)">
+              <td class="code">{{ d.code }}</td>
+              <td class="name-cell">{{ d.cur.task_name }}</td>
+              <td class="num-cell">{{ formatHours(d.base.duration_hrs, d.base.calendar_hrs_per_day) }}</td>
+              <td class="num-cell">{{ formatHours(d.cur.duration_hrs, d.cur.calendar_hrs_per_day) }}</td>
               <td class="num-cell" :class="d.deltaDays > 0 ? 'lag-neg' : 'lag-pos'">{{ d.deltaDays > 0 ? '+' : '' }}{{ d.deltaDays }}d</td>
             </tr>
           </tbody>
@@ -170,7 +195,7 @@
 </template>
 
 <script>
-import { formatDate, formatFloat } from '../utils/format'
+import { formatDate, formatFloat, formatHours, formatLag } from '../utils/format'
 import { REL_TYPE_LABELS, displayStart, displayEnd } from '../utils/p6'
 
 
@@ -184,7 +209,7 @@ export default {
   emits: ['jump', 'reset'],
   data() {
     return {
-      expanded: { dates: true, float: true, critical: true, logic: false, addrem: false },
+      expanded: { dates: true, durations: true, float: true, critical: true, logic: false, addrem: false },
     }
   },
   computed: {
@@ -219,6 +244,15 @@ export default {
         .filter(d => d.deltaDays !== 0)
         .sort((a, b) => b.deltaDays - a.deltaDays)
     },
+    durationChanges() {
+      // The forensic reviewer proved this gap with a hand-perturbed file: a quiet
+      // duration edit between submissions is exactly the kind of change a diff must
+      // surface. Compares original (target) durations, in the activity's own calendar.
+      return this.matched
+        .filter(d => d.cur.duration_hrs !== d.base.duration_hrs)
+        .map(d => ({ ...d, deltaDays: Math.round(((d.cur.duration_hrs - d.base.duration_hrs) / (d.cur.calendar_hrs_per_day || 8)) * 10) / 10 }))
+        .sort((a, b) => Math.abs(b.deltaDays) - Math.abs(a.deltaDays))
+    },
     floatErosion() {
       return this.matched
         .filter(d => d.cur.total_float_hrs != null && d.base.total_float_hrs != null && d.cur.total_float_hrs < d.base.total_float_hrs)
@@ -237,7 +271,7 @@ export default {
         for (const p of activity.predecessors) {
           const predActivity = lookupById.get(p.task_id)
           const code = predActivity ? predActivity.task_code : '?' + p.task_id
-          set.add(`${code} (${REL_TYPE_LABELS[p.type] || p.type}${p.lag_hrs ? ' +' + p.lag_hrs + 'h' : ''})`)
+          set.add(`${code} (${REL_TYPE_LABELS[p.type] || p.type}${p.lag_hrs ? ' ' + formatLag(p.lag_hrs) : ''})`)
         }
         return set
       }
@@ -276,6 +310,7 @@ export default {
   methods: {
     formatDate,
     formatFloat,
+    formatHours,
     displayStart,
     displayEnd,
     toggle(key) {

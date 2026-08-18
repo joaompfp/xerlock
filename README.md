@@ -75,8 +75,12 @@ tracing rebuilds an activity's driving path link by link.*
   cp1252 exports
 
 **Compare** — diff two `.xer` snapshots
-- Upload last month's submission alongside the current one: date slips, float erosion,
-  critical-path churn (with a stability score), logic changes, added/removed activities
+- Upload last month's submission alongside the current one: date slips, duration edits,
+  float erosion, critical-path churn (with a stability score), logic changes,
+  added/removed activities
+- **Snapshot register**: save the current parse in the browser (IndexedDB) and diff
+  against it next month — no need to keep old `.xer` files at hand; nothing leaves
+  the browser
 - Activities matched by code (stable across re-exports), not internal IDs
 
 **Review workflow**

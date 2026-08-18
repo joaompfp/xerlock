@@ -133,8 +133,8 @@
         <button :class="{ active: tab === 'calendars' }" @click="selectTab('calendars')">Calendars</button>
         <button :class="{ active: tab === 'tables' }" @click="selectTab('tables')">Tables</button>
         <button :class="{ active: tab === 'compare' }" @click="selectTab('compare')">Compare</button>
-        <button v-if="annotationCount > 0" class="tab-report-btn" :disabled="exporting" @click="doExport(() => exportReviewReport(data, annotations))" title="Export the annotated Review Report (.xlsx)">
-          {{ exportLabel('Report (' + annotationCount + ')') }}
+        <button v-if="annotationCount > 0" class="tab-report-btn" :disabled="exporting" @click="doExport(() => exportReviewReport(data, annotations))" title="Download the annotated Review Report (.xlsx)">
+          {{ exportLabel('⤓ Report (' + annotationCount + ')') }}
         </button>
         <select class="theme-select" v-model="theme" title="Color theme">
           <option v-for="(label, key) in themeOptions" :key="key" :value="key">{{ label }}</option>
@@ -339,7 +339,35 @@
         />
         <div v-else class="compare-upload-card">
           <h2>Compare against a previous snapshot</h2>
-          <p class="subtitle">Upload an earlier export of this same project (e.g. last month's contractor submission) to see what changed — slipped dates, float erosion, logic changes, and critical path movement. Your current file stays loaded — the snapshot is only used for the diff.</p>
+          <p class="subtitle">Upload an earlier export of this same project (e.g. last month's contractor submission) to see what changed — slipped dates, duration edits, float erosion, logic changes, and critical path movement. Your current file stays loaded — the snapshot is only used for the diff.</p>
+
+          <!-- Snapshot register: monthly-cycle reviews shouldn't require carrying old
+               .xer files around — save this month's parse now, diff against it next month. -->
+          <div class="snap-register">
+            <div class="snap-head">
+              <h3>Snapshot register</h3>
+              <button class="btn-outline snap-save" :disabled="snapshotSaving" @click="saveCurrentSnapshot">
+                {{ snapshotSaving ? 'Saving…' : (snapshotJustSaved ? 'Saved ✓' : 'Save current file as snapshot') }}
+              </button>
+            </div>
+            <p v-if="snapshots.length === 0" class="snap-empty">Nothing saved yet. Snapshots live in this browser only (IndexedDB) — nothing is uploaded anywhere.</p>
+            <table v-else class="snap-table">
+              <thead><tr><th>Project</th><th>File</th><th class="num">Data date</th><th class="num">Activities</th><th class="num">Saved</th><th></th></tr></thead>
+              <tbody>
+                <tr v-for="snap in snapshots" :key="snap.id" :class="{ 'snap-other-proj': snap.proj !== data.project.proj_short_name }">
+                  <td class="code">{{ snap.proj }}</td>
+                  <td class="name-cell">{{ snap.filename }}</td>
+                  <td class="num-cell">{{ snap.dataDate ? formatDate(snap.dataDate) : '—' }}</td>
+                  <td class="num-cell">{{ snap.activities }}</td>
+                  <td class="num-cell">{{ timeAgo(snap.savedAt) }}</td>
+                  <td class="snap-actions">
+                    <button class="btn-outline" @click="compareAgainstSnapshot(snap)">Compare</button>
+                    <button class="btn-forget" title="Delete snapshot" @click="removeSnapshot(snap)">&times;</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div
             class="drop-zone"
             @dragover.prevent="compareDragOver = true"
@@ -375,6 +403,7 @@ import { formatDate, formatHours, statusLabel, isMilestone, formatFloat, timeAgo
 import { exportWorkbook, exportActivitiesCsv, exportReviewReport } from './utils/export'
 import { loadLastFile, saveLastFile, clearLastFile } from './utils/lastFile'
 import { loadAnnotations, saveAnnotation, removeAnnotation } from './utils/annotations'
+import { listSnapshots, saveSnapshot, getSnapshotData, deleteSnapshot } from './utils/snapshots'
 import { displayStart, displayEnd } from './utils/p6'
 
 const PARSE_STAGES = [
@@ -412,6 +441,10 @@ export default {
       codeFilters: {},
       annotations: {},
       compareData: null,
+      snapshots: [],
+      snapshotSaving: false,
+      snapshotJustSaved: false,
+      currentFilename: '',
       compareFilename: '',
       dismissedWarnings: [],
       theme: localStorage.getItem('schedule-app:theme') || 'sepia',
@@ -528,6 +561,35 @@ export default {
       const file = e.dataTransfer.files[0]
       if (file) await this.uploadCompareFile(file)
     },
+    async saveCurrentSnapshot() {
+      if (!this.data || this.snapshotSaving) return
+      this.snapshotSaving = true
+      try {
+        await saveSnapshot(this.currentFilename || this.data.project.proj_short_name + '.xer', this.data)
+        this.snapshots = await listSnapshots()
+        this.snapshotJustSaved = true
+        setTimeout(() => { this.snapshotJustSaved = false }, 1800)
+      } catch {
+        this.uploadError = ''
+        alert('Could not save the snapshot (browser storage unavailable or full).')
+      } finally {
+        this.snapshotSaving = false
+      }
+    },
+    async compareAgainstSnapshot(snap) {
+      const data = await getSnapshotData(snap.id)
+      if (!data) {
+        alert('This snapshot could not be loaded — it may have been deleted by the browser.')
+        this.snapshots = await listSnapshots()
+        return
+      }
+      this.compareData = data
+      this.compareFilename = `${snap.filename} (snapshot, ${formatDate(snap.dataDate) || 'no data date'})`
+    },
+    async removeSnapshot(snap) {
+      await deleteSnapshot(snap.id)
+      this.snapshots = await listSnapshots()
+    },
     async handleCompareFile(e) {
       const file = e.target.files[0]
       if (file) await this.uploadCompareFile(file)
@@ -574,6 +636,7 @@ export default {
         }
         const parsed = await res.json()
         this.activateData(parsed)
+        this.currentFilename = file.name
         saveLastFile(file.name, parsed)
         this.lastFile = loadLastFile()
       } catch (e) {
@@ -606,10 +669,12 @@ export default {
       this.dismissedWarnings = []
       this.compareData = null
       this.compareFilename = ''
+      listSnapshots().then(list => { this.snapshots = list })
     },
     reopenLastFile() {
       if (!this.lastFile) return
       this.activateData(this.lastFile.data)
+      this.currentFilename = this.lastFile.filename
     },
     forgetLastFile() {
       clearLastFile()
@@ -976,6 +1041,20 @@ th.num { text-align: right !important; }
 /* WBS tree */
 .wbs-tree { border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; }
 
+
+.snap-register { text-align: left; background: var(--gray-100); border: 1px solid var(--gray-300); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin: var(--space-5) 0; }
+.snap-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.snap-head h3 { font: var(--text-h3); color: var(--ink); margin: 0; }
+.snap-empty { font: var(--text-small); color: var(--gray-700); margin-top: var(--space-2); }
+.snap-table { width: 100%; border-collapse: collapse; font: var(--text-small); margin-top: var(--space-3); }
+.snap-table th { text-align: left; font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); border-bottom: 2px solid var(--gray-300); padding: var(--space-1) var(--space-2); }
+.snap-table th.num { text-align: right; }
+.snap-table td { padding: 6px var(--space-2); border-bottom: 1px solid var(--gray-150); }
+.snap-table .code { font-family: var(--font-mono); font-weight: 600; color: var(--accent); white-space: nowrap; }
+.snap-table .name-cell { color: var(--ink-soft); word-break: break-all; }
+.snap-table .num-cell { font-family: var(--font-mono); text-align: right; white-space: nowrap; }
+.snap-other-proj td { opacity: 0.55; }
+.snap-actions { display: flex; gap: var(--space-2); justify-content: flex-end; align-items: center; }
 
 /* ── Small screens ────────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
