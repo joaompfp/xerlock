@@ -998,7 +998,7 @@ export default {
 </script>
 
 <style scoped>
-.gantt-wrap { border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; background: var(--white); margin-bottom: var(--space-6); box-shadow: 0 1px 3px rgba(20,33,61,0.06); font-family: var(--font-ui); }
+.gantt-wrap { border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; background: var(--white); margin-bottom: var(--space-6); box-shadow: 0 1px 3px rgba(28,25,23,0.06); font-family: var(--font-ui); }
 .gantt-wrap.is-fullscreen { border-radius: 0; display: flex; flex-direction: column; height: 100vh; }
 .gantt-wrap.is-fullscreen .gantt-body { flex: 1; min-height: 0; display: flex; }
 .gantt-wrap.is-fullscreen .gantt-scroll { flex: 1; max-height: none; }
@@ -1065,7 +1065,7 @@ export default {
 .gantt-grid { display: grid; grid-template-rows: 52px; grid-auto-rows: 20px; position: relative; }
 
 .g-cell { min-width: 0; }
-.g-corner { position: absolute; z-index: 7; background: var(--gray-100); border-bottom: 1px solid var(--gray-300); border-right: 2px solid var(--gray-300); height: 52px; display: flex; align-items: flex-end; gap: 6px; padding: 0 8px 8px 8px; box-sizing: border-box; overflow: hidden; box-shadow: 2px 0 5px -3px rgba(20,33,61,0.18); }
+.g-corner { position: absolute; z-index: 7; background: var(--gray-100); border-bottom: 1px solid var(--gray-300); border-right: 2px solid var(--gray-300); height: 52px; display: flex; align-items: flex-end; gap: 6px; padding: 0 8px 8px 8px; box-sizing: border-box; overflow: hidden; box-shadow: 2px 0 5px -3px rgba(28,25,23,0.18); }
 .g-corner-name { flex: 1; min-width: 0; font: var(--text-micro); font-weight: 700; color: var(--gray-700); text-transform: uppercase; letter-spacing: 0.03em; }
 .g-corner-col { font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--gray-700) !important; }
 .g-timeline-header { position: absolute; z-index: 6; background: var(--gray-100); border-bottom: 1px solid var(--gray-300); height: 52px; }
@@ -1092,7 +1092,7 @@ export default {
 .g-resize-handle { position: absolute; top: 0; width: 7px; margin-left: -3px; cursor: col-resize; z-index: 8; background: transparent; }
 .g-resize-handle:hover, .g-resize-handle.resizing { background: var(--accent-soft); }
 
-.g-label { position: absolute; z-index: 5; background: var(--white); display: flex; align-items: center; gap: 6px; height: 20px; border-bottom: 1px solid var(--gray-150); border-right: 2px solid var(--gray-300); font: var(--text-small); white-space: nowrap; overflow: hidden; cursor: pointer; box-sizing: border-box; box-shadow: 2px 0 5px -3px rgba(20,33,61,0.1); }
+.g-label { position: absolute; z-index: 5; background: var(--white); display: flex; align-items: center; gap: 6px; height: 20px; border-bottom: 1px solid var(--gray-150); border-right: 2px solid var(--gray-300); font: var(--text-small); white-space: nowrap; overflow: hidden; cursor: pointer; box-sizing: border-box; box-shadow: 2px 0 5px -3px rgba(28,25,23,0.1); }
 .g-label.stripe { background: var(--gray-100); }
 .g-label:hover { background: var(--accent-soft); }
 .g-label.selected { background: var(--accent-soft); }
@@ -1116,26 +1116,26 @@ export default {
 .g-timeline-row { position: relative; height: 20px; border-bottom: 1px solid var(--gray-150); z-index: 2; }
 .g-timeline-row.stripe { background: var(--gray-100); }
 
-.g-bar { position: absolute; top: 5px; height: 10px; border-radius: var(--radius-sm); overflow: hidden; background: var(--accent-soft); border: 1.5px solid var(--accent); box-sizing: border-box; box-shadow: 0 1px 2px rgba(20,33,61,0.15); }
+.g-bar { position: absolute; top: 5px; height: 10px; border-radius: var(--radius-sm); overflow: hidden; background: var(--accent-soft); border: 1.5px solid var(--accent); box-sizing: border-box; box-shadow: 0 1px 2px rgba(28,25,23,0.15); }
 .g-bar.critical { background: var(--crit-tint); border-color: var(--crit); }
 .g-bar.near { background: var(--near-tint); border-color: var(--near); }
 .g-bar.other { background: var(--accent-soft); border-color: var(--accent); }
-.g-bar.negative { box-shadow: inset 0 -2px 0 0 var(--crit), 0 1px 2px rgba(20,33,61,0.15); }
+.g-bar.negative { box-shadow: inset 0 -2px 0 0 var(--crit), 0 1px 2px rgba(28,25,23,0.15); }
 .g-bar.selected { box-shadow: 0 0 0 2px var(--ink); }
-.g-bar-progress { height: 100%; background: rgba(20,33,61,0.28); }
+.g-bar-progress { height: 100%; background: rgba(28,25,23,0.28); }
 
 .g-bar-wbs { position: absolute; top: 7px; height: 6px; border-radius: 3px; background: var(--gray-700); }
 .g-bar-wbs::before, .g-bar-wbs::after { content: ''; position: absolute; top: 100%; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 4px solid var(--gray-700); }
 .g-bar-wbs::before { left: -1px; }
 .g-bar-wbs::after { right: -1px; }
 
-.g-milestone { position: absolute; top: 5px; width: 10px; height: 10px; margin-left: -5px; background: var(--milestone); transform: rotate(45deg); border-radius: 2px; box-shadow: 0 1px 2px rgba(20,33,61,0.2); }
+.g-milestone { position: absolute; top: 5px; width: 10px; height: 10px; margin-left: -5px; background: var(--milestone); transform: rotate(45deg); border-radius: 2px; box-shadow: 0 1px 2px rgba(28,25,23,0.2); }
 .g-milestone.critical { background: var(--crit); }
 .g-milestone.near { background: var(--near); }
 
 /* Right-side drawer, anchored to .gantt-body so it spans exactly the scroll viewport's
    height regardless of the header/controls/filter-bar above it. */
-.gantt-detail-panel { position: absolute; top: 0; right: 0; bottom: 0; width: 420px; max-width: 92%; background: var(--white); border-left: 1px solid var(--gray-300); box-shadow: -8px 0 24px rgba(20,33,61,0.14); z-index: 15; overflow-y: auto; box-sizing: border-box; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-5); }
+.gantt-detail-panel { position: absolute; top: 0; right: 0; bottom: 0; width: 420px; max-width: 92%; background: var(--white); border-left: 1px solid var(--gray-300); box-shadow: -8px 0 24px rgba(28,25,23,0.14); z-index: 15; overflow-y: auto; box-sizing: border-box; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-5); }
 .detail-slide-enter-active, .detail-slide-leave-active { transition: transform 0.2s ease, opacity 0.2s ease; }
 .detail-slide-enter-from, .detail-slide-leave-to { transform: translateX(24px); opacity: 0; }
 
