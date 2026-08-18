@@ -42,6 +42,10 @@
           </label>
         </div>
         <p class="hint">Files are parsed on the server in memory and never stored. Your last file is kept in this browser only, so you can reopen it without re-uploading.</p>
+        <a class="gh-link" href="https://github.com/joaompfp/schedule-app" target="_blank" rel="noopener">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+          Open source on GitHub
+        </a>
       </div>
     </div>
 
@@ -104,6 +108,15 @@
 
       <!-- Tab navigation -->
       <nav class="tabs">
+        <a class="brand" href="https://github.com/joaompfp/schedule-app" target="_blank" rel="noopener" title="Schedule App on GitHub">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" class="brand-icon" stroke-width="1.8">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M3 9h18" />
+            <path d="M9 3v18" />
+            <path d="M7 12l2 2 4-4" />
+          </svg>
+          <span class="brand-name">Schedule App</span>
+        </a>
         <button :class="{ active: tab === 'gantt' }" @click="tab = 'gantt'">Gantt Chart</button>
         <button :class="{ active: tab === 'story' }" @click="tab = 'story'">Critical Path</button>
         <button :class="{ active: tab === 'table' }" @click="tab = 'table'">Activity Table</button>
@@ -111,6 +124,9 @@
         <button :class="{ active: tab === 'progress' }" @click="tab = 'progress'">Progress</button>
         <button :class="{ active: tab === 'health' }" @click="tab = 'health'">Health Check</button>
         <button :class="{ active: tab === 'compare' }" @click="tab = 'compare'">Compare</button>
+        <select class="theme-select" v-model="theme" title="Color theme">
+          <option v-for="(label, key) in themeOptions" :key="key" :value="key">{{ label }}</option>
+        </select>
         <button class="btn-collapse" @click="headerCollapsed = !headerCollapsed" :title="headerCollapsed ? 'Show header' : 'Hide header for more room'">
           {{ headerCollapsed ? '⌄ Show header' : '⌃ Hide header' }}
         </button>
@@ -334,6 +350,12 @@ import { loadLastFile, saveLastFile, clearLastFile } from './utils/lastFile'
 import { loadAnnotations, saveAnnotation, removeAnnotation } from './utils/annotations'
 import { displayStart, displayEnd } from './utils/p6'
 
+function applyTheme(theme) {
+  // Default theme lives on :root directly; named themes override via the attribute.
+  if (theme === 'sepia') document.documentElement.removeAttribute('data-theme')
+  else document.documentElement.setAttribute('data-theme', theme)
+}
+
 export default {
   name: 'App',
   components: { WBSNode, CriticalPathGraph, GanttChart, HealthCheck, ProgressView, CompareView },
@@ -358,9 +380,20 @@ export default {
       compareData: null,
       compareFilename: '',
       dismissedWarnings: [],
+      theme: localStorage.getItem('schedule-app:theme') || 'sepia',
+      themeOptions: { sepia: 'Sepia', slate: 'Slate', clay: 'Clay', ink: 'Ink' },
       compareLoading: false,
       compareDragOver: false,
     }
+  },
+  created() {
+    applyTheme(this.theme)
+  },
+  watch: {
+    theme(t) {
+      applyTheme(t)
+      try { localStorage.setItem('schedule-app:theme', t) } catch { /* storage unavailable */ }
+    },
   },
   computed: {
     filteredActivities() {
@@ -643,6 +676,53 @@ export default {
   --radius-md: 8px;
 }
 
+/* ── Alternate themes ──────────────────────────────────────────────────────
+   Only the structural colors (ink/accent/neutrals) re-theme. The semantic status
+   colors (--crit/--near/--ok/--milestone) are deliberately IDENTICAL across themes:
+   criticality must read the same no matter the wallpaper. */
+
+/* Slate — cool graphite neutrals, deep indigo accent. */
+[data-theme="slate"] {
+  --ink: #16181D;
+  --ink-soft: #3A414E;
+  --accent: #3A55C0;
+  --accent-soft: #E3E8FA;
+  --gray-900: #191B1F;
+  --gray-700: #4A5160;
+  --gray-500: #7C8494;
+  --gray-300: #D4D8DF;
+  --gray-150: #ECEEF2;
+  --gray-100: #F5F6F8;
+}
+
+/* Clay — the sepia warmth pushed further: terracotta accent on warm paper. */
+[data-theme="clay"] {
+  --ink: #221A15;
+  --ink-soft: #52453C;
+  --accent: #A6491F;
+  --accent-soft: #F6E2D7;
+  --gray-900: #241C16;
+  --gray-700: #5E5248;
+  --gray-500: #8E8276;
+  --gray-300: #DED5CA;
+  --gray-150: #F2ECE4;
+  --gray-100: #F9F5F0;
+}
+
+/* Ink — near-monochrome: pure neutrals, near-black accent, minimal chrome. */
+[data-theme="ink"] {
+  --ink: #111111;
+  --ink-soft: #3D3D3D;
+  --accent: #1F1F1F;
+  --accent-soft: #E9E9E9;
+  --gray-900: #1A1A1A;
+  --gray-700: #4F4F4F;
+  --gray-500: #8A8A8A;
+  --gray-300: #D9D9D9;
+  --gray-150: #EFEFEF;
+  --gray-100: #F7F7F7;
+}
+
 /* ── Reset & base ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: var(--font-ui); background: var(--white); color: var(--ink); font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
@@ -679,6 +759,8 @@ body { font-family: var(--font-ui); background: var(--white); color: var(--ink);
 .drop-zone label svg { color: var(--accent); }
 .drop-zone .loading { color: var(--accent); font-weight: 600; }
 .hint { font: var(--text-small); color: var(--gray-500); margin-top: var(--space-4); }
+.gh-link { display: inline-flex; align-items: center; gap: 6px; margin-top: var(--space-4); font: var(--text-small); color: var(--gray-700); text-decoration: none; }
+.gh-link:hover { color: var(--accent); }
 
 /* ── Dashboard ── */
 .dashboard { max-width: 1200px; margin: 0 auto; padding: var(--space-6); }
@@ -708,11 +790,16 @@ body { font-family: var(--font-ui); background: var(--white); color: var(--ink);
 
 /* Tabs */
 .tabs { display: flex; align-items: center; gap: var(--space-1); margin-bottom: var(--space-6); border-bottom: 1px solid var(--gray-300); }
+.brand { display: flex; align-items: center; gap: 7px; margin-right: var(--space-4); text-decoration: none; padding-bottom: 2px; }
+.brand-icon { stroke: var(--accent); flex-shrink: 0; }
+.brand-name { font: var(--text-small); font-weight: 700; color: var(--ink); letter-spacing: 0.01em; white-space: nowrap; }
+.brand:hover .brand-name { color: var(--accent); }
+.theme-select { margin-left: auto; margin-bottom: 4px; padding: 5px 8px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); color: var(--gray-700); background: var(--white); cursor: pointer; }
 .header-collapsed .tabs { margin-bottom: var(--space-3); }
 .tabs button { padding: var(--space-2) var(--space-4); border: none; background: none; cursor: pointer; font: var(--text-small); color: var(--gray-700); border-bottom: 3px solid transparent; margin-bottom: -1px; transition: color 0.15s, border-color 0.2s; }
 .tabs button:hover { color: var(--ink); }
 .tabs button.active { color: var(--ink); border-bottom-color: var(--accent); font-weight: 700; }
-.tabs .btn-collapse { margin-left: auto; padding: 6px 14px; font: var(--text-small); color: var(--gray-500); border: 1px solid var(--gray-300); border-radius: var(--radius-sm); margin-bottom: 4px; background: none; cursor: pointer; }
+.tabs .btn-collapse { margin-left: var(--space-2); padding: 6px 14px; font: var(--text-small); color: var(--gray-500); border: 1px solid var(--gray-300); border-radius: var(--radius-sm); margin-bottom: 4px; background: none; cursor: pointer; }
 .tabs .btn-collapse:hover { color: var(--gray-700); background: var(--gray-100); }
 
 /* Section */
