@@ -318,7 +318,13 @@
 
       <!-- Health Check -->
       <div v-show="tab === 'health'" class="section section-full">
-        <HealthCheck :data="data" @jump="jumpToActivity" />
+        <HealthCheck
+          :data="data"
+          :annotations="annotations"
+          @jump="jumpToActivity"
+          @annotate="setAnnotation"
+          @unannotate="removeAnnotationFor"
+        />
       </div>
 
       <!-- Calendars -->

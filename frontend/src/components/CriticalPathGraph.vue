@@ -106,107 +106,23 @@
       </svg>
     </div>
 
-    <Transition name="detail-slide">
-      <aside class="detail-drawer" v-if="selected">
-        <div class="detail-header">
-          <button class="detail-close" @click="selectedId = null" title="Close" aria-label="Close">&times;</button>
-          <span class="detail-code">{{ selected.task_code }}</span>
-          <h3 class="detail-name">{{ selected.task_name }}</h3>
-          <div v-if="selected.wbs_path" class="detail-wbs-path">{{ selected.wbs_path }}</div>
-        </div>
-
-        <div class="detail-stat-grid">
-          <div class="stat-tile">
-            <div class="stat-value">{{ formatHours(selected.duration_hrs, selected.calendar_hrs_per_day) }}</div>
-            <div class="stat-label">Duration</div>
-          </div>
-          <div class="stat-tile" :class="floatTileClass(selected)">
-            <div class="stat-value">{{ formatFloat(selected.total_float_hrs, selected.calendar_hrs_per_day) }}</div>
-            <div class="stat-label">Float</div>
-          </div>
-          <div class="stat-tile">
-            <div class="stat-value stat-value-date">{{ formatDate(displayStart(selected)) }}</div>
-            <div class="stat-label">Start</div>
-          </div>
-          <div class="stat-tile">
-            <div class="stat-value stat-value-date">{{ formatDate(displayEnd(selected)) }}</div>
-            <div class="stat-label">Finish</div>
-          </div>
-          <div class="stat-tile">
-            <div class="stat-value stat-status" :class="'status-' + selected.status">{{ statusLabel(selected.status) }}</div>
-            <div class="stat-label">Status</div>
-          </div>
-          <div class="stat-tile">
-            <div class="stat-value">{{ selected.pct_complete }}%</div>
-            <div class="stat-progress"><div class="stat-progress-fill" :style="{ width: selected.pct_complete + '%' }"></div></div>
-            <div class="stat-label">Complete</div>
-          </div>
-        </div>
-
-        <div v-if="selected.cstr_type" class="detail-constraint">
-          <span class="constraint-label">Constraint</span>
-          <strong>{{ cstrLabel(selected.cstr_type) }}</strong>
-          <span v-if="selected.cstr_date">&middot; {{ formatDate(selected.cstr_date) }}</span>
-        </div>
-
-        <div class="detail-rels">
-          <div class="rel-section">
-            <h4>Predecessors <em>{{ selectedPredecessors.length }}</em></h4>
-            <div v-if="selectedPredecessors.length === 0" class="rel-empty">None</div>
-            <button v-for="p in selectedPredecessors" :key="p.task_id" class="rel-item-btn" @click="revealAndSelect(p.task_id)">
-              <div class="rel-item-row">
-                <span class="rel-code">{{ p.activity ? p.activity.task_code : '?' + p.task_id }}</span>
-                <span class="rel-item-name">{{ p.activity ? p.activity.task_name : '' }}</span>
-                <span v-if="p.driving" class="rel-driving" title="This link controls the dates — P6's 'driving' relationship flag">Driving</span>
-                <span v-if="!visibleIds.has(p.task_id)" class="rel-hidden">not shown</span>
-              </div>
-              <div class="rel-item-row rel-item-sub">
-                <span class="rel-type">{{ relTypeLabel(p.type) }}</span>
-                <template v-if="p.activity">
-                  <span class="rel-dates">{{ formatDate(displayStart(p.activity)) }} → {{ formatDate(displayEnd(p.activity)) }}</span>
-                  <span class="rel-dur">{{ formatHours(p.activity.duration_hrs, p.activity.calendar_hrs_per_day) }}</span>
-                </template>
-                <span v-if="p.lag_hrs" class="rel-lag">{{ formatLag(p.lag_hrs, selected.calendar_hrs_per_day) }} lag</span>
-              </div>
-            </button>
-          </div>
-          <div class="rel-section">
-            <h4>Successors <em>{{ selectedSuccessors.length }}</em></h4>
-            <div v-if="selectedSuccessors.length === 0" class="rel-empty">None</div>
-            <button v-for="s in selectedSuccessors" :key="s.task_id" class="rel-item-btn" @click="revealAndSelect(s.task_id)">
-              <div class="rel-item-row">
-                <span class="rel-code">{{ s.activity ? s.activity.task_code : '?' + s.task_id }}</span>
-                <span class="rel-item-name">{{ s.activity ? s.activity.task_name : '' }}</span>
-                <span v-if="s.driving" class="rel-driving" title="This link controls the dates — P6's 'driving' relationship flag">Driving</span>
-                <span v-if="!visibleIds.has(s.task_id)" class="rel-hidden">not shown</span>
-              </div>
-              <div class="rel-item-row rel-item-sub">
-                <span class="rel-type">{{ relTypeLabel(s.type) }}</span>
-                <template v-if="s.activity">
-                  <span class="rel-dates">{{ formatDate(displayStart(s.activity)) }} → {{ formatDate(displayEnd(s.activity)) }}</span>
-                  <span class="rel-dur">{{ formatHours(s.activity.duration_hrs, s.activity.calendar_hrs_per_day) }}</span>
-                </template>
-                <span v-if="s.lag_hrs" class="rel-lag">{{ formatLag(s.lag_hrs, selected.calendar_hrs_per_day) }} lag</span>
-              </div>
-            </button>
-          </div>
-        </div>
-
-        <AnnotationEditor
-          :key="selected.task_id"
-          :annotation="annotations[selected.task_id] || null"
-          @save="patch => $emit('annotate', selected.task_id, patch)"
-          @remove="$emit('unannotate', selected.task_id)"
-        />
-      </aside>
-    </Transition>
+    <ActivityDetailDrawer
+      :activity="selected"
+      :lookup="actLookup"
+      :annotations="annotations"
+      :visible-ids="visibleIds"
+      @close="selectedId = null"
+      @select="revealAndSelect"
+      @annotate="(id, patch) => $emit('annotate', id, patch)"
+      @unannotate="id => $emit('unannotate', id)"
+    />
     </div>
   </div>
 </template>
 
 <script>
 import dagre from 'dagre'
-import AnnotationEditor from './AnnotationEditor.vue'
+import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
 import { formatDate, formatHours, formatLag, statusLabel, isMilestone, formatFloat, formatDateRange } from '../utils/format'
 import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
 
@@ -228,7 +144,7 @@ export default {
     visible: { type: Boolean, default: true },
   },
   emits: ['annotate', 'unannotate'],
-  components: { AnnotationEditor },
+  components: { ActivityDetailDrawer },
   data() {
     return {
       expandedExtra: new Set(), // task_ids manually revealed beyond critical+near-critical
@@ -324,14 +240,6 @@ export default {
     },
     selected() {
       return this.selectedId != null ? this.actLookup.get(this.selectedId) : null
-    },
-    selectedPredecessors() {
-      if (!this.selected) return []
-      return this.selected.predecessors.map(p => ({ ...p, activity: this.actLookup.get(p.task_id) || null }))
-    },
-    selectedSuccessors() {
-      if (!this.selected) return []
-      return this.selected.successors.map(s => ({ ...s, activity: this.actLookup.get(s.task_id) || null }))
     },
     // Runs dagre once to get a correct topological rank + crossing-minimized order,
     // then re-flows that single wide row into wrapped, alternating-direction rows —
@@ -492,12 +400,6 @@ export default {
     cstrLabel,
     displayStart,
     displayEnd,
-    floatTileClass(a) {
-      if (a.is_negative_float) return 'stat-tile-neg'
-      if (a.total_float_hrs === 0) return 'stat-tile-crit'
-      if (a.total_float_hrs != null && a.total_float_hrs <= 80) return 'stat-tile-near'
-      return ''
-    },
     truncate(s, n) {
       if (!s) return ''
       return s.length > n ? s.slice(0, n - 1) + '…' : s
@@ -777,5 +679,4 @@ export default {
 
 
 
-.rel-hidden { color: var(--gray-500); font: var(--text-micro); font-style: italic; }
 </style>
