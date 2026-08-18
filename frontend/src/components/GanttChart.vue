@@ -67,10 +67,13 @@
         <option value="TK_Complete">Complete</option>
       </select>
       <label class="filter-check"><input type="checkbox" v-model="filterCriticalOnly" /> Critical only</label>
-      <select v-for="t in codeTypesAvailable" :key="t" v-model="filterCodes[t]" class="filter-select">
-        <option value="">All {{ t }}</option>
-        <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
-      </select>
+      <span v-for="t in codeTypesAvailable" :key="t" class="code-filter-group">
+        <span class="code-filter-src" aria-hidden="true">ACTVTYPE</span>
+        <select v-model="filterCodes[t]" class="filter-select" :title="`P6 activity code category '${t}' — name and values read verbatim from this file's ACTVTYPE/ACTVCODE tables`">
+          <option value="">All {{ t }}</option>
+          <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
+        </select>
+      </span>
       <span class="date-range-filter" title="Show only activities whose dates touch this window">
         <input type="date" v-model="filterFrom" class="filter-date" title="Window start — activities finishing before this are hidden" />
         <span class="date-range-sep">&ndash;</span>

@@ -218,10 +218,13 @@
             <input type="checkbox" v-model="showCriticalOnly" />
             Critical only
           </label>
-          <select v-for="t in codeTypesAvailable" :key="t" v-model="codeFilters[t]" class="filter-select">
-            <option value="">All {{ t }}</option>
-            <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
-          </select>
+          <span v-for="t in codeTypesAvailable" :key="t" class="code-filter-group">
+            <span class="code-filter-src" aria-hidden="true">ACTVTYPE</span>
+            <select v-model="codeFilters[t]" class="filter-select" :title="`P6 activity code category '${t}' — name and values read verbatim from this file's ACTVTYPE/ACTVCODE tables`">
+              <option value="">All {{ t }}</option>
+              <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
+            </select>
+          </span>
           <button class="btn-outline btn-export-view" @click="doExport(() => exportActivitiesCsv(data, filteredActivities, slugName() + '-filtered.csv'))">
             Export view (.csv)
           </button>
@@ -355,7 +358,7 @@
             <table v-else class="snap-table">
               <thead><tr><th>Project</th><th>File</th><th class="num">Data date</th><th class="num">Activities</th><th class="num">Saved</th><th></th></tr></thead>
               <tbody>
-                <tr v-for="snap in snapshots" :key="snap.id" :class="{ 'snap-other-proj': snap.proj !== data.project.proj_short_name }">
+                <tr v-for="snap in snapshots" :key="snap.id" :class="{ 'snap-other-proj': snap.proj !== data.project.proj_short_name }" :title="snap.proj !== data.project.proj_short_name ? 'Saved under a different internal project name — P6 short names often change per draft. Compare still works: activities are matched by code, not project name.' : ''">
                   <td class="code">{{ snap.proj }}</td>
                   <td class="name-cell">{{ snap.filename }}</td>
                   <td class="num-cell">{{ snap.dataDate ? formatDate(snap.dataDate) : '—' }}</td>
@@ -1056,6 +1059,11 @@ th.num { text-align: right !important; }
 .snap-table .num-cell { font-family: var(--font-mono); text-align: right; white-space: nowrap; }
 .snap-other-proj td { opacity: 0.55; }
 .snap-actions { display: flex; gap: var(--space-2); justify-content: flex-end; align-items: center; }
+
+/* Code-filter provenance eyebrow: these dropdowns are generated from the file's own
+   ACTVTYPE table — the tag says so at a glance, the tooltip spells it out. */
+.code-filter-group { position: relative; display: inline-flex; }
+.code-filter-src { position: absolute; top: -5px; left: 7px; padding: 0 3px; font-family: var(--font-mono); font-size: 8px; font-weight: 600; letter-spacing: 0.08em; color: var(--gray-500); background: var(--white); line-height: 1; pointer-events: none; z-index: 1; }
 
 /* ── Small screens ────────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
