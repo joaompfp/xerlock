@@ -177,9 +177,13 @@ export default {
       if (e.key === 'Escape' && this.detailRow && this.$el.offsetParent !== null) this.detailRow = null
     }
     window.addEventListener('keydown', this._onKeydown)
+    document.addEventListener('mousedown', this._onDocMousedown = e => {
+      if (this.detailRow && this.$el.offsetParent !== null && !this.$el.contains(e.target)) this.detailRow = null
+    })
   },
   beforeUnmount() {
     window.removeEventListener('keydown', this._onKeydown)
+    document.removeEventListener('mousedown', this._onDocMousedown)
   },
   methods: {
     selectTable(name) {

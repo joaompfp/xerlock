@@ -62,7 +62,7 @@
             :class="edgeClass(e)"
             :marker-end="edgeIsCritical(e) ? 'url(#arrow-critical)' : 'url(#arrow)'"
           >
-            <title>{{ relTypeLabel(e.type) }}{{ e.lagHrs ? ` +${e.lagHrs}h lag` : '' }}</title>
+            <title>{{ relTypeLabel(e.type) }}{{ e.lagHrs ? ` ${formatLag(e.lagHrs)} lag` : '' }}</title>
           </path>
 
           <g
@@ -166,7 +166,7 @@
                   <span class="rel-dates">{{ formatDate(displayStart(p.activity)) }} → {{ formatDate(displayEnd(p.activity)) }}</span>
                   <span class="rel-dur">{{ formatHours(p.activity.duration_hrs, p.activity.calendar_hrs_per_day) }}</span>
                 </template>
-                <span v-if="p.lag_hrs" class="rel-lag">+{{ p.lag_hrs }}h lag</span>
+                <span v-if="p.lag_hrs" class="rel-lag">{{ formatLag(p.lag_hrs, selected.calendar_hrs_per_day) }} lag</span>
               </div>
             </button>
           </div>
@@ -186,7 +186,7 @@
                   <span class="rel-dates">{{ formatDate(displayStart(s.activity)) }} → {{ formatDate(displayEnd(s.activity)) }}</span>
                   <span class="rel-dur">{{ formatHours(s.activity.duration_hrs, s.activity.calendar_hrs_per_day) }}</span>
                 </template>
-                <span v-if="s.lag_hrs" class="rel-lag">+{{ s.lag_hrs }}h lag</span>
+                <span v-if="s.lag_hrs" class="rel-lag">{{ formatLag(s.lag_hrs, selected.calendar_hrs_per_day) }} lag</span>
               </div>
             </button>
           </div>
@@ -207,7 +207,7 @@
 <script>
 import dagre from 'dagre'
 import AnnotationEditor from './AnnotationEditor.vue'
-import { formatDate, formatHours, statusLabel, isMilestone, formatFloat, formatDateRange } from '../utils/format'
+import { formatDate, formatHours, formatLag, statusLabel, isMilestone, formatFloat, formatDateRange } from '../utils/format'
 import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
 
 const NEAR_CRITICAL_THRESHOLD_HRS = 80 // 10 working days
@@ -249,6 +249,12 @@ export default {
         this.selectedId = null
       }
     })
+    // Clicks on app chrome outside this component dismiss the fixed drawer overlay.
+    document.addEventListener('mousedown', this._onDocMousedown = (e) => {
+      if (this.selectedId != null && this.$el.offsetParent !== null && !this.$el.contains(e.target)) {
+        this.selectedId = null
+      }
+    })
     if (this.$refs.canvas) {
       this.canvasWidth = this.$refs.canvas.clientWidth
       this._resizeObserver = new ResizeObserver(entries => {
@@ -261,6 +267,7 @@ export default {
   },
   beforeUnmount() {
     window.removeEventListener('keydown', this._onKeydown)
+    document.removeEventListener('mousedown', this._onDocMousedown)
     this._resizeObserver?.disconnect()
     clearTimeout(this._animTimer)
     document.removeEventListener('fullscreenchange', this.onFullscreenChange)
@@ -478,6 +485,7 @@ export default {
   methods: {
     formatDate,
     formatHours,
+    formatLag,
     statusLabel,
     formatFloat,
     relTypeLabel,

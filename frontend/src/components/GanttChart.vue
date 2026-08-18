@@ -187,6 +187,15 @@
           :style="{ left: (labelColWidth + todayX) + 'px', top: HEADER_HEIGHT + 'px', height: bodyHeight + 'px' }"
         ><span class="g-today-flag">Today</span></div>
 
+        <!-- Data date line: the schedule's own status date — the anchor every
+             progress/forecast judgement should be made against, not "today". -->
+        <div
+          v-if="dataDateX !== null"
+          class="g-dd-line"
+          :style="{ left: (labelColWidth + dataDateX) + 'px', top: HEADER_HEIGHT + 'px', height: bodyHeight + 'px' }"
+          :title="'Data date: ' + formatDate(data.project.data_date)"
+        ><span class="g-dd-flag">Data date</span></div>
+
         <!-- Resize handle for the label column, tracked against horizontal scroll manually
              (position:sticky inside a CSS-grid item gets unreliable with explicit track spans,
              so we just follow scrollLeftPx from the @scroll handler instead). -->
@@ -240,6 +249,7 @@
                 :class="row.cls"
                 :style="{ left: row.x + 'px' }"
                 :title="milestoneTitle(row.activity)"
+                @click="selectActivity(row.activity)"
               ></div>
             </template>
             <div
@@ -248,6 +258,7 @@
               :class="[row.cls, { selected: row.activity.task_id === selectedTaskId }]"
               :style="{ left: row.x + 'px', width: row.w + 'px' }"
               :title="barTitle(row.activity)"
+              @click="selectActivity(row.activity)"
             >
               <div class="g-bar-progress" :style="{ width: row.activity.pct_complete + '%' }"></div>
             </div>
@@ -327,7 +338,7 @@
                   <span class="rel-dates">{{ formatDate(displayStart(p.activity)) }} → {{ formatDate(displayEnd(p.activity)) }}</span>
                   <span class="rel-dur">{{ formatHours(p.activity.duration_hrs, p.activity.calendar_hrs_per_day) }}</span>
                 </template>
-                <span v-if="p.lag_hrs" class="rel-lag">+{{ p.lag_hrs }}h lag</span>
+                <span v-if="p.lag_hrs" class="rel-lag">{{ formatLag(p.lag_hrs, selectedActivity.calendar_hrs_per_day) }} lag</span>
               </div>
             </button>
           </div>
@@ -346,7 +357,7 @@
                   <span class="rel-dates">{{ formatDate(displayStart(s.activity)) }} → {{ formatDate(displayEnd(s.activity)) }}</span>
                   <span class="rel-dur">{{ formatHours(s.activity.duration_hrs, s.activity.calendar_hrs_per_day) }}</span>
                 </template>
-                <span v-if="s.lag_hrs" class="rel-lag">+{{ s.lag_hrs }}h lag</span>
+                <span v-if="s.lag_hrs" class="rel-lag">{{ formatLag(s.lag_hrs, selectedActivity.calendar_hrs_per_day) }} lag</span>
               </div>
             </button>
           </div>
@@ -365,7 +376,7 @@
 </template>
 
 <script>
-import { formatDate, formatDateShort, formatHours, isMilestone, formatFloat, statusLabel } from '../utils/format'
+import { formatDate, formatDateShort, formatHours, isMilestone, formatFloat, formatLag, statusLabel } from '../utils/format'
 import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
 import IconChevron from './IconChevron.vue'
 import AnnotationEditor from './AnnotationEditor.vue'
@@ -453,9 +464,19 @@ export default {
   mounted() {
     document.addEventListener('fullscreenchange', this.onFullscreenChange)
     window.addEventListener('keydown', this.onKeydown)
+    // The drawer is a fixed overlay; a click on app chrome outside this component
+    // (tab bar, summary toggle, another tab's controls) dismisses it instead of the
+    // overlay swallowing the interaction context.
+    this._onDocMousedown = e => {
+      if (this.selectedTaskId && this.$el.offsetParent !== null && !this.$el.contains(e.target)) {
+        this.selectedTaskId = null
+      }
+    }
+    document.addEventListener('mousedown', this._onDocMousedown)
   },
   beforeUnmount() {
     document.removeEventListener('fullscreenchange', this.onFullscreenChange)
+    document.removeEventListener('mousedown', this._onDocMousedown)
     window.removeEventListener('keydown', this.onKeydown)
     window.removeEventListener('mousemove', this.onPanMove)
     window.removeEventListener('mouseup', this.onPanEnd)
@@ -609,6 +630,14 @@ export default {
       const today = new Date()
       if (today < this.rangeStart || today > this.rangeEnd) return null
       return Math.round(((today - this.rangeStart) / 86400000) * this.dayWidth)
+    },
+    dataDateX() {
+      if (!this.data.project.data_date) return null
+      const dd = new Date(this.data.project.data_date)
+      if (isNaN(dd) || dd < this.rangeStart || dd > this.rangeEnd) return null
+      const x = Math.round(((dd - this.rangeStart) / 86400000) * this.dayWidth)
+      // When the file is fresh, data date ≈ today — don't stack two flags on one pixel.
+      return this.todayX !== null && Math.abs(x - this.todayX) < 3 ? null : x
     },
     codeTypesAvailable() {
       return this.data.project.has_activity_codes ? this.data.project.activity_code_types : []
@@ -969,6 +998,7 @@ export default {
     },
     formatDate,
     formatDateShort,
+    formatLag,
     formatHours,
     formatFloat,
     statusLabel,
@@ -1210,6 +1240,8 @@ export default {
 .g-progress-dot { fill: var(--milestone); }
 
 .g-today-line { position: absolute; width: 2px; background: var(--accent); z-index: 4; pointer-events: none; }
+.g-dd-line { position: absolute; width: 0; border-left: 2px dashed var(--milestone); z-index: 4; pointer-events: none; }
+.g-dd-flag { position: absolute; top: 2px; left: 3px; font: var(--text-micro); font-weight: 700; color: var(--white); background: var(--milestone); padding: 0 5px; border-radius: var(--radius-sm); white-space: nowrap; }
 .g-today-flag { position: absolute; top: -18px; left: 2px; font: var(--text-micro); font-weight: 700; color: var(--accent); white-space: nowrap; }
 
 .g-resize-handle { position: absolute; top: 0; width: 7px; margin-left: -3px; cursor: col-resize; z-index: 8; background: transparent; }
