@@ -36,7 +36,10 @@
       @mouseleave="onPanEnd"
       :class="{ dragging: panning }"
     >
-      <svg :width="svgWidth" :height="svgHeight">
+      <!-- Fills the canvas rather than sizing to the graph layout: pan/zoom happens via the
+           inner <g> transform, so an SVG sized to the layout clips any content panned or
+           zoomed beyond the graph's original footprint. -->
+      <svg width="100%" height="100%">
         <defs>
           <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
             <path d="M0 0L10 5L0 10z" class="arrow-normal" />
@@ -407,12 +410,6 @@ export default {
     },
     edges() {
       return this.layout.edges
-    },
-    svgWidth() {
-      return Math.max(this.layout.width, 400)
-    },
-    svgHeight() {
-      return Math.max(this.layout.height, 300)
     },
   },
   methods: {

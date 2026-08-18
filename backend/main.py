@@ -16,7 +16,12 @@ from pydantic import BaseModel
 
 from xerparser.reader import Reader
 
-app = FastAPI(title="Schedule App", version="0.1.0")
+app = FastAPI(
+    title="Schedule App",
+    version="1.0.0",
+    description="Parses Primavera P6 .xer exports in memory and returns the full schedule "
+    "(activities, WBS tree, project stats, longest-path trace) as JSON. Nothing is persisted.",
+)
 
 app.add_middleware(
     CORSMiddleware,
