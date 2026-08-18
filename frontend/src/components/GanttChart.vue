@@ -317,6 +317,7 @@
               <div class="rel-item-row">
                 <span class="rel-code">{{ p.activity ? p.activity.task_code : '?' + p.task_id }}</span>
                 <span class="rel-item-name">{{ p.activity ? p.activity.task_name : '' }}</span>
+                <span v-if="p.driving" class="rel-driving" title="This link controls the dates — P6's 'driving' relationship flag">Driving</span>
               </div>
               <div class="rel-item-row rel-item-sub">
                 <span class="rel-type">{{ relTypeLabel(p.type) }}</span>
@@ -335,6 +336,7 @@
               <div class="rel-item-row">
                 <span class="rel-code">{{ s.activity ? s.activity.task_code : '?' + s.task_id }}</span>
                 <span class="rel-item-name">{{ s.activity ? s.activity.task_name : '' }}</span>
+                <span v-if="s.driving" class="rel-driving" title="This link controls the dates — P6's 'driving' relationship flag">Driving</span>
               </div>
               <div class="rel-item-row rel-item-sub">
                 <span class="rel-type">{{ relTypeLabel(s.type) }}</span>
@@ -1272,6 +1274,7 @@ export default {
 .rel-dates { font-family: var(--font-mono); font-size: 12px; color: var(--gray-700); }
 .rel-dur { font-family: var(--font-mono); font-size: 12px; color: var(--gray-700); margin-left: auto; }
 .rel-lag { font-size: 11px; color: var(--gray-500); font-style: italic; }
+.rel-driving { flex-shrink: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--white); background: var(--crit); padding: 1px 7px; border-radius: 9px; }
 
 @media print {
   @page { size: landscape; margin: 10mm; }

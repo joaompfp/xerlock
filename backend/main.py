@@ -337,6 +337,28 @@ def parse_xer(filepath: str) -> ScheduleData:
                     if gap <= min_gap + DRIVING_EPSILON_HRS:
                         stack.append(ptid)
 
+    # Annotate every relationship with its driving flag, using the same closest-gap rule
+    # as the longest-path trace: among a successor's predecessors, the one(s) whose
+    # implied date best explains the successor's computed early date are driving it.
+    for a in project.activities:
+        preds = pred_map.get(a.task_id, [])
+        gaps = []
+        for p in preds:
+            pred_a = act_lookup.get(p["task_id"])
+            gaps.append(driving_gap_hrs(a, pred_a, p["type"], p["lag_hrs"]) if pred_a else None)
+        valid = [g for g in gaps if g is not None]
+        min_gap = min(valid) if valid else None
+        for p, g in zip(preds, gaps):
+            p["driving"] = g is not None and g <= min_gap + DRIVING_EPSILON_HRS
+    # Mirror onto the successor lists so both directions of the panel carry the flag.
+    for tid, succs in succ_map.items():
+        for s in succs:
+            s["driving"] = False
+            for p in pred_map.get(s["task_id"], []):
+                if p["task_id"] == tid and p["type"] == s["type"] and p["lag_hrs"] == s["lag_hrs"]:
+                    s["driving"] = p["driving"]
+                    break
+
     # Build activities list. is_critical uses the standard TF=0 definition (every
     # zero-float activity); is_longest_path uses the driving-chain trace above.
     activities = []
