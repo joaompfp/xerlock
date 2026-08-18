@@ -626,9 +626,9 @@ export default {
 .node-annotation-flag.sev-risk { fill: var(--near); }
 .node-annotation-flag.sev-logic { fill: var(--crit); }
 .node-annotation-flag.sev-resolved { fill: var(--ok); }
-.node.selected .node-rect { stroke: var(--accent); stroke-width: 3; filter: drop-shadow(0 3px 8px rgba(46,92,138,0.4)); }
+.node.selected .node-rect { stroke: var(--accent); stroke-width: 3; filter: drop-shadow(0 3px 8px rgba(41,81,196,0.4)); }
 .node.dimmed { opacity: 0.22; }
-.node:hover .node-rect { filter: drop-shadow(0 2px 6px rgba(20,33,61,0.14)); }
+.node:hover .node-rect { filter: drop-shadow(0 2px 6px rgba(28,25,23,0.14)); }
 
 .node-mile-icon { fill: var(--milestone); }
 .node-rule { stroke: var(--gray-300); stroke-width: 1; }

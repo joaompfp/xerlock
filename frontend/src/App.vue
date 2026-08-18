@@ -334,7 +334,7 @@ export default {
       loading: false,
       dragOver: false,
       tab: 'gantt',
-      headerCollapsed: false,
+      headerCollapsed: true,
       search: '',
       statusFilter: '',
       showCriticalOnly: false,
@@ -574,28 +574,28 @@ export default {
 /* ── Design tokens ──────────────────────────────────────────────────────── */
 :root {
   /* Brand / structural */
-  --ink: #14213D;
-  --ink-soft: #2B3A5A;
-  --accent: #2E5C8A;
-  --accent-soft: #DCE6F0;
+  --ink: #1C1917;
+  --ink-soft: #4A4038;
+  --accent: #2951C4;
+  --accent-soft: #E4EAFB;
 
   /* Semantic state — the ONLY colors allowed to represent criticality/float/status,
      used identically across the Gantt, network diagram, and activity table. */
-  --crit: #B3261E;
-  --crit-tint: #F8E3E1;
-  --near: #9C6B00;
-  --near-tint: #F6ECD2;
+  --crit: #A5291D;
+  --crit-tint: #F7E1DC;
+  --near: #8F6300;
+  --near-tint: #F5EBD3;
   --ok: #3F7355;
-  --ok-tint: #E1EBE4;
+  --ok-tint: #E2ECE3;
   --milestone: #6A3E9E;
 
-  /* Neutrals (graphite scale, tinted toward --ink's navy hue) */
-  --gray-900: #14213D;
-  --gray-700: #445070;
-  --gray-500: #7C86A3;
-  --gray-300: #D3D8E4;
-  --gray-150: #EEF1F6;
-  --gray-100: #F6F8FB;
+  /* Neutrals (warm stone scale — paper/graphite, not blue-gray) */
+  --gray-900: #1F1B17;
+  --gray-700: #5C5347;
+  --gray-500: #8C8175;
+  --gray-300: #DCD5C9;
+  --gray-150: #F1ECE4;
+  --gray-100: #F8F5F0;
   --white: #FFFFFF;
 
   /* Type */
