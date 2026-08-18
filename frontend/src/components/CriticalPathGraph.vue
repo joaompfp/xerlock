@@ -13,7 +13,7 @@
         <span class="legend-item"><i class="dot dot-critical"></i>Critical (TF&le;0)</span>
         <span class="legend-item"><i class="dot dot-near"></i>Near-critical (&le;10d float)</span>
         <span class="legend-item"><i class="dot dot-other"></i>Expanded</span>
-        <span class="legend-item"><i class="dot dot-neg"></i>Negative float</span>
+        <span class="legend-item"><i class="lg-node-neg"></i>Negative float (late)</span>
         <span class="legend-item"><i class="diamond"></i>Milestone</span>
       </div>
       <div class="toolbar-actions">
@@ -591,7 +591,7 @@ export default {
 .dot-critical { background: var(--crit); }
 .dot-near { background: var(--near); }
 .dot-other { background: var(--gray-500); }
-.dot-neg { background: var(--crit); box-shadow: 0 0 0 2px var(--white), 0 0 0 3px var(--crit); }
+.lg-node-neg { width: 16px; height: 11px; display: inline-block; box-sizing: border-box; background: var(--crit-tint); border: 1px solid var(--crit); border-top: 4px solid var(--crit); border-radius: 2px; }
 .diamond { width: 8px; height: 8px; background: var(--milestone); display: inline-block; transform: rotate(45deg); }
 .toolbar-actions { display: flex; align-items: center; gap: var(--space-2); }
 .btn-tiny { padding: 3px 10px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); background: white; cursor: pointer; font: var(--text-small); color: var(--gray-700); }
