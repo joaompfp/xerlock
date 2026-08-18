@@ -19,6 +19,8 @@
       class="annotation-note"
       rows="2"
       placeholder="Notes for this activity (query, risk, logic issue)…"
+      title="Ctrl+Enter saves"
+      @keydown.ctrl.enter.prevent="save"
     ></textarea>
     <div class="annotation-actions">
       <button class="btn-tiny-light" :class="{ saved: justSaved }" @click="save" :disabled="!draftSeverity && !draftNote.trim()">{{ justSaved ? 'Saved ✓' : 'Save' }}</button>

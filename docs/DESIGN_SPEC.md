@@ -1,4 +1,4 @@
-# Schedule App — Design Critique & Redesign Spec
+# XERlock (né Schedule App) — Design Critique & Redesign Spec
 
 Prepared as a pre-sprint design review. Part 1 is the critique (evidence-based, from reading
 `App.vue`, `GanttChart.vue`, `CriticalPathGraph.vue`, `WBSNode.vue` and from live screenshots of

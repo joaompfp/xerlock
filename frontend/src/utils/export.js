@@ -189,7 +189,7 @@ async function newWorkbook() {
   // so it shouldn't bloat the initial page bundle.
   const { default: ExcelJS } = await import('exceljs')
   const wb = new ExcelJS.Workbook()
-  wb.creator = 'Schedule App'
+  wb.creator = 'XERlock'
   wb.created = new Date()
   return wb
 }

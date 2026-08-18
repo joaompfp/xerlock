@@ -1,4 +1,4 @@
-# Schedule App
+# XERlock
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue) ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB) ![Vue 3](https://img.shields.io/badge/vue-3-42b883) ![Self-hosted](https://img.shields.io/badge/self--hosted-yes-8250df)
 
@@ -6,6 +6,9 @@
 an interactive Gantt chart, a critical-path network diagram, DCMA-14-style schedule quality checks,
 progress tracking, and snapshot comparison — everything a planner needs to review a schedule in
 detail, self-hosted so the file never leaves your own infrastructure.
+
+The name is the promise: XERlock is **locked read-only**. It never modifies, never re-saves, and
+never stores your `.xer` — files are parsed in memory and discarded.
 
 **[▶ Try it live](https://schedule.joao.date)** — one click loads a sample data-centre fit-out, or
 upload your own `.xer` (parsed in memory, never stored).
