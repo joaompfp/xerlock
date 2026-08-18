@@ -962,6 +962,25 @@ th.num { text-align: right !important; }
 /* WBS tree */
 .wbs-tree { border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; }
 
+
+/* ── Small screens ────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .dashboard { padding: var(--space-3); }
+  .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { white-space: nowrap; padding: var(--space-2) var(--space-3); }
+  .brand-name { display: none; }
+  .header { flex-direction: column; align-items: flex-start; gap: var(--space-3); }
+  .header-right { flex-wrap: wrap; }
+  .metrics-strip { overflow-x: auto; scrollbar-width: none; }
+  .metrics-strip::-webkit-scrollbar { display: none; }
+  .metric { min-width: 84px; padding: var(--space-2) var(--space-3); }
+  .gesture-hint { display: none !important; }
+  .section-full { padding: 0 var(--space-3); }
+  /* Wide tables scroll within themselves instead of forcing the page sideways */
+  .data-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+
 /* ── Shared detail drawer (Gantt + Critical Path) ─────────────────────────── */
 .detail-drawer { position: fixed; top: 0; right: 0; bottom: 0; height: 100vh; width: 420px; max-width: 92vw; background: var(--white); border-left: 1px solid var(--gray-300); box-shadow: -8px 0 24px rgba(28,25,23,0.14); z-index: 15; overflow-y: auto; box-sizing: border-box; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-5); }
 .detail-slide-enter-active, .detail-slide-leave-active { transition: transform 0.2s ease, opacity 0.2s ease; }
@@ -1012,5 +1031,11 @@ th.num { text-align: right !important; }
 .rel-lag { font-size: 11px; color: var(--gray-500); font-style: italic; }
 .rel-driving { flex-shrink: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--white); background: var(--crit); padding: 1px 7px; border-radius: 9px; }
 @media print { .detail-drawer { display: none; } }
+
+@media (max-width: 540px) {
+  .detail-drawer { width: 100vw; max-width: 100vw; border-left: none; }
+  .theme-select { display: none; }
+  .upload-screen { padding: var(--space-3); }
+}
 
 </style>
