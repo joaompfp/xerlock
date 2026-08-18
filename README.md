@@ -1,15 +1,22 @@
 # Schedule App
 
-**A self-hosted Primavera P6 schedule viewer and review tool.** Upload a `.xer` export and get an
-interactive Gantt chart, a critical-path network diagram, DCMA-14-style schedule quality checks,
-progress tracking, and snapshot comparison — everything a planner needs to review a contractor's
-programme in detail, without a P6 license.
+![License: MIT](https://img.shields.io/badge/license-MIT-blue) ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB) ![Vue 3](https://img.shields.io/badge/vue-3-42b883) ![Self-hosted](https://img.shields.io/badge/self--hosted-yes-8250df)
+
+**Review a contractor's programme in full — without a P6 license.** Upload a `.xer` export and get
+an interactive Gantt chart, a critical-path network diagram, DCMA-14-style schedule quality checks,
+progress tracking, and snapshot comparison — everything a planner needs to review a schedule in
+detail, self-hosted so the file never leaves your own infrastructure.
+
+**[▶ Try it live](https://schedule.joao.date)** — one click loads a sample data-centre fit-out, or
+upload your own `.xer` (parsed in memory, never stored).
 
 Built for project controls professionals: the checks, terminology, and defaults follow how
 schedules actually get reviewed (total float severity bands, longest-path vs TF≤0 critical basis,
 open-end detection, lag/lead audits, out-of-sequence progress).
 
 ![Gantt chart](docs/screenshots/gantt.png)
+*Critical-path links drawn above the bars — logic never hides behind unrelated activities. Chain
+tracing rebuilds an activity's driving path link by link.*
 
 ## Features
 
@@ -56,9 +63,9 @@ open-end detection, lag/lead audits, out-of-sequence progress).
 
 ## Try it
 
-A synthetic sample schedule ships in [`examples/sample-schedule.xer`](examples/sample-schedule.xer)
-(24 activities, realistic logic, a critical path, negative float, in-progress work). Upload it to
-explore every feature.
+The **Load the sample project** button on the upload screen loads a synthetic 24-activity
+data-centre fit-out (realistic logic, a critical path, negative float, in-progress work) — the
+same file ships in [`examples/sample-schedule.xer`](examples/sample-schedule.xer).
 
 ## Architecture
 

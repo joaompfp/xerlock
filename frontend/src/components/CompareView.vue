@@ -32,9 +32,9 @@
       <div v-if="expanded.dates" class="section-body">
         <div v-if="dateChanges.length === 0" class="empty-state">No finish-date changes.</div>
         <table v-else class="compare-table">
-          <thead><tr><th>Code</th><th>Activity</th><th>Baseline Finish</th><th>Current Finish</th><th>Change</th></tr></thead>
+          <thead><tr><th>Code</th><th>Activity</th><th class="num">Baseline Finish</th><th class="num">Current Finish</th><th class="num">Change</th></tr></thead>
           <tbody>
-            <tr v-for="d in dateChanges" :key="d.code" class="jump-row" @click="$emit('jump', d.cur.task_id)">
+            <tr v-for="d in dateChanges" :key="d.code" class="jump-row" title="Show in Gantt" @click="$emit('jump', d.cur.task_id)">
               <td class="code">{{ d.code }}</td>
               <td class="name-cell">{{ d.cur.task_name }}</td>
               <td class="num-cell">{{ formatDate(displayEnd(d.base)) }}</td>
@@ -56,9 +56,9 @@
       <div v-if="expanded.float" class="section-body">
         <div v-if="floatErosion.length === 0" class="empty-state">No float erosion.</div>
         <table v-else class="compare-table">
-          <thead><tr><th>Code</th><th>Activity</th><th>Baseline Float</th><th>Current Float</th><th>Change</th></tr></thead>
+          <thead><tr><th>Code</th><th>Activity</th><th class="num">Baseline Float</th><th class="num">Current Float</th><th class="num">Change</th></tr></thead>
           <tbody>
-            <tr v-for="d in floatErosion" :key="d.code" class="jump-row" @click="$emit('jump', d.cur.task_id)">
+            <tr v-for="d in floatErosion" :key="d.code" class="jump-row" title="Show in Gantt" @click="$emit('jump', d.cur.task_id)">
               <td class="code">{{ d.code }}</td>
               <td class="name-cell">{{ d.cur.task_name }}</td>
               <td class="num-cell">{{ formatFloat(d.base.total_float_hrs, d.base.calendar_hrs_per_day) }}</td>
@@ -82,9 +82,9 @@
         <template v-else>
           <h4 v-if="criticalEntered.length">Newly critical ({{ criticalEntered.length }})</h4>
           <table v-if="criticalEntered.length" class="compare-table">
-            <thead><tr><th>Code</th><th>Activity</th><th>Current Float</th></tr></thead>
+            <thead><tr><th>Code</th><th>Activity</th><th class="num">Current Float</th></tr></thead>
             <tbody>
-              <tr v-for="d in criticalEntered" :key="d.code" class="jump-row" @click="$emit('jump', d.cur.task_id)">
+              <tr v-for="d in criticalEntered" :key="d.code" class="jump-row" title="Show in Gantt" @click="$emit('jump', d.cur.task_id)">
                 <td class="code">{{ d.code }}</td>
                 <td class="name-cell">{{ d.cur.task_name }}</td>
                 <td class="num-cell lag-neg">{{ formatFloat(d.cur.total_float_hrs, d.cur.calendar_hrs_per_day) }}</td>
@@ -93,9 +93,9 @@
           </table>
           <h4 v-if="criticalLeft.length">Dropped from critical ({{ criticalLeft.length }})</h4>
           <table v-if="criticalLeft.length" class="compare-table">
-            <thead><tr><th>Code</th><th>Activity</th><th>Current Float</th></tr></thead>
+            <thead><tr><th>Code</th><th>Activity</th><th class="num">Current Float</th></tr></thead>
             <tbody>
-              <tr v-for="d in criticalLeft" :key="d.code" class="jump-row" @click="$emit('jump', d.cur.task_id)">
+              <tr v-for="d in criticalLeft" :key="d.code" class="jump-row" title="Show in Gantt" @click="$emit('jump', d.cur.task_id)">
                 <td class="code">{{ d.code }}</td>
                 <td class="name-cell">{{ d.cur.task_name }}</td>
                 <td class="num-cell">{{ formatFloat(d.cur.total_float_hrs, d.cur.calendar_hrs_per_day) }}</td>
@@ -118,7 +118,7 @@
         <table v-else class="compare-table">
           <thead><tr><th>Code</th><th>Activity</th><th>Added links</th><th>Removed links</th></tr></thead>
           <tbody>
-            <tr v-for="d in logicChanges" :key="d.code" class="jump-row" @click="$emit('jump', d.cur.task_id)">
+            <tr v-for="d in logicChanges" :key="d.code" class="jump-row" title="Show in Gantt" @click="$emit('jump', d.cur.task_id)">
               <td class="code">{{ d.code }}</td>
               <td class="name-cell">{{ d.cur.task_name }}</td>
               <td class="links-cell added">{{ d.added.join(', ') || '—' }}</td>
@@ -141,9 +141,9 @@
         <template v-else>
           <h4 v-if="added.length">Added ({{ added.length }})</h4>
           <table v-if="added.length" class="compare-table">
-            <thead><tr><th>Code</th><th>Activity</th><th>Start</th><th>Finish</th></tr></thead>
+            <thead><tr><th>Code</th><th>Activity</th><th class="num">Start</th><th class="num">Finish</th></tr></thead>
             <tbody>
-              <tr v-for="a in added" :key="a.task_id" class="jump-row" @click="$emit('jump', a.task_id)">
+              <tr v-for="a in added" :key="a.task_id" class="jump-row" title="Show in Gantt" @click="$emit('jump', a.task_id)">
                 <td class="code">{{ a.task_code }}</td>
                 <td class="name-cell">{{ a.task_name }}</td>
                 <td class="num-cell">{{ formatDate(displayStart(a)) }}</td>
@@ -153,7 +153,7 @@
           </table>
           <h4 v-if="removed.length">Removed ({{ removed.length }})</h4>
           <table v-if="removed.length" class="compare-table">
-            <thead><tr><th>Code</th><th>Activity</th><th>Start</th><th>Finish</th></tr></thead>
+            <thead><tr><th>Code</th><th>Activity</th><th class="num">Start</th><th class="num">Finish</th></tr></thead>
             <tbody>
               <tr v-for="a in removed" :key="a.task_id">
                 <td class="code">{{ a.task_code }}</td>
@@ -302,6 +302,7 @@ export default {
 
 .compare-section { border-bottom: 1px solid var(--gray-300); }
 .compare-section:last-child { border-bottom: none; }
+.section-title { font: 600 15px/1.4 var(--font-ui); }
 .section-head { width: 100%; display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4); background: var(--gray-100); border: none; cursor: pointer; text-align: left; }
 .section-head:hover { background: var(--gray-150); }
 .section-title { font-weight: 600; color: var(--ink); white-space: nowrap; }
@@ -310,13 +311,13 @@ export default {
 .chevron { transition: transform 0.15s; color: var(--gray-500); font-size: 19px; }
 .chevron.open { transform: rotate(90deg); }
 .section-body { padding: var(--space-4); }
-.section-body h4 { font: var(--text-small); color: var(--ink); margin: var(--space-4) 0 var(--space-2); }
+.section-body h4 { font: var(--text-small); font-weight: 700; color: var(--ink); margin: var(--space-4) 0 var(--space-2); }
 .section-body h4:first-child { margin-top: 0; }
 .empty-state { font: var(--text-small); color: var(--ok); }
 
 .compare-table { width: 100%; border-collapse: collapse; font: var(--text-small); }
-.compare-table th { text-align: left; font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); border-bottom: 1px solid var(--gray-300); padding: var(--space-2); }
-.compare-table td { padding: var(--space-2); border-bottom: 1px solid var(--gray-150); }
+.compare-table th { text-align: left; font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); background: var(--gray-100); border-bottom: 2px solid var(--gray-300); padding: var(--space-2) var(--space-3); }
+.compare-table td { padding: 6px var(--space-3); border-bottom: 1px solid var(--gray-150); }
 .jump-row { cursor: pointer; }
 .jump-row:hover td { background: var(--accent-soft); }
 .code { font-family: var(--font-mono); font-weight: 600; color: var(--accent); white-space: nowrap; }

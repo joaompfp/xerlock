@@ -51,6 +51,7 @@
       <button class="ctrl-btn" :disabled="todayX === null" @click="scrollToToday">Today</button>
       <button class="ctrl-btn ctrl-btn-accent" @click="toggleFullscreen">{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</button>
       <button class="ctrl-btn" @click="printGantt">Print</button>
+      <span class="gesture-hint">Ctrl+scroll to zoom &middot; drag to pan &middot; Esc closes</span>
     </div>
 
     <!-- Filter bar: narrows which rows are shown (not just dimmed), the way P6's activity filter works.
@@ -68,6 +69,7 @@
         <option value="">All {{ t }}</option>
         <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
       </select>
+      <button v-if="returnTab" class="return-chip" @click="$emit('return-to-origin')">&larr; Back to {{ returnTab }}</button>
       <span v-if="isolationActive" class="isolation-chip">
         Chain trace &middot; {{ isolatedIds.size }} {{ isolatedIds.size === 1 ? 'activity' : 'activities' }}
         <button class="isolation-exit" @click="exitIsolation">Show all</button>
@@ -351,6 +353,7 @@
         </div>
 
         <AnnotationEditor
+          :key="selectedActivity.task_id"
           :annotation="annotations[selectedActivity.task_id] || null"
           @save="patch => $emit('annotate', selectedActivity.task_id, patch)"
           @remove="$emit('unannotate', selectedActivity.task_id)"
@@ -402,8 +405,9 @@ export default {
     extraRoom: { type: Boolean, default: false },
     jumpTo: { type: [Number, String], default: null },
     annotations: { type: Object, default: () => ({}) },
+    returnTab: { type: String, default: '' },
   },
-  emits: ['jumped', 'annotate', 'unannotate'],
+  emits: ['jumped', 'annotate', 'unannotate', 'return-to-origin'],
   data() {
     const saved = loadSavedView()
 
@@ -448,9 +452,11 @@ export default {
   },
   mounted() {
     document.addEventListener('fullscreenchange', this.onFullscreenChange)
+    window.addEventListener('keydown', this.onKeydown)
   },
   beforeUnmount() {
     document.removeEventListener('fullscreenchange', this.onFullscreenChange)
+    window.removeEventListener('keydown', this.onKeydown)
     window.removeEventListener('mousemove', this.onPanMove)
     window.removeEventListener('mouseup', this.onPanEnd)
     window.removeEventListener('mousemove', this.onResizeMove)
@@ -870,6 +876,18 @@ export default {
       }
       this.deferredScrollTo(el, { top, left, behavior: 'smooth' })
     },
+    onKeydown(e) {
+      // Only when this tab is actually on screen (tabs stay mounted via v-show).
+      if (!this.$el || this.$el.offsetParent === null) return
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')
+      if (e.key === 'Escape') {
+        if (this.selectedTaskId != null) { this.selectedTaskId = null; return }
+        if (this.isolationActive) this.exitIsolation()
+      } else if (e.key === '/' && !typing) {
+        e.preventDefault()
+        this.$el.querySelector('.filter-input')?.focus()
+      }
+    },
     clearFilters() {
       this.filterText = ''
       this.filterStatus = ''
@@ -1083,7 +1101,7 @@ export default {
 
 /* Thin ink strip: title + the one highest-value toggle. Everything else lives in the
    light control row below, so there's no large dark panel to justify visually. */
-.gantt-strip { display: flex; justify-content: space-between; align-items: center; padding: 8px 18px; background: var(--ink); gap: var(--space-3); }
+.gantt-strip { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-4); background: var(--ink); gap: var(--space-3); }
 .strip-title { display: flex; align-items: baseline; gap: var(--space-2); }
 .strip-title h2 { font: var(--text-h2); color: var(--white); }
 .strip-sub { font: var(--text-micro); color: var(--gray-300); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -1091,12 +1109,12 @@ export default {
 .basis-group { display: flex; align-items: center; gap: 6px; border: 1px solid var(--ink-soft); border-radius: var(--radius-sm); padding: 2px; flex-shrink: 0; }
 .basis-label { font: var(--text-micro); color: var(--gray-500); padding-left: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
 .basis-group button { padding: 4px 10px; border: none; border-radius: 3px; background: none; cursor: pointer; font: var(--text-small); color: var(--gray-300); }
-.basis-group button.active { background: var(--crit); color: white; font-weight: 700; }
+.basis-group button.active { background: var(--crit); color: var(--white); font-weight: 700; }
 .basis-group button:hover:not(.active) { background: var(--ink-soft); }
 
 /* Light control row: legend + every interactive control, directly adjoining the light
    timeline header below — no light/dark/light seam. */
-.gantt-controls { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-2) 18px; background: var(--gray-100); border-bottom: 1px solid var(--gray-300); }
+.gantt-controls { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-2) var(--space-4); background: var(--gray-100); border-bottom: 1px solid var(--gray-300); }
 .control-divider { width: 1px; align-self: stretch; background: var(--gray-300); margin: 2px 0; }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
 .legend-item { display: flex; align-items: center; gap: 5px; font: var(--text-small); color: var(--gray-700); }
@@ -1106,7 +1124,7 @@ export default {
 .lg-critical { background: var(--crit-tint); border-color: var(--crit); }
 .lg-near { background: var(--near-tint); border-color: var(--near); }
 .lg-normal { background: var(--accent-soft); border-color: var(--accent); }
-.lg-negative { background: repeating-linear-gradient(135deg, rgba(255,255,255,0.45) 0 2px, transparent 2px 5px), var(--crit); border-color: #6E150D; }
+.lg-negative { background: repeating-linear-gradient(135deg, rgba(255,255,255,0.45) 0 2px, transparent 2px 5px), var(--crit); border-color: var(--crit-deep); }
 .diamond { width: 8px; height: 8px; background: var(--milestone); display: inline-block; transform: rotate(45deg); }
 .bar-wbs { width: 16px; height: 7px; border-radius: 3px; background: var(--gray-700); display: inline-block; }
 .progress-swatch { width: 14px; height: 2px; background: var(--milestone); display: inline-block; }
@@ -1118,7 +1136,7 @@ export default {
 .zoom-group button.active { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
 .zoom-group button:hover:not(.active) { background: var(--gray-150); }
 .zoom-adjust { display: flex; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); overflow: hidden; }
-.zbtn { padding: 4px 10px; border: none; border-right: 1px solid var(--gray-300); background: var(--white); cursor: pointer; font-size: 14px; color: var(--gray-700); font-weight: 700; }
+.zbtn { padding: 4px 10px; border: none; border-right: 1px solid var(--gray-300); background: var(--white); cursor: pointer; font: var(--text-small); color: var(--gray-700); font-weight: 700; }
 .zbtn:last-child { border-right: none; }
 .zbtn:hover { background: var(--gray-150); }
 .ctrl-btn { padding: 4px 10px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); background: var(--white); cursor: pointer; font: var(--text-small); color: var(--gray-700); }
@@ -1127,21 +1145,24 @@ export default {
 .ctrl-btn-accent { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .ctrl-btn-accent:hover { background: var(--accent-soft); }
 
-.filter-bar { display: flex; align-items: center; gap: 10px; padding: 10px 18px; background: var(--white); border-bottom: 1px solid var(--gray-300); flex-wrap: wrap; }
+.filter-bar { display: flex; align-items: center; gap: 10px; padding: 10px var(--space-4); background: var(--white); border-bottom: 1px solid var(--gray-300); flex-wrap: wrap; }
 .filter-input { padding: 6px 12px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); width: 240px; }
-.filter-select { padding: 6px 8px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: white; }
+.filter-select { padding: 6px 8px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); }
 .filter-check { font: var(--text-small); color: var(--gray-700); display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .filter-count { font: var(--text-small); color: var(--gray-500); margin-left: auto; }
+.return-chip { display: inline-flex; align-items: center; background: var(--ink); color: var(--white); border: none; border-radius: 12px; padding: 3px 12px; font: var(--text-small); font-weight: 600; cursor: pointer; }
+.return-chip:hover { opacity: 0.9; }
+.gesture-hint { margin-left: auto; font: var(--text-micro); color: var(--gray-500); white-space: nowrap; }
 .isolation-chip { display: inline-flex; align-items: center; gap: 8px; background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); border-radius: 12px; padding: 2px 4px 2px 10px; font: var(--text-small); font-weight: 600; }
 .isolation-exit { border: none; background: var(--accent); color: var(--white); border-radius: 9px; padding: 2px 9px; font: var(--text-small); font-weight: 600; cursor: pointer; }
 .isolation-exit:hover { opacity: 0.9; }
-.btn-tiny-light { padding: 4px 10px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); background: white; cursor: pointer; font: var(--text-small); color: var(--gray-700); }
+.btn-tiny-light { padding: 4px 10px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); background: var(--white); cursor: pointer; font: var(--text-small); color: var(--gray-700); }
 .btn-tiny-light:hover { background: var(--gray-150); }
 
 /* Fixed height, not max-height: with a collapsed WBS the viewport used to shrink to
    the handful of visible rows, leaving a cramped partial canvas. A constant-height
    viewport keeps the full working area available no matter how much is expanded. */
-.gantt-scroll { overflow: auto; height: min(75vh, 900px); position: relative; cursor: grab; }
+.gantt-scroll { overflow: auto; scrollbar-width: thin; scrollbar-color: var(--gray-300) transparent; height: min(75vh, 900px); position: relative; cursor: grab; }
 .gantt-scroll.panning { cursor: grabbing; }
 .gantt-wrap.extra-room .gantt-scroll { height: min(92vh, 1400px); }
 .gantt-grid { display: grid; grid-template-rows: 52px; grid-auto-rows: 20px; position: relative; }
@@ -1188,7 +1209,7 @@ export default {
 .g-wbs-count { padding-right: 4px; font: var(--text-micro); color: var(--gray-500); flex-shrink: 0; }
 .g-act-code { font-family: var(--font-mono); font-size: 12px; color: var(--gray-500); flex-shrink: 0; }
 .annotation-flag { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--gray-500); }
-.annotation-flag.sev-query { background: var(--accent); }
+.annotation-flag.sev-query { background: var(--active); }
 .annotation-flag.sev-risk { background: var(--near); }
 .annotation-flag.sev-logic { background: var(--crit); }
 .annotation-flag.sev-resolved { background: var(--ok); }
@@ -1205,7 +1226,7 @@ export default {
 .g-bar.critical { background: var(--crit-tint); border-color: var(--crit); }
 .g-bar.near { background: var(--near-tint); border-color: var(--near); }
 .g-bar.other { background: var(--accent-soft); border-color: var(--accent); }
-.g-bar.negative { background: repeating-linear-gradient(135deg, rgba(255,255,255,0.45) 0 2px, transparent 2px 5px), var(--crit); border-color: #6E150D; }
+.g-bar.negative { background: repeating-linear-gradient(135deg, rgba(255,255,255,0.45) 0 2px, transparent 2px 5px), var(--crit); border-color: var(--crit-deep); }
 .g-bar.negative .g-bar-progress { background: rgba(28,25,23,0.45); }
 .g-bar.selected { box-shadow: 0 0 0 2px var(--ink); }
 .g-bar-progress { height: 100%; background: rgba(28,25,23,0.28); }
@@ -1222,7 +1243,7 @@ export default {
 
 /* Right-side drawer, anchored to .gantt-body so it spans exactly the scroll viewport's
    height regardless of the header/controls/filter-bar above it. */
-.gantt-detail-panel { position: absolute; top: 0; right: 0; bottom: 0; width: 420px; max-width: 92%; background: var(--white); border-left: 1px solid var(--gray-300); box-shadow: -8px 0 24px rgba(28,25,23,0.14); z-index: 15; overflow-y: auto; box-sizing: border-box; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-5); }
+.gantt-detail-panel { position: fixed; top: 0; right: 0; bottom: 0; height: 100vh; width: 420px; max-width: 92vw; background: var(--white); border-left: 1px solid var(--gray-300); box-shadow: -8px 0 24px rgba(28,25,23,0.14); z-index: 15; overflow-y: auto; box-sizing: border-box; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-5); }
 .detail-slide-enter-active, .detail-slide-leave-active { transition: transform 0.2s ease, opacity 0.2s ease; }
 .detail-slide-enter-from, .detail-slide-leave-to { transform: translateX(24px); opacity: 0; }
 
