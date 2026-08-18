@@ -87,7 +87,12 @@
         <!-- Header + label column are positioned manually (top/left tracked from the @scroll
              handler) instead of using position:sticky — Chromium mis-renders sticky grid items
              whose own box exactly fills a narrow track once you scroll near the content's end. -->
-        <div class="g-cell g-corner" :style="{ top: scrollTopPx + 'px', left: scrollLeftPx + 'px', width: labelColWidth + 'px' }"></div>
+        <div class="g-cell g-corner" :style="{ top: scrollTopPx + 'px', left: scrollLeftPx + 'px', width: labelColWidth + 'px' }">
+          <span class="g-corner-name">Activity</span>
+          <span class="g-col-dur g-corner-col">Dur</span>
+          <span class="g-col-date g-corner-col">Start</span>
+          <span class="g-col-date g-corner-col">Finish</span>
+        </div>
         <div class="g-cell g-timeline-header" :style="{ top: scrollTopPx + 'px', left: labelColWidth + 'px', width: totalWidth + 'px' }">
           <div class="g-header-year-row">
             <div
@@ -187,18 +192,24 @@
           <div
             class="g-cell g-label"
             :class="{ 'g-label-wbs': row.type === 'wbs', stripe: row.index % 2 === 1, selected: row.type === 'activity' && row.activity.task_id === selectedTaskId }"
-            :style="{ top: (HEADER_HEIGHT + row.index * ROW_HEIGHT) + 'px', left: scrollLeftPx + 'px', width: labelColWidth + 'px', paddingLeft: (10 + row.level * 16) + 'px' }"
+            :style="{ top: (HEADER_HEIGHT + row.index * ROW_HEIGHT) + 'px', left: scrollLeftPx + 'px', width: labelColWidth + 'px', paddingLeft: (8 + row.level * 11) + 'px' }"
             @click="row.type === 'wbs' ? toggleWbs(row.wbsId) : selectActivity(row.activity)"
           >
             <template v-if="row.type === 'wbs'">
               <IconChevron class="g-toggle" :expanded="expandedWbs.has(row.wbsId)" />
               <span class="g-wbs-name">{{ row.name }}</span>
               <span class="g-wbs-count">{{ row.count }}</span>
+              <span class="g-col-dur"></span>
+              <span class="g-col-date">{{ row.start ? formatDateShort(row.start) : '' }}</span>
+              <span class="g-col-date">{{ row.finish ? formatDateShort(row.finish) : '' }}</span>
             </template>
             <template v-else>
               <i v-if="annotations[row.activity.task_id]" class="annotation-flag" :class="'sev-' + annotations[row.activity.task_id].severity" :title="annotations[row.activity.task_id].note"></i>
               <span class="g-act-code">{{ row.activity.task_code }}</span>
               <span class="g-act-name">{{ row.activity.task_name }}</span>
+              <span class="g-col-dur">{{ formatHours(row.activity.duration_hrs, row.activity.calendar_hrs_per_day) }}</span>
+              <span class="g-col-date">{{ formatDateShort(row.activity.early_start) }}</span>
+              <span class="g-col-date">{{ formatDateShort(row.activity.early_end) }}</span>
             </template>
           </div>
           <div
@@ -298,13 +309,13 @@
 </template>
 
 <script>
-import { formatDate, formatHours, isMilestone, formatFloat, statusLabel } from '../utils/format'
+import { formatDate, formatDateShort, formatHours, isMilestone, formatFloat, statusLabel } from '../utils/format'
 import IconChevron from './IconChevron.vue'
 import AnnotationEditor from './AnnotationEditor.vue'
 
-const LABEL_COL_WIDTH_DEFAULT = 340
+const LABEL_COL_WIDTH_DEFAULT = 460
 const LABEL_COL_MIN = 200
-const LABEL_COL_MAX = 600
+const LABEL_COL_MAX = 700
 const HEADER_HEIGHT = 52
 const ROW_HEIGHT = 20
 const ZOOM_DAY_WIDTH = { day: 32, week: 9, month: 3, quarter: 1.1 }
@@ -832,6 +843,7 @@ export default {
       return `${a.task_code} — ${a.task_name}\n${formatDate(a.early_start)}\nFloat: ${formatFloat(a.total_float_hrs)}`
     },
     formatDate,
+    formatDateShort,
     formatHours,
     formatFloat,
     statusLabel,
@@ -1015,7 +1027,9 @@ export default {
 .gantt-grid { display: grid; grid-template-rows: 52px; grid-auto-rows: 20px; position: relative; }
 
 .g-cell { min-width: 0; }
-.g-corner { position: absolute; z-index: 7; background: var(--gray-100); border-bottom: 1px solid var(--gray-300); border-right: 1px solid var(--gray-150); height: 52px; }
+.g-corner { position: absolute; z-index: 7; background: var(--gray-100); border-bottom: 1px solid var(--gray-300); border-right: 1px solid var(--gray-150); height: 52px; display: flex; align-items: flex-end; gap: 6px; padding: 0 8px 8px 8px; box-sizing: border-box; overflow: hidden; }
+.g-corner-name { flex: 1; min-width: 0; font: var(--text-micro); font-weight: 700; color: var(--gray-700); text-transform: uppercase; letter-spacing: 0.03em; }
+.g-corner-col { font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--gray-700) !important; }
 .g-timeline-header { position: absolute; z-index: 6; background: var(--gray-100); border-bottom: 1px solid var(--gray-300); height: 52px; }
 .g-header-year-row { position: relative; height: 22px; border-bottom: 1px solid var(--gray-150); }
 .g-header-detail-row { position: relative; height: 30px; }
@@ -1048,15 +1062,18 @@ export default {
 .g-label-wbs.stripe { background: var(--gray-150); }
 .g-label-wbs:hover { background: var(--accent-soft); }
 .g-toggle { color: var(--gray-500); flex-shrink: 0; }
-.g-wbs-name { overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
-.g-wbs-count { margin-left: auto; padding-right: 8px; font: var(--text-micro); color: var(--gray-500); flex-shrink: 0; }
+.g-wbs-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.g-wbs-count { padding-right: 4px; font: var(--text-micro); color: var(--gray-500); flex-shrink: 0; }
 .g-act-code { font-family: var(--font-mono); font-size: 11px; color: var(--gray-500); flex-shrink: 0; }
-.annotation-flag { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--gray-500); }
+.annotation-flag { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--gray-500); }
 .annotation-flag.sev-query { background: var(--accent); }
 .annotation-flag.sev-risk { background: var(--near); }
 .annotation-flag.sev-logic { background: var(--crit); }
 .annotation-flag.sev-resolved { background: var(--ok); }
-.g-act-name { overflow: hidden; text-overflow: ellipsis; color: var(--ink-soft); }
+.g-act-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink-soft); }
+.g-col-dur, .g-col-date { flex-shrink: 0; text-align: right; font-family: var(--font-mono); font-size: 10px; color: var(--gray-500); }
+.g-col-dur { width: 30px; }
+.g-col-date { width: 42px; }
 
 .g-timeline-row { position: relative; height: 20px; border-bottom: 1px solid var(--gray-150); z-index: 2; }
 .g-timeline-row.stripe { background: var(--gray-100); }

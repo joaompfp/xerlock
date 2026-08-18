@@ -1,6 +1,6 @@
 <template>
-  <svg class="icon-chevron" :class="{ expanded }" width="10" height="10" viewBox="0 0 12 12" fill="none">
-    <path d="M4 2.5L8 6L4 9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+  <svg class="icon-chevron" :class="{ expanded }" width="8" height="8" viewBox="0 0 12 12" fill="none">
+    <path d="M4 2.5L8 6L4 9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
   </svg>
 </template>
 
