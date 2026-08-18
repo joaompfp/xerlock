@@ -306,7 +306,7 @@ const LABEL_COL_WIDTH_DEFAULT = 340
 const LABEL_COL_MIN = 200
 const LABEL_COL_MAX = 600
 const HEADER_HEIGHT = 52
-const ROW_HEIGHT = 24
+const ROW_HEIGHT = 20
 const ZOOM_DAY_WIDTH = { day: 32, week: 9, month: 3, quarter: 1.1 }
 const MIN_DAY_WIDTH = 0.4
 const MAX_DAY_WIDTH = 60
@@ -1012,7 +1012,7 @@ export default {
 .gantt-scroll { overflow: auto; max-height: min(75vh, 900px); position: relative; cursor: grab; }
 .gantt-scroll.panning { cursor: grabbing; }
 .gantt-wrap.extra-room .gantt-scroll { max-height: min(92vh, 1400px); }
-.gantt-grid { display: grid; grid-template-rows: 52px; grid-auto-rows: 24px; position: relative; }
+.gantt-grid { display: grid; grid-template-rows: 52px; grid-auto-rows: 20px; position: relative; }
 
 .g-cell { min-width: 0; }
 .g-corner { position: absolute; z-index: 7; background: var(--gray-100); border-bottom: 1px solid var(--gray-300); border-right: 1px solid var(--gray-150); height: 52px; }
@@ -1040,7 +1040,7 @@ export default {
 .g-resize-handle { position: absolute; top: 0; width: 7px; margin-left: -3px; cursor: col-resize; z-index: 8; background: transparent; }
 .g-resize-handle:hover, .g-resize-handle.resizing { background: var(--accent-soft); }
 
-.g-label { position: absolute; z-index: 5; background: var(--white); display: flex; align-items: center; gap: 6px; height: 24px; border-bottom: 1px solid var(--gray-150); font: var(--text-small); white-space: nowrap; overflow: hidden; cursor: pointer; box-sizing: border-box; }
+.g-label { position: absolute; z-index: 5; background: var(--white); display: flex; align-items: center; gap: 6px; height: 20px; border-bottom: 1px solid var(--gray-150); font: var(--text-small); white-space: nowrap; overflow: hidden; cursor: pointer; box-sizing: border-box; }
 .g-label.stripe { background: var(--gray-100); }
 .g-label:hover { background: var(--accent-soft); }
 .g-label.selected { background: var(--accent-soft); }
@@ -1058,23 +1058,23 @@ export default {
 .annotation-flag.sev-resolved { background: var(--ok); }
 .g-act-name { overflow: hidden; text-overflow: ellipsis; color: var(--ink-soft); }
 
-.g-timeline-row { position: relative; height: 24px; border-bottom: 1px solid var(--gray-150); z-index: 2; }
+.g-timeline-row { position: relative; height: 20px; border-bottom: 1px solid var(--gray-150); z-index: 2; }
 .g-timeline-row.stripe { background: var(--gray-100); }
 
-.g-bar { position: absolute; top: 6px; height: 12px; border-radius: var(--radius-sm); overflow: hidden; background: var(--accent-soft); border: 1.5px solid var(--accent); box-sizing: border-box; box-shadow: 0 1px 2px rgba(20,33,61,0.15); }
+.g-bar { position: absolute; top: 5px; height: 10px; border-radius: var(--radius-sm); overflow: hidden; background: var(--accent-soft); border: 1.5px solid var(--accent); box-sizing: border-box; box-shadow: 0 1px 2px rgba(20,33,61,0.15); }
 .g-bar.critical { background: var(--crit-tint); border-color: var(--crit); }
 .g-bar.near { background: var(--near-tint); border-color: var(--near); }
 .g-bar.other { background: var(--accent-soft); border-color: var(--accent); }
-.g-bar.negative { box-shadow: inset 0 -3px 0 0 var(--crit), 0 1px 2px rgba(20,33,61,0.15); }
+.g-bar.negative { box-shadow: inset 0 -2px 0 0 var(--crit), 0 1px 2px rgba(20,33,61,0.15); }
 .g-bar.selected { box-shadow: 0 0 0 2px var(--ink); }
 .g-bar-progress { height: 100%; background: rgba(20,33,61,0.28); }
 
-.g-bar-wbs { position: absolute; top: 9px; height: 6px; border-radius: 3px; background: var(--gray-700); }
+.g-bar-wbs { position: absolute; top: 7px; height: 6px; border-radius: 3px; background: var(--gray-700); }
 .g-bar-wbs::before, .g-bar-wbs::after { content: ''; position: absolute; top: 100%; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 4px solid var(--gray-700); }
 .g-bar-wbs::before { left: -1px; }
 .g-bar-wbs::after { right: -1px; }
 
-.g-milestone { position: absolute; top: 6px; width: 12px; height: 12px; margin-left: -6px; background: var(--milestone); transform: rotate(45deg); border-radius: 2px; box-shadow: 0 1px 2px rgba(20,33,61,0.2); }
+.g-milestone { position: absolute; top: 5px; width: 10px; height: 10px; margin-left: -5px; background: var(--milestone); transform: rotate(45deg); border-radius: 2px; box-shadow: 0 1px 2px rgba(20,33,61,0.2); }
 .g-milestone.critical { background: var(--crit); }
 .g-milestone.near { background: var(--near); }
 
