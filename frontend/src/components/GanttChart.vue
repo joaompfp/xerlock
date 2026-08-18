@@ -49,6 +49,8 @@
         <button class="zbtn" title="Zoom in" @click="zoomIn">+</button>
       </div>
       <button class="ctrl-btn" @click="expandAll">Expand all</button>
+      <button class="ctrl-btn" title="Expand one more WBS level" @click="expandOneLevel">+1 lvl</button>
+      <button class="ctrl-btn" title="Collapse the deepest expanded WBS level" @click="collapseOneLevel">−1 lvl</button>
       <button class="ctrl-btn" @click="collapseAll">Collapse all</button>
       <button class="ctrl-btn" :disabled="todayX === null" @click="scrollToToday">Today</button>
       <button class="ctrl-btn ctrl-btn-accent" @click="toggleFullscreen">{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</button>
@@ -301,110 +303,24 @@
       </div>
     </div>
 
-    <Transition name="detail-slide">
-      <aside class="detail-drawer" v-if="selectedActivity">
-        <div class="detail-header">
-          <button class="detail-close" @click="selectedTaskId = null" title="Close" aria-label="Close">&times;</button>
-          <span class="detail-code">{{ selectedActivity.task_code }}</span>
-          <h3 class="detail-name">{{ selectedActivity.task_name }}</h3>
-          <div v-if="selectedActivity.wbs_path" class="detail-wbs-path">{{ selectedActivity.wbs_path }}</div>
-          <div class="detail-actions">
-            <button v-if="!isolationActive" class="btn-tiny-light btn-isolate" @click="isolateSelected" title="Clear the chart down to just this activity, then click predecessors/successors below to rebuild its chain link by link">
-              Isolate &amp; trace chain
-            </button>
-            <span v-else class="trace-hint">Tracing — click a predecessor or successor below to add it and walk the chain.</span>
-          </div>
+    <ActivityDetailDrawer
+      :activity="selectedActivity"
+      :lookup="actLookup"
+      :annotations="annotations"
+      @close="selectedTaskId = null"
+      @select="revealAndSelect"
+      @annotate="(id, patch) => $emit('annotate', id, patch)"
+      @unannotate="id => $emit('unannotate', id)"
+    >
+      <template #actions>
+        <div class="detail-actions">
+          <button v-if="!isolationActive" class="btn-tiny-light btn-isolate" @click="isolateSelected" title="Clear the chart down to just this activity, then click predecessors/successors below to rebuild its chain link by link">
+            Isolate &amp; trace chain
+          </button>
+          <span v-else class="trace-hint">Tracing — click a predecessor or successor below to add it and walk the chain.</span>
         </div>
-
-        <div class="detail-stat-grid">
-          <div class="stat-tile">
-            <div class="stat-value">{{ formatHours(selectedActivity.duration_hrs, selectedActivity.calendar_hrs_per_day) }}</div>
-            <div class="stat-label">Duration</div>
-          </div>
-          <div class="stat-tile" :class="floatTileClass(selectedActivity)">
-            <div class="stat-value">{{ formatFloat(selectedActivity.total_float_hrs, selectedActivity.calendar_hrs_per_day) }}</div>
-            <div class="stat-label">Float</div>
-          </div>
-          <div class="stat-tile">
-            <div class="stat-value stat-value-date">{{ formatDate(displayStart(selectedActivity)) }}</div>
-            <div class="stat-label">Start</div>
-          </div>
-          <div class="stat-tile">
-            <div class="stat-value stat-value-date">{{ formatDate(displayEnd(selectedActivity)) }}</div>
-            <div class="stat-label">Finish</div>
-          </div>
-          <div class="stat-tile">
-            <div class="stat-value stat-status" :class="'status-' + selectedActivity.status">{{ statusLabel(selectedActivity.status) }}</div>
-            <div class="stat-label">Status</div>
-          </div>
-          <div class="stat-tile">
-            <div class="stat-value">{{ selectedActivity.pct_complete }}%</div>
-            <div class="stat-progress"><div class="stat-progress-fill" :style="{ width: selectedActivity.pct_complete + '%' }"></div></div>
-            <div class="stat-label">Complete</div>
-          </div>
-        </div>
-
-        <!-- An imposed date is often the single fact explaining an activity's float —
-             surface it here instead of making the reviewer hunt in the Health Check. -->
-        <div v-if="selectedActivity.cstr_type" class="detail-constraint">
-          <span class="constraint-label">Constraint</span>
-          <strong>{{ cstrLabel(selectedActivity.cstr_type) }}</strong>
-          <span v-if="selectedActivity.cstr_date">&middot; {{ formatDate(selectedActivity.cstr_date) }}</span>
-          <template v-if="selectedActivity.cstr_type2">
-            <span>&middot; plus {{ cstrLabel(selectedActivity.cstr_type2) }}</span>
-            <span v-if="selectedActivity.cstr_date2">{{ formatDate(selectedActivity.cstr_date2) }}</span>
-          </template>
-        </div>
-
-        <div class="detail-rels">
-          <div class="rel-section">
-            <h4>Predecessors <em>{{ selectedPredecessors.length }}</em></h4>
-            <div v-if="selectedPredecessors.length === 0" class="rel-empty">None</div>
-            <button v-for="p in selectedPredecessors" :key="p.task_id" class="rel-item-btn" @click="revealAndSelect(p.task_id)">
-              <div class="rel-item-row">
-                <span class="rel-code">{{ p.activity ? p.activity.task_code : '?' + p.task_id }}</span>
-                <span class="rel-item-name">{{ p.activity ? p.activity.task_name : '' }}</span>
-                <span v-if="p.driving" class="rel-driving" title="This link controls the dates — P6's 'driving' relationship flag">Driving</span>
-              </div>
-              <div class="rel-item-row rel-item-sub">
-                <span class="rel-type">{{ relTypeLabel(p.type) }}</span>
-                <template v-if="p.activity">
-                  <span class="rel-dates">{{ formatDate(displayStart(p.activity)) }} → {{ formatDate(displayEnd(p.activity)) }}</span>
-                  <span class="rel-dur">{{ formatHours(p.activity.duration_hrs, p.activity.calendar_hrs_per_day) }}</span>
-                </template>
-                <span v-if="p.lag_hrs" class="rel-lag">{{ formatLag(p.lag_hrs, selectedActivity.calendar_hrs_per_day) }} lag</span>
-              </div>
-            </button>
-          </div>
-          <div class="rel-section">
-            <h4>Successors <em>{{ selectedSuccessors.length }}</em></h4>
-            <div v-if="selectedSuccessors.length === 0" class="rel-empty">None</div>
-            <button v-for="s in selectedSuccessors" :key="s.task_id" class="rel-item-btn" @click="revealAndSelect(s.task_id)">
-              <div class="rel-item-row">
-                <span class="rel-code">{{ s.activity ? s.activity.task_code : '?' + s.task_id }}</span>
-                <span class="rel-item-name">{{ s.activity ? s.activity.task_name : '' }}</span>
-                <span v-if="s.driving" class="rel-driving" title="This link controls the dates — P6's 'driving' relationship flag">Driving</span>
-              </div>
-              <div class="rel-item-row rel-item-sub">
-                <span class="rel-type">{{ relTypeLabel(s.type) }}</span>
-                <template v-if="s.activity">
-                  <span class="rel-dates">{{ formatDate(displayStart(s.activity)) }} → {{ formatDate(displayEnd(s.activity)) }}</span>
-                  <span class="rel-dur">{{ formatHours(s.activity.duration_hrs, s.activity.calendar_hrs_per_day) }}</span>
-                </template>
-                <span v-if="s.lag_hrs" class="rel-lag">{{ formatLag(s.lag_hrs, selectedActivity.calendar_hrs_per_day) }} lag</span>
-              </div>
-            </button>
-          </div>
-        </div>
-
-        <AnnotationEditor
-          :key="selectedActivity.task_id"
-          :annotation="annotations[selectedActivity.task_id] || null"
-          @save="patch => $emit('annotate', selectedActivity.task_id, patch)"
-          @remove="$emit('unannotate', selectedActivity.task_id)"
-        />
-      </aside>
-    </Transition>
+      </template>
+    </ActivityDetailDrawer>
     </div>
   </div>
 </template>
@@ -413,7 +329,7 @@
 import { formatDate, formatDateShort, formatHours, isMilestone, formatFloat, formatLag, statusLabel } from '../utils/format'
 import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
 import IconChevron from './IconChevron.vue'
-import AnnotationEditor from './AnnotationEditor.vue'
+import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
 
 const LABEL_COL_WIDTH_DEFAULT = 460
 const LABEL_COL_MIN = 200
@@ -444,7 +360,7 @@ function saveView(view) {
 
 export default {
   name: 'GanttChart',
-  components: { IconChevron, AnnotationEditor },
+  components: { IconChevron, ActivityDetailDrawer },
   props: {
     data: { type: Object, required: true },
     extraRoom: { type: Boolean, default: false },
@@ -555,14 +471,6 @@ export default {
     },
     selectedActivity() {
       return this.selectedTaskId != null ? this.actLookup.get(this.selectedTaskId) : null
-    },
-    selectedPredecessors() {
-      if (!this.selectedActivity) return []
-      return this.selectedActivity.predecessors.map(p => ({ ...p, activity: this.actLookup.get(p.task_id) || null }))
-    },
-    selectedSuccessors() {
-      if (!this.selectedActivity) return []
-      return this.selectedActivity.successors.map(s => ({ ...s, activity: this.actLookup.get(s.task_id) || null }))
     },
     wbsParentOf() {
       const map = new Map()
@@ -964,6 +872,42 @@ export default {
       }
       this.expandedWbs = this.allWbsIdSet()
     },
+    wbsNodesByLevel() {
+      const out = []
+      const walk = (nodes, level) => {
+        for (const n of nodes) { out.push({ id: n.wbs_id, level }); walk(n.children || [], level + 1) }
+      }
+      walk(this.data.wbs_tree || [], 0)
+      return out
+    },
+    _wbsExpanded(id) {
+      return this.isFilterActive ? !this.filterCollapsed.has(id) : this.expandedWbs.has(id)
+    },
+    _setWbsExpanded(ids, expand) {
+      if (this.isFilterActive) {
+        const set = new Set(this.filterCollapsed)
+        ids.forEach(id => (expand ? set.delete(id) : set.add(id)))
+        this.filterCollapsed = set
+      } else {
+        const set = new Set(this.expandedWbs)
+        ids.forEach(id => (expand ? set.add(id) : set.delete(id)))
+        this.expandedWbs = set
+      }
+    },
+    // One level at a time: expand the shallowest collapsed ring / collapse the deepest
+    // expanded one — stepping through the hierarchy the way P6's outline levels do.
+    expandOneLevel() {
+      const collapsed = this.wbsNodesByLevel().filter(n => !this._wbsExpanded(n.id))
+      if (!collapsed.length) return
+      const lvl = Math.min(...collapsed.map(n => n.level))
+      this._setWbsExpanded(collapsed.filter(n => n.level === lvl).map(n => n.id), true)
+    },
+    collapseOneLevel() {
+      const expanded = this.wbsNodesByLevel().filter(n => this._wbsExpanded(n.id))
+      if (!expanded.length) return
+      const lvl = Math.max(...expanded.map(n => n.level))
+      this._setWbsExpanded(expanded.filter(n => n.level === lvl).map(n => n.id), false)
+    },
     collapseAll() {
       if (this.isFilterActive) {
         this.filterCollapsed = this.allWbsIdSet()
@@ -1116,12 +1060,6 @@ export default {
     },
     // Same 0h / negative / ≤80h(10d) severity bands used everywhere else in the app,
     // applied to the whole stat tile so float is legible without reading the number.
-    floatTileClass(a) {
-      if (a.is_negative_float) return 'stat-tile-neg'
-      if (a.total_float_hrs === 0) return 'stat-tile-crit'
-      if (a.total_float_hrs != null && a.total_float_hrs <= 80) return 'stat-tile-near'
-      return ''
-    },
     formatDate,
     formatDateShort,
     formatLag,
