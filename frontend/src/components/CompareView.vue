@@ -8,6 +8,20 @@
       <button class="btn-tiny-light" @click="$emit('reset')">Compare a different file</button>
     </div>
 
+    <!-- Headline verdict: the so-what before any table -->
+    <div v-if="finishDelta !== null" class="cmp-verdict" :class="finishDelta > 0 ? 'v-slip' : finishDelta < 0 ? 'v-gain' : 'v-hold'">
+      <div class="verdict-main">
+        <span class="verdict-label">Project finish</span>
+        <span class="verdict-dates">{{ formatDate(baseline.project.latest_end) }} <span class="verdict-arrow">→</span> {{ formatDate(current.project.latest_end) }}</span>
+        <span class="verdict-delta">{{ finishDelta > 0 ? '+' : '' }}{{ finishDelta }}d</span>
+        <span class="verdict-word">{{ finishDelta > 0 ? 'slipped' : finishDelta < 0 ? 'gained' : 'held' }}</span>
+      </div>
+      <div class="verdict-sub">
+        <template v-if="ddAdvance !== null">Data date advanced {{ ddAdvance }}d ({{ formatDate(baseline.project.data_date) }} → {{ formatDate(current.project.data_date) }}) &middot; </template>
+        {{ dateChanges.length }} finish date{{ dateChanges.length === 1 ? '' : 's' }} moved &middot; {{ durationChanges.length }} duration edit{{ durationChanges.length === 1 ? '' : 's' }}
+      </div>
+    </div>
+
     <div class="scorecard">
       <div class="score-item"><div class="score-count">{{ matched.length }}</div><div class="score-label">Matched</div></div>
       <div class="score-item" :class="{ fail: added.length > 0 }"><div class="score-count">{{ added.length }}</div><div class="score-label">Added</div></div>
@@ -22,6 +36,59 @@
       {{ stability.newlyCritical }} newly critical &middot; {{ stability.dropped }} dropped from longest path
       <span v-if="stability.driverChanged"> &middot; the finish-driving activity changed</span>
     </p>
+
+    <!-- Milestone movement (dumbbells) -->
+    <section class="compare-section" v-if="milestoneMoves.length">
+      <button class="section-head" @click="toggle('milestones')">
+        <span class="section-title">Milestone Movement <em>({{ milestoneMoves.filter(m => m.delta !== 0).length }})</em></span>
+        <span class="section-hint">Baseline &rarr; current date per milestone — the exhibit that goes in front of the client</span>
+        <span class="chevron" :class="{ open: expanded.milestones }">&rsaquo;</span>
+      </button>
+      <div v-if="expanded.milestones" class="section-body">
+        <div class="dumbbell-chart">
+          <div v-for="m in milestoneMoves" :key="m.code" class="db-row jump-row" title="Show in Gantt" @click="$emit('jump', m.cur.task_id)">
+            <span class="db-label"><span class="code">{{ m.code }}</span> {{ m.cur.task_name }}</span>
+            <div class="db-track">
+              <div v-if="m.delta !== 0" class="db-join" :class="m.delta > 0 ? 'db-slip' : 'db-gain'" :style="{ left: Math.min(m.baseX, m.curX) + '%', width: Math.abs(m.curX - m.baseX) + '%' }"></div>
+              <span class="db-dot db-base" :style="{ left: m.baseX + '%' }" :title="'Baseline: ' + formatDate(m.baseDate)"></span>
+              <span class="db-dot db-cur" :class="m.delta > 0 ? 'db-slip' : m.delta < 0 ? 'db-gain' : 'db-hold'" :style="{ left: m.curX + '%' }" :title="'Current: ' + formatDate(m.curDate)"></span>
+            </div>
+            <span class="db-delta" :class="m.delta > 0 ? 'lag-neg' : m.delta < 0 ? 'lag-pos' : 'db-zero'">{{ m.delta > 0 ? '+' : '' }}{{ m.delta }}d</span>
+          </div>
+          <div class="db-axis">
+            <span>{{ formatDate(msDomain.min) }}</span>
+            <span class="db-axis-legend"><span class="db-dot db-base db-inline"></span> baseline &nbsp; <span class="db-dot db-cur db-slip db-inline"></span> current</span>
+            <span>{{ formatDate(msDomain.max) }}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slip tornado -->
+    <section class="compare-section" v-if="tornadoRows.length">
+      <button class="section-head" @click="toggle('tornado')">
+        <span class="section-title">Biggest Movers <em>({{ dateChanges.length }})</em></span>
+        <span class="section-hint">Finish-date change per activity — slips grow right, gains grow left</span>
+        <span class="chevron" :class="{ open: expanded.tornado }">&rsaquo;</span>
+      </button>
+      <div v-if="expanded.tornado" class="section-body">
+        <div class="tornado">
+          <div v-for="d in tornadoRows" :key="d.code" class="tor-row jump-row" title="Show in Gantt" @click="$emit('jump', d.cur.task_id)">
+            <span class="tor-label"><span class="code">{{ d.code }}</span> {{ d.cur.task_name }}</span>
+            <div class="tor-track">
+              <div class="tor-half tor-left">
+                <div v-if="d.deltaDays < 0" class="tor-bar tor-gain" :style="{ width: (100 * -d.deltaDays / tornadoMax) + '%' }"></div>
+              </div>
+              <div class="tor-half tor-right">
+                <div v-if="d.deltaDays > 0" class="tor-bar tor-slip" :style="{ width: (100 * d.deltaDays / tornadoMax) + '%' }"></div>
+              </div>
+            </div>
+            <span class="tor-delta" :class="d.deltaDays > 0 ? 'lag-neg' : 'lag-pos'">{{ d.deltaDays > 0 ? '+' : '' }}{{ d.deltaDays }}d</span>
+          </div>
+          <p v-if="dateChanges.length > tornadoRows.length" class="tor-note">Showing the {{ tornadoRows.length }} biggest of {{ dateChanges.length }} moved activities — the full list is in Date Changes below.</p>
+        </div>
+      </div>
+    </section>
 
     <!-- Slipped / pulled ahead -->
     <section class="compare-section">
@@ -209,7 +276,7 @@ export default {
   emits: ['jump', 'reset'],
   data() {
     return {
-      expanded: { dates: true, durations: true, float: true, critical: true, logic: false, addrem: false },
+      expanded: { milestones: true, tornado: true, dates: false, durations: true, float: true, critical: true, logic: false, addrem: false },
     }
   },
   computed: {
@@ -243,6 +310,58 @@ export default {
         .map(d => ({ ...d, deltaDays: Math.round((new Date(displayEnd(d.cur)) - new Date(displayEnd(d.base))) / 86400000) }))
         .filter(d => d.deltaDays !== 0)
         .sort((a, b) => b.deltaDays - a.deltaDays)
+    },
+    finishDelta() {
+      const c = this.current.project.latest_end
+      const b = this.baseline.project.latest_end
+      if (!c || !b) return null
+      return Math.round((new Date(c) - new Date(b)) / 86400000)
+    },
+    ddAdvance() {
+      const c = this.current.project.data_date
+      const b = this.baseline.project.data_date
+      if (!c || !b) return null
+      return Math.round((new Date(c) - new Date(b)) / 86400000)
+    },
+    milestoneMoves() {
+      const rows = this.matched
+        .filter(d => (d.cur.task_type || '').includes('Mile'))
+        .map(d => {
+          const curDate = displayEnd(d.cur) || displayStart(d.cur)
+          const baseDate = displayEnd(d.base) || displayStart(d.base)
+          return { ...d, curDate, baseDate, delta: curDate && baseDate ? Math.round((new Date(curDate) - new Date(baseDate)) / 86400000) : 0 }
+        })
+        .filter(m => m.curDate && m.baseDate)
+        .sort((a, b) => new Date(a.curDate) - new Date(b.curDate))
+      const dom = this.msDomain
+      const span = Math.max(1, new Date(dom.max) - new Date(dom.min))
+      for (const m of rows) {
+        m.baseX = (100 * (new Date(m.baseDate) - new Date(dom.min))) / span
+        m.curX = (100 * (new Date(m.curDate) - new Date(dom.min))) / span
+      }
+      return rows
+    },
+    msDomain() {
+      const dates = []
+      for (const d of this.matched) {
+        if (!(d.cur.task_type || '').includes('Mile')) continue
+        const c = displayEnd(d.cur) || displayStart(d.cur)
+        const b = displayEnd(d.base) || displayStart(d.base)
+        if (c) dates.push(new Date(c))
+        if (b) dates.push(new Date(b))
+      }
+      if (!dates.length) return { min: null, max: null }
+      const min = new Date(Math.min(...dates))
+      const max = new Date(Math.max(...dates))
+      // 4% padding each side so edge dots don't clip
+      const pad = Math.max(86400000, (max - min) * 0.04)
+      return { min: new Date(min - pad).toISOString(), max: new Date(+max + pad).toISOString() }
+    },
+    tornadoRows() {
+      return [...this.dateChanges].sort((a, b) => Math.abs(b.deltaDays) - Math.abs(a.deltaDays)).slice(0, 30)
+    },
+    tornadoMax() {
+      return Math.max(1, ...this.tornadoRows.map(d => Math.abs(d.deltaDays)))
     },
     durationChanges() {
       // The forensic reviewer proved this gap with a hand-perturbed file: a quiet
@@ -358,6 +477,58 @@ export default {
 .code { font-family: var(--font-mono); font-weight: 600; color: var(--accent); white-space: nowrap; }
 .name-cell { color: var(--ink-soft); }
 .num-cell { font-family: var(--font-mono); text-align: right; white-space: nowrap; }
+/* Verdict banner */
+.cmp-verdict { padding: var(--space-4); border-bottom: 1px solid var(--gray-300); }
+.cmp-verdict.v-slip { background: var(--crit-tint, rgba(165,41,29,0.08)); }
+.cmp-verdict.v-gain { background: var(--ok-tint, rgba(63,115,85,0.10)); }
+.cmp-verdict.v-hold { background: var(--gray-100); }
+.verdict-main { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
+.verdict-label { font: var(--text-micro); text-transform: uppercase; letter-spacing: 0.05em; color: var(--gray-700); }
+.verdict-dates { font-family: var(--font-mono); font-size: 19px; font-weight: 600; color: var(--ink); }
+.verdict-arrow { color: var(--gray-500); }
+.verdict-delta { font-family: var(--font-mono); font-size: 27px; font-weight: 800; }
+.v-slip .verdict-delta, .v-slip .verdict-word { color: var(--crit); }
+.v-gain .verdict-delta, .v-gain .verdict-word { color: var(--ok); }
+.v-hold .verdict-delta, .v-hold .verdict-word { color: var(--gray-700); }
+.verdict-word { font-weight: 700; }
+.verdict-sub { font: var(--text-small); color: var(--gray-700); margin-top: 2px; }
+
+/* Milestone dumbbells */
+.dumbbell-chart { display: flex; flex-direction: column; gap: 2px; }
+.db-row { display: grid; grid-template-columns: minmax(180px, 320px) 1fr 52px; align-items: center; gap: var(--space-3); padding: 3px var(--space-2); border-radius: var(--radius-sm); cursor: pointer; }
+.db-row:hover { background: var(--accent-soft); }
+.db-label { font: var(--text-small); color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.db-track { position: relative; height: 18px; background: linear-gradient(to bottom, transparent 8px, var(--gray-150) 8px, var(--gray-150) 10px, transparent 10px); }
+.db-join { position: absolute; top: 7px; height: 4px; border-radius: 2px; }
+.db-join.db-slip { background: var(--crit); opacity: 0.45; }
+.db-join.db-gain { background: var(--ok); opacity: 0.45; }
+.db-dot { position: absolute; top: 4px; width: 10px; height: 10px; border-radius: 50%; transform: translateX(-5px); box-sizing: border-box; }
+.db-base { background: var(--white); border: 2px solid var(--gray-500); }
+.db-cur { border: 2px solid transparent; }
+.db-cur.db-slip { background: var(--crit); }
+.db-cur.db-gain { background: var(--ok); }
+.db-cur.db-hold { background: var(--gray-500); }
+.db-delta { font-family: var(--font-mono); font-size: 13px; text-align: right; white-space: nowrap; }
+.db-zero { color: var(--gray-500); }
+.db-axis { display: flex; justify-content: space-between; font: var(--text-micro); color: var(--gray-700); font-family: var(--font-mono); margin-top: var(--space-2); padding: 0 var(--space-2); }
+.db-axis-legend { font-family: var(--font-ui); }
+.db-inline { position: static; display: inline-block; transform: none; vertical-align: -1px; }
+
+/* Slip tornado */
+.tornado { display: flex; flex-direction: column; gap: 1px; }
+.tor-row { display: grid; grid-template-columns: minmax(180px, 320px) 1fr 52px; align-items: center; gap: var(--space-3); padding: 2px var(--space-2); border-radius: var(--radius-sm); cursor: pointer; }
+.tor-row:hover { background: var(--accent-soft); }
+.tor-label { font: var(--text-small); color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tor-track { display: flex; height: 14px; }
+.tor-half { flex: 1; position: relative; }
+.tor-left { border-right: 2px solid var(--gray-500); }
+.tor-left .tor-bar { position: absolute; right: 0; top: 2px; bottom: 2px; border-radius: 3px 0 0 3px; }
+.tor-right .tor-bar { position: absolute; left: 0; top: 2px; bottom: 2px; border-radius: 0 3px 3px 0; }
+.tor-bar.tor-slip { background: var(--crit); }
+.tor-bar.tor-gain { background: var(--ok); }
+.tor-delta { font-family: var(--font-mono); font-size: 13px; text-align: right; white-space: nowrap; }
+.tor-note { font: var(--text-micro); color: var(--gray-700); margin-top: var(--space-2); }
+
 .lag-neg { color: var(--crit); font-weight: 700; }
 .lag-pos { color: var(--ok); font-weight: 700; }
 .links-cell { font: var(--text-micro); font-family: var(--font-mono); }

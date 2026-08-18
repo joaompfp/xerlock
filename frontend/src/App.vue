@@ -148,6 +148,7 @@
       <div v-show="tab === 'gantt'" class="section section-full">
         <GanttChart
           :data="data"
+          :baseline="compareData"
           :extra-room="headerCollapsed"
           :jump-to="pendingJump"
           :annotations="annotations"
