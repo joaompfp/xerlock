@@ -62,7 +62,7 @@ export default {
 .wbs-row:hover { background: var(--accent-soft); }
 .wbs-toggle { color: var(--gray-500); flex-shrink: 0; }
 .wbs-toggle-spacer { width: 10px; flex-shrink: 0; }
-.wbs-code { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--ink); background: var(--gray-150); border-radius: var(--radius-sm); padding: 1px 6px; flex-shrink: 0; }
+.wbs-code { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--ink); background: var(--gray-150); border-radius: var(--radius-sm); padding: 1px 6px; flex-shrink: 0; }
 .wbs-full { color: var(--gray-700); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wbs-count { font: var(--text-micro); color: var(--gray-700); background: var(--gray-150); border-radius: var(--radius-sm); padding: 2px 6px; flex-shrink: 0; }
 </style>

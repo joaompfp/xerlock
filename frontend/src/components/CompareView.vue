@@ -37,8 +37,8 @@
             <tr v-for="d in dateChanges" :key="d.code" class="jump-row" @click="$emit('jump', d.cur.task_id)">
               <td class="code">{{ d.code }}</td>
               <td class="name-cell">{{ d.cur.task_name }}</td>
-              <td class="num-cell">{{ formatDate(d.base.early_end) }}</td>
-              <td class="num-cell">{{ formatDate(d.cur.early_end) }}</td>
+              <td class="num-cell">{{ formatDate(displayEnd(d.base)) }}</td>
+              <td class="num-cell">{{ formatDate(displayEnd(d.cur)) }}</td>
               <td class="num-cell" :class="d.deltaDays > 0 ? 'lag-neg' : 'lag-pos'">{{ d.deltaDays > 0 ? '+' : '' }}{{ d.deltaDays }}d</td>
             </tr>
           </tbody>
@@ -61,9 +61,9 @@
             <tr v-for="d in floatErosion" :key="d.code" class="jump-row" @click="$emit('jump', d.cur.task_id)">
               <td class="code">{{ d.code }}</td>
               <td class="name-cell">{{ d.cur.task_name }}</td>
-              <td class="num-cell">{{ d.base.total_float_hrs }}h</td>
-              <td class="num-cell" :class="d.cur.is_negative_float ? 'lag-neg' : ''">{{ d.cur.total_float_hrs }}h</td>
-              <td class="num-cell lag-neg">{{ d.delta }}h</td>
+              <td class="num-cell">{{ formatFloat(d.base.total_float_hrs, d.base.calendar_hrs_per_day) }}</td>
+              <td class="num-cell" :class="d.cur.is_negative_float ? 'lag-neg' : ''">{{ formatFloat(d.cur.total_float_hrs, d.cur.calendar_hrs_per_day) }}</td>
+              <td class="num-cell lag-neg">{{ formatFloat(d.delta, d.cur.calendar_hrs_per_day) }}</td>
             </tr>
           </tbody>
         </table>
@@ -87,7 +87,7 @@
               <tr v-for="d in criticalEntered" :key="d.code" class="jump-row" @click="$emit('jump', d.cur.task_id)">
                 <td class="code">{{ d.code }}</td>
                 <td class="name-cell">{{ d.cur.task_name }}</td>
-                <td class="num-cell lag-neg">{{ d.cur.total_float_hrs }}h</td>
+                <td class="num-cell lag-neg">{{ formatFloat(d.cur.total_float_hrs, d.cur.calendar_hrs_per_day) }}</td>
               </tr>
             </tbody>
           </table>
@@ -98,7 +98,7 @@
               <tr v-for="d in criticalLeft" :key="d.code" class="jump-row" @click="$emit('jump', d.cur.task_id)">
                 <td class="code">{{ d.code }}</td>
                 <td class="name-cell">{{ d.cur.task_name }}</td>
-                <td class="num-cell">{{ d.cur.total_float_hrs }}h</td>
+                <td class="num-cell">{{ formatFloat(d.cur.total_float_hrs, d.cur.calendar_hrs_per_day) }}</td>
               </tr>
             </tbody>
           </table>
@@ -146,8 +146,8 @@
               <tr v-for="a in added" :key="a.task_id" class="jump-row" @click="$emit('jump', a.task_id)">
                 <td class="code">{{ a.task_code }}</td>
                 <td class="name-cell">{{ a.task_name }}</td>
-                <td class="num-cell">{{ formatDate(a.early_start) }}</td>
-                <td class="num-cell">{{ formatDate(a.early_end) }}</td>
+                <td class="num-cell">{{ formatDate(displayStart(a)) }}</td>
+                <td class="num-cell">{{ formatDate(displayEnd(a)) }}</td>
               </tr>
             </tbody>
           </table>
@@ -158,8 +158,8 @@
               <tr v-for="a in removed" :key="a.task_id">
                 <td class="code">{{ a.task_code }}</td>
                 <td class="name-cell">{{ a.task_name }}</td>
-                <td class="num-cell">{{ formatDate(a.early_start) }}</td>
-                <td class="num-cell">{{ formatDate(a.early_end) }}</td>
+                <td class="num-cell">{{ formatDate(displayStart(a)) }}</td>
+                <td class="num-cell">{{ formatDate(displayEnd(a)) }}</td>
               </tr>
             </tbody>
           </table>
@@ -170,9 +170,9 @@
 </template>
 
 <script>
-import { formatDate } from '../utils/format'
+import { formatDate, formatFloat } from '../utils/format'
+import { REL_TYPE_LABELS, displayStart, displayEnd } from '../utils/p6'
 
-const REL_TYPE_LABELS = { PR_FS: 'FS', PR_SS: 'SS', PR_FF: 'FF', PR_SF: 'SF' }
 
 export default {
   name: 'CompareView',
@@ -214,8 +214,8 @@ export default {
     },
     dateChanges() {
       return this.matched
-        .filter(d => d.cur.early_end && d.base.early_end && d.cur.early_end !== d.base.early_end)
-        .map(d => ({ ...d, deltaDays: Math.round((new Date(d.cur.early_end) - new Date(d.base.early_end)) / 86400000) }))
+        .filter(d => displayEnd(d.cur) && displayEnd(d.base) && displayEnd(d.cur) !== displayEnd(d.base))
+        .map(d => ({ ...d, deltaDays: Math.round((new Date(displayEnd(d.cur)) - new Date(displayEnd(d.base))) / 86400000) }))
         .filter(d => d.deltaDays !== 0)
         .sort((a, b) => b.deltaDays - a.deltaDays)
     },
@@ -275,6 +275,9 @@ export default {
   },
   methods: {
     formatDate,
+    formatFloat,
+    displayStart,
+    displayEnd,
     toggle(key) {
       this.expanded[key] = !this.expanded[key]
     },
@@ -293,7 +296,7 @@ export default {
 .score-item { flex: 1; min-width: 110px; background: var(--white); padding: var(--space-3); text-align: center; }
 .score-item.pass .score-count { color: var(--ok); }
 .score-item.fail .score-count { color: var(--crit); }
-.score-count { font-family: var(--font-mono); font-size: 22px; font-weight: 700; }
+.score-count { font-family: var(--font-mono); font-size: 23px; font-weight: 700; }
 .score-label { font: var(--text-micro); color: var(--gray-700); text-transform: uppercase; letter-spacing: 0.03em; }
 .stability-note { font: var(--text-small); color: var(--gray-700); padding: var(--space-2) var(--space-4); margin: 0; background: var(--gray-100); border-bottom: 1px solid var(--gray-300); }
 
@@ -304,7 +307,7 @@ export default {
 .section-title { font-weight: 600; color: var(--ink); white-space: nowrap; }
 .section-title em { font-style: normal; color: var(--accent); font-family: var(--font-mono); }
 .section-hint { font: var(--text-small); color: var(--gray-700); flex: 1; }
-.chevron { transition: transform 0.15s; color: var(--gray-500); font-size: 18px; }
+.chevron { transition: transform 0.15s; color: var(--gray-500); font-size: 19px; }
 .chevron.open { transform: rotate(90deg); }
 .section-body { padding: var(--space-4); }
 .section-body h4 { font: var(--text-small); color: var(--ink); margin: var(--space-4) 0 var(--space-2); }

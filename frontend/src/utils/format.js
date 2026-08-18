@@ -26,9 +26,13 @@ export function isMilestone(activity) {
 }
 
 // total_float_hrs is null when P6 didn't compute a float (typically completed
-// activities) — must not be displayed as "0h", which reads as zero float / critical.
-export function formatFloat(hrs) {
-  return hrs == null ? '—' : `${hrs}h`
+// activities) — must not be displayed as "0d", which reads as zero float / critical.
+// Displayed in DAYS (planners think in days), converted with the activity's own
+// calendar; one decimal kept so small-but-nonzero floats don't masquerade as 0d.
+export function formatFloat(hrs, hrsPerDay = 8) {
+  if (hrs == null) return '—'
+  const days = Math.round((hrs / (hrsPerDay || 8)) * 10) / 10
+  return `${days}d`
 }
 
 export function formatDateShort(d) {

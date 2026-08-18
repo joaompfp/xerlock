@@ -1,7 +1,7 @@
 import { statusLabel, formatDate } from './format'
 import { SEVERITY_LABELS } from './annotations'
+import { relTypeLabel, displayStart, displayEnd } from './p6'
 
-const REL_TYPE_LABELS = { PR_FS: 'FS', PR_SS: 'SS', PR_FF: 'FF', PR_SF: 'SF' }
 const REPORT_SEVERITY_ORDER = ['logic', 'risk', 'query', 'resolved']
 const SEVERITY_FILL = { logic: 'FFF8E3E1', risk: 'FFF6ECD2', query: 'FFDCE6F0', resolved: 'FFE1EBE4' }
 
@@ -28,14 +28,19 @@ function floatDays(hrs, hrsPerDay = 8) {
   return hrs == null ? '' : round1(hrs / (hrsPerDay || 8))
 }
 
+/**
+ * XER timestamps are wall-clock strings ("2026-08-09 08:00") with no timezone. Parsing
+ * them with `new Date(str)` interprets them in the browser's LOCAL zone, and ExcelJS then
+ * serializes via UTC — so any date on the other side of a DST change from "now" shifts by
+ * an hour (and a midnight timestamp shifts to the previous day). Building the Date from
+ * UTC components keeps the wall-clock time intact end-to-end.
+ */
 function toDate(d) {
   if (!d) return null
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(d)
+  if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]))
   const dt = new Date(d)
   return isNaN(dt) ? null : dt
-}
-
-function relTypeLabel(t) {
-  return REL_TYPE_LABELS[t] || t || ''
 }
 
 function slug(s) {
@@ -118,8 +123,8 @@ function addActivitiesSheet(wb, activities, wbsLevelsMap, maxDepth, sheetName) {
       status_label: statusLabel(a.status),
       pct_complete: a.pct_complete,
       duration_d: round1(a.duration_hrs / (a.calendar_hrs_per_day || 8)),
-      early_start: toDate(a.early_start),
-      early_end: toDate(a.early_end),
+      early_start: toDate(displayStart(a)),
+      early_end: toDate(displayEnd(a)),
       total_float_d: floatDays(a.total_float_hrs, a.calendar_hrs_per_day),
       free_float_d: round1(a.free_float_hrs / (a.calendar_hrs_per_day || 8)),
       calendar: a.calendar || '',
@@ -267,8 +272,8 @@ export async function exportReviewReport(data, annotations) {
       task_code: a.task_code,
       task_name: a.task_name,
       wbs_path: a.wbs_path || (wbsLevelsMap.get(a.wbs_id) || []).join(' / '),
-      early_start: toDate(a.early_start),
-      early_end: toDate(a.early_end),
+      early_start: toDate(displayStart(a)),
+      early_end: toDate(displayEnd(a)),
       float_d: floatDays(a.total_float_hrs, a.calendar_hrs_per_day),
       note: ann.note || '',
       updated: ann.updatedAt ? new Date(ann.updatedAt) : null,
@@ -315,8 +320,8 @@ export function exportActivitiesCsv(data, activities, filename) {
       statusLabel(a.status),
       a.pct_complete,
       round1(a.duration_hrs / (a.calendar_hrs_per_day || 8)),
-      a.early_start ? a.early_start.slice(0, 10) : '',
-      a.early_end ? a.early_end.slice(0, 10) : '',
+      displayStart(a) ? displayStart(a).slice(0, 10) : '',
+      displayEnd(a) ? displayEnd(a).slice(0, 10) : '',
       floatDays(a.total_float_hrs, a.calendar_hrs_per_day),
       round1(a.free_float_hrs / (a.calendar_hrs_per_day || 8)),
       a.calendar || '',

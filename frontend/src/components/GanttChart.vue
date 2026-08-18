@@ -68,8 +68,12 @@
         <option value="">All {{ t }}</option>
         <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
       </select>
+      <span v-if="isolationActive" class="isolation-chip">
+        Chain trace &middot; {{ isolatedIds.size }} {{ isolatedIds.size === 1 ? 'activity' : 'activities' }}
+        <button class="isolation-exit" @click="exitIsolation">Show all</button>
+      </span>
       <span class="filter-count">{{ matchCount }} of {{ data.activities.length }} activities</span>
-      <button class="btn-tiny-light" v-if="isFilterActive" @click="clearFilters">Clear filters</button>
+      <button class="btn-tiny-light" v-if="isFilterActive && !isolationActive" @click="clearFilters">Clear filters</button>
     </div>
 
     <div class="gantt-body">
@@ -153,13 +157,17 @@
             <marker id="gantt-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
               <path d="M0 0L8 4L0 8z" class="g-link-arrow" />
             </marker>
+            <marker id="gantt-arrow-chain" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M0 0L8 4L0 8z" class="g-link-arrow-chain" />
+            </marker>
           </defs>
           <path
             v-for="l in links"
             :key="l.id"
             :d="l.d"
             class="g-link"
-            marker-end="url(#gantt-arrow)"
+            :class="{ 'g-link-chain': l.chain }"
+            :marker-end="l.chain ? 'url(#gantt-arrow-chain)' : 'url(#gantt-arrow)'"
           />
           <path v-if="progressLinePath" :d="progressLinePath" class="g-progress-line" />
           <circle
@@ -209,8 +217,8 @@
               <span class="g-act-code">{{ row.activity.task_code }}</span>
               <span class="g-act-name">{{ row.activity.task_name }}</span>
               <span class="g-col-dur">{{ formatHours(row.activity.duration_hrs, row.activity.calendar_hrs_per_day) }}</span>
-              <span class="g-col-date">{{ formatDateShort(row.activity.early_start) }}</span>
-              <span class="g-col-date">{{ formatDateShort(row.activity.early_end) }}</span>
+              <span class="g-col-date">{{ formatDateShort(displayStart(row.activity)) }}</span>
+              <span class="g-col-date">{{ formatDateShort(displayEnd(row.activity)) }}</span>
             </template>
           </div>
           <div
@@ -253,6 +261,12 @@
           <span class="detail-code">{{ selectedActivity.task_code }}</span>
           <h3 class="detail-name">{{ selectedActivity.task_name }}</h3>
           <div v-if="selectedActivity.wbs_path" class="detail-wbs-path">{{ selectedActivity.wbs_path }}</div>
+          <div class="detail-actions">
+            <button v-if="!isolationActive" class="btn-tiny-light btn-isolate" @click="isolateSelected" title="Clear the chart down to just this activity, then click predecessors/successors below to rebuild its chain link by link">
+              Isolate &amp; trace chain
+            </button>
+            <span v-else class="trace-hint">Tracing — click a predecessor or successor below to add it and walk the chain.</span>
+          </div>
         </div>
 
         <div class="detail-stat-grid">
@@ -261,15 +275,15 @@
             <div class="stat-label">Duration</div>
           </div>
           <div class="stat-tile" :class="floatTileClass(selectedActivity)">
-            <div class="stat-value">{{ formatFloat(selectedActivity.total_float_hrs) }}</div>
+            <div class="stat-value">{{ formatFloat(selectedActivity.total_float_hrs, selectedActivity.calendar_hrs_per_day) }}</div>
             <div class="stat-label">Float</div>
           </div>
           <div class="stat-tile">
-            <div class="stat-value stat-value-date">{{ formatDate(selectedActivity.early_start) }}</div>
+            <div class="stat-value stat-value-date">{{ formatDate(displayStart(selectedActivity)) }}</div>
             <div class="stat-label">Start</div>
           </div>
           <div class="stat-tile">
-            <div class="stat-value stat-value-date">{{ formatDate(selectedActivity.early_end) }}</div>
+            <div class="stat-value stat-value-date">{{ formatDate(displayEnd(selectedActivity)) }}</div>
             <div class="stat-label">Finish</div>
           </div>
           <div class="stat-tile">
@@ -283,6 +297,18 @@
           </div>
         </div>
 
+        <!-- An imposed date is often the single fact explaining an activity's float —
+             surface it here instead of making the reviewer hunt in the Health Check. -->
+        <div v-if="selectedActivity.cstr_type" class="detail-constraint">
+          <span class="constraint-label">Constraint</span>
+          <strong>{{ cstrLabel(selectedActivity.cstr_type) }}</strong>
+          <span v-if="selectedActivity.cstr_date">&middot; {{ formatDate(selectedActivity.cstr_date) }}</span>
+          <template v-if="selectedActivity.cstr_type2">
+            <span>&middot; plus {{ cstrLabel(selectedActivity.cstr_type2) }}</span>
+            <span v-if="selectedActivity.cstr_date2">{{ formatDate(selectedActivity.cstr_date2) }}</span>
+          </template>
+        </div>
+
         <div class="detail-rels">
           <div class="rel-section">
             <h4>Predecessors <em>{{ selectedPredecessors.length }}</em></h4>
@@ -293,9 +319,9 @@
                 <span class="rel-item-name">{{ p.activity ? p.activity.task_name : '' }}</span>
               </div>
               <div class="rel-item-row rel-item-sub">
-                <span class="rel-type">{{ p.type }}</span>
+                <span class="rel-type">{{ relTypeLabel(p.type) }}</span>
                 <template v-if="p.activity">
-                  <span class="rel-dates">{{ formatDate(p.activity.early_start) }} → {{ formatDate(p.activity.early_end) }}</span>
+                  <span class="rel-dates">{{ formatDate(displayStart(p.activity)) }} → {{ formatDate(displayEnd(p.activity)) }}</span>
                   <span class="rel-dur">{{ formatHours(p.activity.duration_hrs, p.activity.calendar_hrs_per_day) }}</span>
                 </template>
                 <span v-if="p.lag_hrs" class="rel-lag">+{{ p.lag_hrs }}h lag</span>
@@ -311,9 +337,9 @@
                 <span class="rel-item-name">{{ s.activity ? s.activity.task_name : '' }}</span>
               </div>
               <div class="rel-item-row rel-item-sub">
-                <span class="rel-type">{{ s.type }}</span>
+                <span class="rel-type">{{ relTypeLabel(s.type) }}</span>
                 <template v-if="s.activity">
-                  <span class="rel-dates">{{ formatDate(s.activity.early_start) }} → {{ formatDate(s.activity.early_end) }}</span>
+                  <span class="rel-dates">{{ formatDate(displayStart(s.activity)) }} → {{ formatDate(displayEnd(s.activity)) }}</span>
                   <span class="rel-dur">{{ formatHours(s.activity.duration_hrs, s.activity.calendar_hrs_per_day) }}</span>
                 </template>
                 <span v-if="s.lag_hrs" class="rel-lag">+{{ s.lag_hrs }}h lag</span>
@@ -335,6 +361,7 @@
 
 <script>
 import { formatDate, formatDateShort, formatHours, isMilestone, formatFloat, statusLabel } from '../utils/format'
+import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
 import IconChevron from './IconChevron.vue'
 import AnnotationEditor from './AnnotationEditor.vue'
 
@@ -407,6 +434,10 @@ export default {
       filterStatus: '',
       filterCriticalOnly: false,
       filterCodes: {},
+      // Chain tracing: null = off; a Set of task_ids = show ONLY these activities.
+      // Grown one activity at a time by clicking predecessors/successors in the drawer,
+      // letting a reviewer reconstruct a driving chain link by link.
+      isolatedIds: null,
       scrollLeftPx: 0,
       scrollTopPx: 0,
       panning: false,
@@ -472,8 +503,8 @@ export default {
       }
       for (const list of map.values()) {
         list.sort((a, b) => {
-          const da = a.early_start || ''
-          const db = b.early_start || ''
+          const da = displayStart(a) || ''
+          const db = displayStart(b) || ''
           if (da !== db) return da < db ? -1 : 1
           return a.task_code < b.task_code ? -1 : a.task_code > b.task_code ? 1 : 0
         })
@@ -588,10 +619,15 @@ export default {
     activeCodeFilters() {
       return Object.entries(this.filterCodes).filter(([, v]) => v)
     },
+    isolationActive() {
+      return this.isolatedIds !== null
+    },
     isFilterActive() {
-      return !!(this.filterText.trim() || this.filterStatus || this.filterCriticalOnly || this.activeCodeFilters.length)
+      return this.isolationActive || !!(this.filterText.trim() || this.filterStatus || this.filterCriticalOnly || this.activeCodeFilters.length)
     },
     matchedTaskIds() {
+      // Isolation takes precedence over the text/status/code filters: the trace IS the view.
+      if (this.isolatedIds) return this.isolatedIds
       if (!this.isFilterActive) return null
       const q = this.filterText.trim().toLowerCase()
       const ids = new Set()
@@ -670,17 +706,23 @@ export default {
       return map
     },
     links() {
-      if (!this.showLinks) return []
+      // Chain tracing draws its links regardless of the Links toggle — they're the point.
+      if (!this.showLinks && !this.isolationActive) return []
       const out = []
       const rowByIndex = this.rows
       for (const row of rowByIndex) {
-        if (row.type !== 'activity' || !this.isBasisCritical(row.activity)) continue
+        if (row.type !== 'activity') continue
+        // Normal mode: only critical-to-critical links (per the selected basis).
+        // Isolation mode: every relationship between two traced activities, with
+        // non-critical ones styled as "chain" links so the critical core still stands out.
+        if (!this.isolationActive && !this.isBasisCritical(row.activity)) continue
         for (const p of row.activity.predecessors || []) {
           const predIdx = this.rowIndexByTaskId.get(p.task_id)
           if (predIdx === undefined) continue
           const predRow = rowByIndex[predIdx]
-          if (!this.isBasisCritical(predRow.activity)) continue
-          const predX = this.dateToX(predRow.activity.early_end)
+          const bothCritical = this.isBasisCritical(row.activity) && this.isBasisCritical(predRow.activity)
+          if (!this.isolationActive && !bothCritical) continue
+          const predX = this.dateToX(displayEnd(predRow.activity))
           const predY = predIdx * ROW_HEIGHT + ROW_HEIGHT / 2
           const succX = row.x
           const succY = row.index * ROW_HEIGHT + ROW_HEIGHT / 2
@@ -689,6 +731,7 @@ export default {
           out.push({
             id: `${p.task_id}-${row.activity.task_id}-${p.type}-${out.length}`,
             d: `M${predX},${predY} L${midX},${predY} L${midX},${succY} L${succX},${succY}`,
+            chain: !bothCritical,
           })
         }
       }
@@ -719,12 +762,14 @@ export default {
         for (const a of activitiesByWbs.get(node.wbs_id) || []) {
           if (matchFn && !matchFn(a)) continue
           count++
-          if (a.early_start) {
-            const d = new Date(a.early_start)
+          const ds = displayStart(a)
+          const de = displayEnd(a)
+          if (ds) {
+            const d = new Date(ds)
             if (!start || d < start) start = d
           }
-          if (a.early_end) {
-            const d = new Date(a.early_end)
+          if (de) {
+            const d = new Date(de)
             if (!finish || d > finish) finish = d
           }
         }
@@ -760,8 +805,8 @@ export default {
     },
     buildActivityRow(a, level) {
       const milestone = isMilestone(a)
-      const x = this.dateToX(a.early_start)
-      const xEnd = this.dateToX(a.early_end)
+      const x = this.dateToX(displayStart(a))
+      const xEnd = this.dateToX(displayEnd(a))
       const w = milestone ? 0 : Math.max((xEnd ?? x ?? 0) - (x ?? 0), 3)
       return {
         type: 'activity', key: 'a' + a.task_id, level, activity: a,
@@ -828,6 +873,19 @@ export default {
       this.filterStatus = ''
       this.filterCriticalOnly = false
       this.filterCodes = {}
+      this.isolatedIds = null
+    },
+    isolateSelected() {
+      if (this.selectedTaskId == null) return
+      this.isolatedIds = new Set([this.selectedTaskId])
+      this.$nextTick(() => this.scrollToActivity(this.selectedTaskId))
+    },
+    exitIsolation() {
+      const keep = this.selectedTaskId
+      this.isolatedIds = null
+      // Re-reveal the activity we were parked on so the exit doesn't strand the
+      // selection under a collapsed WBS branch.
+      if (keep != null) this.revealAndSelect(keep)
     },
     scrollToToday() {
       if (this.todayX === null || !this.$refs.scrollEl) return
@@ -861,11 +919,11 @@ export default {
       return z.charAt(0).toUpperCase() + z.slice(1)
     },
     barTitle(a) {
-      return `${a.task_code} — ${a.task_name}\n${formatDate(a.early_start)} → ${formatDate(a.early_end)}\n` +
-        `Duration: ${formatHours(a.duration_hrs, a.calendar_hrs_per_day)} · Float: ${formatFloat(a.total_float_hrs)} · ${a.pct_complete}% complete`
+      return `${a.task_code} — ${a.task_name}\n${formatDate(displayStart(a))} → ${formatDate(displayEnd(a))}\n` +
+        `Duration: ${formatHours(a.duration_hrs, a.calendar_hrs_per_day)} · Float: ${formatFloat(a.total_float_hrs, a.calendar_hrs_per_day)} · ${a.pct_complete}% complete`
     },
     milestoneTitle(a) {
-      return `${a.task_code} — ${a.task_name}\n${formatDate(a.early_start)}\nFloat: ${formatFloat(a.total_float_hrs)}`
+      return `${a.task_code} — ${a.task_name}\n${formatDate(displayStart(a))}\nFloat: ${formatFloat(a.total_float_hrs, a.calendar_hrs_per_day)}`
     },
     // Same 0h / negative / ≤80h(10d) severity bands used everywhere else in the app,
     // applied to the whole stat tile so float is legible without reading the number.
@@ -880,12 +938,26 @@ export default {
     formatHours,
     formatFloat,
     statusLabel,
+    relTypeLabel,
+    cstrLabel,
+    displayStart,
+    displayEnd,
     // Selects a predecessor/successor from the detail panel: expands every WBS
     // ancestor so the row actually renders (it may be tucked under a collapsed
     // branch, or hidden by an active filter), then scrolls to it.
     revealAndSelect(taskId) {
       const a = this.actLookup.get(taskId)
       if (!a) return
+      if (this.isolationActive) {
+        // Chain tracing: clicking a predecessor/successor ADDS it to the traced set and
+        // walks the selection onto it, growing the chain one link at a time.
+        const next = new Set(this.isolatedIds)
+        next.add(taskId)
+        this.isolatedIds = next
+        this.selectedTaskId = taskId
+        this.$nextTick(() => this.scrollToActivity(taskId))
+        return
+      }
       if (this.isFilterActive) this.clearFilters()
       const toExpand = new Set(this.expandedWbs)
       let cur = a.wbs_id
@@ -1001,7 +1073,7 @@ export default {
 .gantt-wrap { border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; background: var(--white); margin-bottom: var(--space-6); box-shadow: 0 1px 3px rgba(28,25,23,0.06); font-family: var(--font-ui); }
 .gantt-wrap.is-fullscreen { border-radius: 0; display: flex; flex-direction: column; height: 100vh; }
 .gantt-wrap.is-fullscreen .gantt-body { flex: 1; min-height: 0; display: flex; }
-.gantt-wrap.is-fullscreen .gantt-scroll { flex: 1; max-height: none; }
+.gantt-wrap.is-fullscreen .gantt-scroll { flex: 1; height: auto; max-height: none; }
 
 /* Wraps just the scroll viewport so the detail drawer can anchor to its exact bounds
    (top/bottom) regardless of how tall the strip/controls/filter-bar above it are. */
@@ -1042,7 +1114,7 @@ export default {
 .zoom-group button.active { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
 .zoom-group button:hover:not(.active) { background: var(--gray-150); }
 .zoom-adjust { display: flex; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); overflow: hidden; }
-.zbtn { padding: 4px 10px; border: none; border-right: 1px solid var(--gray-300); background: var(--white); cursor: pointer; font-size: 13px; color: var(--gray-700); font-weight: 700; }
+.zbtn { padding: 4px 10px; border: none; border-right: 1px solid var(--gray-300); background: var(--white); cursor: pointer; font-size: 14px; color: var(--gray-700); font-weight: 700; }
 .zbtn:last-child { border-right: none; }
 .zbtn:hover { background: var(--gray-150); }
 .ctrl-btn { padding: 4px 10px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); background: var(--white); cursor: pointer; font: var(--text-small); color: var(--gray-700); }
@@ -1056,12 +1128,18 @@ export default {
 .filter-select { padding: 6px 8px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: white; }
 .filter-check { font: var(--text-small); color: var(--gray-700); display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .filter-count { font: var(--text-small); color: var(--gray-500); margin-left: auto; }
+.isolation-chip { display: inline-flex; align-items: center; gap: 8px; background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); border-radius: 12px; padding: 2px 4px 2px 10px; font: var(--text-small); font-weight: 600; }
+.isolation-exit { border: none; background: var(--accent); color: var(--white); border-radius: 9px; padding: 2px 9px; font: var(--text-small); font-weight: 600; cursor: pointer; }
+.isolation-exit:hover { opacity: 0.9; }
 .btn-tiny-light { padding: 4px 10px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); background: white; cursor: pointer; font: var(--text-small); color: var(--gray-700); }
 .btn-tiny-light:hover { background: var(--gray-150); }
 
-.gantt-scroll { overflow: auto; max-height: min(75vh, 900px); position: relative; cursor: grab; }
+/* Fixed height, not max-height: with a collapsed WBS the viewport used to shrink to
+   the handful of visible rows, leaving a cramped partial canvas. A constant-height
+   viewport keeps the full working area available no matter how much is expanded. */
+.gantt-scroll { overflow: auto; height: min(75vh, 900px); position: relative; cursor: grab; }
 .gantt-scroll.panning { cursor: grabbing; }
-.gantt-wrap.extra-room .gantt-scroll { max-height: min(92vh, 1400px); }
+.gantt-wrap.extra-room .gantt-scroll { height: min(92vh, 1400px); }
 .gantt-grid { display: grid; grid-template-rows: 52px; grid-auto-rows: 20px; position: relative; }
 
 .g-cell { min-width: 0; }
@@ -1083,6 +1161,8 @@ export default {
 .g-gridline-month { stroke: var(--gray-300); stroke-width: 1; }
 .g-link { fill: none; stroke: var(--crit); stroke-width: 1.5; opacity: 0.75; }
 .g-link-arrow { fill: var(--crit); }
+.g-link.g-link-chain { stroke: var(--accent); stroke-width: 1.5; opacity: 0.85; }
+.g-link-arrow-chain { fill: var(--accent); }
 .g-progress-line { fill: none; stroke: var(--milestone); stroke-width: 2; stroke-dasharray: 4 3; opacity: 0.9; }
 .g-progress-dot { fill: var(--milestone); }
 
@@ -1102,16 +1182,17 @@ export default {
 .g-toggle { color: var(--gray-500); flex-shrink: 0; }
 .g-wbs-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
 .g-wbs-count { padding-right: 4px; font: var(--text-micro); color: var(--gray-500); flex-shrink: 0; }
-.g-act-code { font-family: var(--font-mono); font-size: 11px; color: var(--gray-500); flex-shrink: 0; }
+.g-act-code { font-family: var(--font-mono); font-size: 12px; color: var(--gray-500); flex-shrink: 0; }
 .annotation-flag { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--gray-500); }
 .annotation-flag.sev-query { background: var(--accent); }
 .annotation-flag.sev-risk { background: var(--near); }
 .annotation-flag.sev-logic { background: var(--crit); }
 .annotation-flag.sev-resolved { background: var(--ok); }
 .g-act-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink-soft); }
-.g-col-dur, .g-col-date { flex-shrink: 0; text-align: right; font-family: var(--font-mono); font-size: 10px; color: var(--gray-500); }
+.g-col-dur, .g-col-date { flex-shrink: 0; text-align: right; font-family: var(--font-mono); font-size: 11px; color: var(--gray-500); }
 .g-col-dur { width: 30px; }
 .g-col-date { width: 42px; }
+.g-col-date:last-child { margin-right: 8px; }
 
 .g-timeline-row { position: relative; height: 20px; border-bottom: 1px solid var(--gray-150); z-index: 2; }
 .g-timeline-row.stripe { background: var(--gray-100); }
@@ -1140,20 +1221,27 @@ export default {
 .detail-slide-enter-from, .detail-slide-leave-to { transform: translateX(24px); opacity: 0; }
 
 .detail-header { position: relative; padding-right: 26px; }
-.detail-close { position: absolute; top: -6px; right: -6px; width: 26px; height: 26px; border: none; background: var(--gray-100); color: var(--gray-700); border-radius: 50%; font-size: 18px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.detail-close { position: absolute; top: -6px; right: -6px; width: 26px; height: 26px; border: none; background: var(--gray-100); color: var(--gray-700); border-radius: 50%; font-size: 19px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .detail-close:hover { background: var(--gray-150); color: var(--ink); }
-.detail-code { display: block; font-family: var(--font-mono); font-weight: 700; font-size: 13px; color: var(--accent); margin-bottom: 3px; }
-.detail-name { font-size: 16px; font-weight: 700; color: var(--ink); line-height: 1.35; margin: 0; }
-.detail-wbs-path { font-size: 11px; color: var(--gray-700); font-family: var(--font-mono); margin-top: 6px; line-height: 1.5; }
+.detail-code { display: block; font-family: var(--font-mono); font-weight: 700; font-size: 14px; color: var(--accent); margin-bottom: 3px; }
+.detail-name { font-size: 17px; font-weight: 700; color: var(--ink); line-height: 1.35; margin: 0; }
+.detail-wbs-path { font-size: 12px; color: var(--gray-700); font-family: var(--font-mono); margin-top: 6px; line-height: 1.5; }
+.detail-actions { margin-top: 10px; }
+.btn-isolate { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+.btn-isolate:hover { background: var(--accent-soft); }
+.trace-hint { display: block; font-size: 13px; color: var(--accent); font-weight: 600; background: var(--accent-soft); border-radius: var(--radius-sm); padding: 6px 9px; }
 
 /* Duration/float lead the grid — the two numbers a reviewer needs first, sized to read
    at a glance instead of buried in an inline sentence. */
 .detail-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.detail-constraint { background: var(--near-tint); border: 1px solid var(--near); border-radius: var(--radius-sm); padding: 7px 10px; font-size: 13px; color: var(--ink-soft); display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
+.detail-constraint .constraint-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--near); }
+.detail-constraint strong { color: var(--ink); }
 .stat-tile { background: var(--gray-100); border: 1px solid var(--gray-150); border-radius: var(--radius-md); padding: 8px 10px; }
-.stat-value { font-family: var(--font-mono); font-size: 19px; font-weight: 700; color: var(--ink); line-height: 1.2; }
-.stat-value-date { font-size: 15px; }
-.stat-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gray-700); margin-top: 3px; }
-.stat-status { font-size: 14px; }
+.stat-value { font-family: var(--font-mono); font-size: 20px; font-weight: 700; color: var(--ink); line-height: 1.2; }
+.stat-value-date { font-size: 16px; }
+.stat-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gray-700); margin-top: 3px; }
+.stat-status { font-size: 15px; }
 .stat-status.status-TK_Complete { color: var(--ok); }
 .stat-status.status-TK_Active { color: var(--accent); }
 .stat-status.status-TK_NotStart { color: var(--gray-700); }
@@ -1167,25 +1255,25 @@ export default {
 .stat-tile-neg .stat-value, .stat-tile-neg .stat-label { color: var(--white); }
 
 .detail-rels { display: flex; flex-direction: column; gap: var(--space-5); }
-.rel-section h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gray-700); font-weight: 700; margin: 0 0 8px; }
+.rel-section h4 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gray-700); font-weight: 700; margin: 0 0 8px; }
 .rel-section h4 em { font-style: normal; color: var(--accent); font-family: var(--font-mono); }
-.rel-empty { font-size: 13px; color: var(--gray-500); font-style: italic; }
-.rel-item-btn { display: flex; flex-direction: column; gap: 3px; font-size: 13px; padding: 8px 10px; border: none; background: var(--gray-100); cursor: pointer; border-radius: var(--radius-sm); width: 100%; text-align: left; margin-bottom: 5px; }
+.rel-empty { font-size: 14px; color: var(--gray-500); font-style: italic; }
+.rel-item-btn { display: flex; flex-direction: column; gap: 3px; font-size: 14px; padding: 8px 10px; border: none; background: var(--gray-100); cursor: pointer; border-radius: var(--radius-sm); width: 100%; text-align: left; margin-bottom: 5px; }
 .rel-item-btn:hover { background: var(--accent-soft); }
 .rel-item-row { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .rel-item-name { color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .rel-item-sub { color: var(--gray-700); }
-.rel-code { font-family: var(--font-mono); font-weight: 700; color: var(--accent); font-size: 13px; flex-shrink: 0; }
-.rel-type { color: var(--gray-700); font-size: 10px; font-weight: 700; text-transform: uppercase; flex-shrink: 0; }
-.rel-dates { font-family: var(--font-mono); font-size: 11px; color: var(--gray-700); }
-.rel-dur { font-family: var(--font-mono); font-size: 11px; color: var(--gray-700); margin-left: auto; }
-.rel-lag { font-size: 10px; color: var(--gray-500); font-style: italic; }
+.rel-code { font-family: var(--font-mono); font-weight: 700; color: var(--accent); font-size: 14px; flex-shrink: 0; }
+.rel-type { color: var(--gray-700); font-size: 11px; font-weight: 700; text-transform: uppercase; flex-shrink: 0; }
+.rel-dates { font-family: var(--font-mono); font-size: 12px; color: var(--gray-700); }
+.rel-dur { font-family: var(--font-mono); font-size: 12px; color: var(--gray-700); margin-left: auto; }
+.rel-lag { font-size: 11px; color: var(--gray-500); font-style: italic; }
 
 @media print {
   @page { size: landscape; margin: 10mm; }
   .gantt-strip, .gantt-controls, .filter-bar, .gantt-detail-panel { display: none; }
   .gantt-wrap, .gantt-wrap.is-fullscreen { border: none; box-shadow: none; height: auto; display: block; }
-  .gantt-scroll { max-height: none !important; overflow: visible; cursor: default; }
+  .gantt-scroll { height: auto !important; max-height: none !important; overflow: visible; cursor: default; }
   .g-corner, .g-timeline-header, .g-label { position: static; }
   .g-resize-handle { display: none; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }

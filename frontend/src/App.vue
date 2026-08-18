@@ -41,12 +41,20 @@
             <span v-else class="loading">Parsing schedule...</span>
           </label>
         </div>
-        <p class="hint">Files are parsed in-browser via the server. Your last file is kept in this browser only, so you can reopen it without re-uploading.</p>
+        <p class="hint">Files are parsed on the server in memory and never stored. Your last file is kept in this browser only, so you can reopen it without re-uploading.</p>
       </div>
     </div>
 
     <!-- Dashboard -->
     <div v-else class="dashboard" :class="{ 'header-collapsed': headerCollapsed }">
+      <!-- Parse warnings (multi-project file, suspect encoding, …) — a reviewer must never
+           discover these by accident, so they persist until explicitly dismissed. -->
+      <div v-if="visibleWarnings.length" class="parse-warnings">
+        <div v-for="(w, i) in visibleWarnings" :key="i" class="parse-warning">
+          <span>{{ w }}</span>
+          <button class="warning-dismiss" @click="dismissWarning(w)" title="Dismiss">&times;</button>
+        </div>
+      </div>
       <template v-if="!headerCollapsed">
         <!-- Header -->
         <header class="header">
@@ -150,9 +158,9 @@
               <tr v-for="act in nearCritical" :key="act.task_id">
                 <td class="code">{{ act.task_code }}</td>
                 <td class="name-cell">{{ act.task_name }}</td>
-                <td class="float-cell num-cell">{{ act.total_float_hrs }}h</td>
+                <td class="float-cell num-cell">{{ formatFloat(act.total_float_hrs, act.calendar_hrs_per_day) }}</td>
                 <td class="num-cell">{{ formatHours(act.duration_hrs, act.calendar_hrs_per_day) }}</td>
-                <td class="num-cell">{{ formatDate(act.early_end) }}</td>
+                <td class="num-cell">{{ formatDate(displayEnd(act)) }}</td>
               </tr>
             </tbody>
           </table>
@@ -221,9 +229,9 @@
                   <span class="prog-text">{{ act.pct_complete }}%</span>
                 </td>
                 <td class="num-cell">{{ formatHours(act.duration_hrs, act.calendar_hrs_per_day) }}</td>
-                <td class="num-cell">{{ formatDate(act.early_start) }}</td>
-                <td class="num-cell">{{ formatDate(act.early_end) }}</td>
-                <td class="num-cell" :class="floatClass(act.total_float_hrs)">{{ formatFloat(act.total_float_hrs) }}</td>
+                <td class="num-cell">{{ formatDate(displayStart(act)) }}</td>
+                <td class="num-cell">{{ formatDate(displayEnd(act)) }}</td>
+                <td class="num-cell" :class="floatClass(act.total_float_hrs)">{{ formatFloat(act.total_float_hrs, act.calendar_hrs_per_day) }}</td>
               </tr>
               <tr v-if="selectedAct" class="rel-row">
                 <td colspan="8">
@@ -324,6 +332,7 @@ import { formatDate, formatHours, statusLabel, isMilestone, formatFloat, timeAgo
 import { exportWorkbook, exportActivitiesCsv, exportReviewReport } from './utils/export'
 import { loadLastFile, saveLastFile, clearLastFile } from './utils/lastFile'
 import { loadAnnotations, saveAnnotation, removeAnnotation } from './utils/annotations'
+import { displayStart, displayEnd } from './utils/p6'
 
 export default {
   name: 'App',
@@ -348,6 +357,7 @@ export default {
       annotations: {},
       compareData: null,
       compareFilename: '',
+      dismissedWarnings: [],
       compareLoading: false,
       compareDragOver: false,
     }
@@ -377,8 +387,11 @@ export default {
       }
       // Sort
       acts.sort((a, b) => {
-        let va = a[this.sortField]
-        let vb = b[this.sortField]
+        const get = x =>
+          this.sortField === 'early_start' ? displayStart(x) :
+          this.sortField === 'early_end' ? displayEnd(x) : x[this.sortField]
+        let va = get(a)
+        let vb = get(b)
         if (typeof va === 'string') va = (va || '').toLowerCase()
         if (typeof vb === 'string') vb = (vb || '').toLowerCase()
         if (va == null) va = ''
@@ -391,10 +404,16 @@ export default {
     },
     nearCritical() {
       if (!this.data) return []
+      // Completed activities can't become critical — a watchlist entry for finished work
+      // is pure noise to a reviewer.
       return this.data.activities
-        .filter(a => !a.is_critical && a.total_float_hrs > 0 && a.total_float_hrs <= 80)
+        .filter(a => a.status !== 'TK_Complete' && !a.is_critical && a.total_float_hrs > 0 && a.total_float_hrs <= 80)
         .sort((a, b) => a.total_float_hrs - b.total_float_hrs)
         .slice(0, 15)
+    },
+    visibleWarnings() {
+      const ws = (this.data && this.data.warnings) || []
+      return ws.filter(w => !this.dismissedWarnings.includes(w))
     },
     projectKey() {
       return this.data ? this.data.project.proj_short_name : null
@@ -493,6 +512,7 @@ export default {
       this.selectedAct = null
       this.codeFilters = {}
       this.annotations = loadAnnotations(parsed.project.proj_short_name)
+      this.dismissedWarnings = []
       this.compareData = null
       this.compareFilename = ''
     },
@@ -518,6 +538,8 @@ export default {
     },
     formatDate,
     formatHours,
+    displayStart,
+    displayEnd,
     statusLabel,
     isMilestone,
     formatFloat,
@@ -535,6 +557,9 @@ export default {
     getActCode(tid) {
       const a = this.data.activities.find(a => a.task_id === tid)
       return a ? a.task_code : '?' + tid
+    },
+    dismissWarning(w) {
+      this.dismissedWarnings.push(w)
     },
     jumpToActivity(taskId) {
       this.tab = 'gantt'
@@ -601,11 +626,11 @@ export default {
   /* Type */
   --font-ui: "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "IBM Plex Mono", "SF Mono", "Fira Code", ui-monospace, monospace;
-  --text-h1: 700 22px/1.3 var(--font-ui);
-  --text-h2: 700 16px/1.3 var(--font-ui);
-  --text-body: 400 13px/1.5 var(--font-ui);
-  --text-small: 500 12px/1.4 var(--font-ui);
-  --text-micro: 600 10px/1.3 var(--font-ui);
+  --text-h1: 700 23px/1.3 var(--font-ui);
+  --text-h2: 700 17px/1.3 var(--font-ui);
+  --text-body: 400 14px/1.5 var(--font-ui);
+  --text-small: 500 13px/1.4 var(--font-ui);
+  --text-micro: 600 11px/1.3 var(--font-ui);
 
   /* Spacing & radius */
   --space-1: 4px;
@@ -620,7 +645,7 @@ export default {
 
 /* ── Reset & base ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: var(--font-ui); background: var(--white); color: var(--ink); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+body { font-family: var(--font-ui); background: var(--white); color: var(--ink); font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
 
 /* Every number in the app reads as instrument output, not prose — codes, dates,
    durations, floats, percentages all get tabular monospace digits. */
@@ -642,7 +667,7 @@ body { font-family: var(--font-ui); background: var(--white); color: var(--ink);
 .reopen-info strong { font: var(--text-body); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reopen-info span { font: var(--text-micro); color: var(--gray-700); text-transform: uppercase; letter-spacing: 0.04em; }
 .reopen-actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
-.btn-forget { border: none; background: none; color: var(--gray-500); font-size: 18px; line-height: 1; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm); }
+.btn-forget { border: none; background: none; color: var(--gray-500); font-size: 19px; line-height: 1; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm); }
 .btn-forget:hover { background: var(--white); color: var(--crit); }
 .compare-upload-card { max-width: 560px; margin: var(--space-8) auto; text-align: center; }
 .compare-upload-card h2 { font: var(--text-h2); color: var(--ink); margin-bottom: var(--space-2); }
@@ -668,10 +693,15 @@ body { font-family: var(--font-ui); background: var(--white); color: var(--ink);
 .header-right { display: flex; gap: var(--space-2); align-items: center; }
 
 /* Metrics strip — one band with dividers, not seven separate cards */
+.parse-warnings { margin-bottom: var(--space-4); display: flex; flex-direction: column; gap: 6px; }
+.parse-warning { display: flex; align-items: baseline; gap: var(--space-3); background: var(--near-tint); border: 1px solid var(--near); border-radius: var(--radius-sm); padding: 8px 12px; font: var(--text-small); color: var(--ink-soft); }
+.parse-warning span { flex: 1; }
+.warning-dismiss { border: none; background: none; color: var(--near); font-size: 17px; line-height: 1; cursor: pointer; padding: 0 4px; }
+
 .metrics-strip { display: flex; background: var(--gray-100); border: 1px solid var(--gray-300); border-radius: var(--radius-md); margin-bottom: var(--space-6); overflow: hidden; }
 .metric { flex: 1; min-width: 100px; padding: var(--space-3) var(--space-4); text-align: center; border-right: 1px solid var(--gray-300); }
 .metric:last-child { border-right: none; }
-.metric strong { display: block; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 700; color: var(--ink); }
+.metric strong { display: block; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 23px; font-weight: 700; color: var(--ink); }
 .metric strong.is-crit { color: var(--crit); }
 .metric strong.is-ok { color: var(--ok); }
 .metric span { font: var(--text-micro); color: var(--gray-700); text-transform: uppercase; letter-spacing: 0.04em; }

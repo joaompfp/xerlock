@@ -57,7 +57,7 @@
             :class="edgeClass(e)"
             :marker-end="edgeIsCritical(e) ? 'url(#arrow-critical)' : 'url(#arrow)'"
           >
-            <title>{{ e.type }}{{ e.lagHrs ? ` +${e.lagHrs}h lag` : '' }}</title>
+            <title>{{ relTypeLabel(e.type) }}{{ e.lagHrs ? ` +${e.lagHrs}h lag` : '' }}</title>
           </path>
 
           <g
@@ -111,10 +111,11 @@
         <button class="btn-tiny" @click="selectedId = null">Close</button>
       </div>
       <div class="detail-stats">
-        <span><strong>{{ formatDate(selected.early_start) }}</strong> → <strong>{{ formatDate(selected.early_end) }}</strong></span>
+        <span><strong>{{ formatDate(displayStart(selected)) }}</strong> → <strong>{{ formatDate(displayEnd(selected)) }}</strong></span>
         <span>{{ formatHours(selected.duration_hrs, selected.calendar_hrs_per_day) }} duration</span>
-        <span :class="selected.is_negative_float ? 'float-neg' : (selected.total_float_hrs === 0 ? 'float-crit' : '')">{{ formatFloat(selected.total_float_hrs) }} float</span>
+        <span :class="selected.is_negative_float ? 'float-neg' : (selected.total_float_hrs === 0 ? 'float-crit' : '')">{{ formatFloat(selected.total_float_hrs, selected.calendar_hrs_per_day) }} float</span>
         <span>{{ statusLabel(selected.status) }}</span>
+        <span v-if="selected.cstr_type" class="detail-cstr">{{ cstrLabel(selected.cstr_type) }}{{ selected.cstr_date ? ' · ' + formatDate(selected.cstr_date) : '' }}</span>
       </div>
       <div class="detail-rels">
         <div class="rel-col">
@@ -127,9 +128,9 @@
               <span v-if="!visibleIds.has(p.task_id)" class="rel-hidden">not shown</span>
             </div>
             <div class="rel-item-row rel-item-sub">
-              <span class="rel-type">{{ p.type }}</span>
+              <span class="rel-type">{{ relTypeLabel(p.type) }}</span>
               <template v-if="p.activity">
-                <span class="rel-dates">{{ formatDate(p.activity.early_start) }} → {{ formatDate(p.activity.early_end) }}</span>
+                <span class="rel-dates">{{ formatDate(displayStart(p.activity)) }} → {{ formatDate(displayEnd(p.activity)) }}</span>
                 <span class="rel-dur">{{ formatHours(p.activity.duration_hrs, p.activity.calendar_hrs_per_day) }}</span>
               </template>
               <span v-if="p.lag_hrs" class="rel-lag">+{{ p.lag_hrs }}h lag</span>
@@ -146,9 +147,9 @@
               <span v-if="!visibleIds.has(s.task_id)" class="rel-hidden">not shown</span>
             </div>
             <div class="rel-item-row rel-item-sub">
-              <span class="rel-type">{{ s.type }}</span>
+              <span class="rel-type">{{ relTypeLabel(s.type) }}</span>
               <template v-if="s.activity">
-                <span class="rel-dates">{{ formatDate(s.activity.early_start) }} → {{ formatDate(s.activity.early_end) }}</span>
+                <span class="rel-dates">{{ formatDate(displayStart(s.activity)) }} → {{ formatDate(displayEnd(s.activity)) }}</span>
                 <span class="rel-dur">{{ formatHours(s.activity.duration_hrs, s.activity.calendar_hrs_per_day) }}</span>
               </template>
               <span v-if="s.lag_hrs" class="rel-lag">+{{ s.lag_hrs }}h lag</span>
@@ -169,6 +170,7 @@
 import dagre from 'dagre'
 import AnnotationEditor from './AnnotationEditor.vue'
 import { formatDate, formatHours, statusLabel, isMilestone, formatFloat, formatDateRange } from '../utils/format'
+import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
 
 const NEAR_CRITICAL_THRESHOLD_HRS = 80 // 10 working days
 const NODE_WIDTH = 210
@@ -376,8 +378,8 @@ export default {
           // show negative float as "0d", hiding exactly the activities that most need
           // flagging — so every case (positive, zero, negative, null) is handled explicitly.
           floatDaysLabel: a.total_float_hrs == null ? '— float' : `${Math.round(a.total_float_hrs / (a.calendar_hrs_per_day || 8))}d float`,
-          dateRangeLabel: formatDateRange(a.early_start, a.early_end),
-          fullRangeLabel: `${formatDate(a.early_start)} → ${formatDate(a.early_end)}`,
+          dateRangeLabel: formatDateRange(displayStart(a), displayEnd(a)),
+          fullRangeLabel: `${formatDate(displayStart(a))} → ${formatDate(displayEnd(a))}`,
           hiddenCount,
         })
         maxX = Math.max(maxX, pos.x + NODE_WIDTH / 2)
@@ -417,6 +419,10 @@ export default {
     formatHours,
     statusLabel,
     formatFloat,
+    relTypeLabel,
+    cstrLabel,
+    displayStart,
+    displayEnd,
     truncate(s, n) {
       if (!s) return ''
       return s.length > n ? s.slice(0, n - 1) + '…' : s
@@ -592,7 +598,7 @@ export default {
 .btn-tiny:hover:not(:disabled) { background: var(--gray-150); }
 .btn-tiny:disabled { opacity: 0.4; cursor: default; }
 .zoom-adjust { display: flex; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); overflow: hidden; }
-.zbtn { padding: 3px 10px; border: none; border-right: 1px solid var(--gray-300); background: white; cursor: pointer; font-size: 13px; color: var(--gray-700); font-weight: 700; }
+.zbtn { padding: 3px 10px; border: none; border-right: 1px solid var(--gray-300); background: white; cursor: pointer; font-size: 14px; color: var(--gray-700); font-weight: 700; }
 .zbtn:last-child { border-right: none; }
 .zbtn:hover { background: var(--gray-150); }
 
@@ -629,14 +635,14 @@ export default {
 
 .node-mile-icon { fill: var(--milestone); }
 .node-rule { stroke: var(--gray-300); stroke-width: 1; }
-.node-code { font-family: var(--font-mono); font-size: 11px; font-weight: 700; fill: var(--ink); letter-spacing: 0.02em; }
-.node-duration { font-family: var(--font-mono); font-size: 10px; font-weight: 600; fill: var(--gray-700); }
-.node-name { font-family: var(--font-ui); font-size: 12px; font-weight: 600; fill: var(--ink); }
-.node-meta { font-family: var(--font-mono); font-size: 10px; fill: var(--gray-700); }
+.node-code { font-family: var(--font-mono); font-size: 12px; font-weight: 700; fill: var(--ink); letter-spacing: 0.02em; }
+.node-duration { font-family: var(--font-mono); font-size: 11px; font-weight: 600; fill: var(--gray-700); }
+.node-name { font-family: var(--font-ui); font-size: 13px; font-weight: 600; fill: var(--ink); }
+.node-meta { font-family: var(--font-mono); font-size: 11px; fill: var(--gray-700); }
 .node-meta.node-meta-neg { fill: var(--crit); font-weight: 700; }
 
 .expand-btn circle { fill: var(--accent); opacity: 0.92; }
-.expand-btn text { fill: white; font-size: 11px; font-weight: 700; }
+.expand-btn text { fill: white; font-size: 12px; font-weight: 700; }
 .expand-btn:hover circle { fill: var(--ink-soft); }
 
 .detail-panel { border-top: 1px solid var(--gray-300); padding: var(--space-4); background: var(--gray-100); }
@@ -646,6 +652,7 @@ export default {
 .detail-wbs-path { font: var(--text-micro); color: var(--gray-700); font-family: var(--font-mono); margin-top: 2px; }
 .detail-stats { display: flex; gap: 18px; font: var(--text-small); color: var(--gray-700); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .float-crit { color: var(--crit); font-weight: 700; }
+.detail-cstr { background: var(--near-tint); color: var(--near); font-weight: 600; padding: 1px 8px; border-radius: var(--radius-sm); }
 .float-neg { color: var(--white); background: var(--crit); font-weight: 700; padding: 1px 6px; border-radius: var(--radius-sm); }
 .detail-rels { display: flex; gap: var(--space-8); flex-wrap: wrap; }
 .rel-col { flex: 1; min-width: 200px; }

@@ -121,7 +121,7 @@
             <tr v-for="a in negativeFloatList" :key="a.task_id" class="jump-row" @click="$emit('jump', a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
-              <td class="num-cell lag-neg">{{ a.total_float_hrs }}h</td>
+              <td class="num-cell lag-neg">{{ formatFloat(a.total_float_hrs, a.calendar_hrs_per_day) }}</td>
               <td class="num-cell">{{ formatDate(a.early_end) }}</td>
             </tr>
           </tbody>
@@ -242,21 +242,9 @@
 </template>
 
 <script>
-import { formatDate, formatHours } from '../utils/format'
+import { formatDate, formatHours, formatFloat } from '../utils/format'
 
-const HARD_CONSTRAINT_TYPES = new Set(['CS_MANDSTART', 'CS_MANDFIN', 'CS_MSO', 'CS_MEO'])
-const CSTR_LABELS = {
-  CS_MSO: 'Start On',
-  CS_MSOB: 'Start On or Before',
-  CS_MSOA: 'Start On or After',
-  CS_MANDSTART: 'Mandatory Start',
-  CS_MEO: 'Finish On',
-  CS_MEOB: 'Finish On or Before',
-  CS_MEOA: 'Finish On or After',
-  CS_MANDFIN: 'Mandatory Finish',
-  CS_ALAP: 'As Late As Possible',
-}
-const REL_TYPE_LABELS = { PR_FS: 'FS', PR_SS: 'SS', PR_FF: 'FF', PR_SF: 'SF' }
+import { REL_TYPE_LABELS, CSTR_LABELS, HARD_CONSTRAINT_TYPES } from '../utils/p6'
 const LARGE_LAG_HRS = 80 // ~10 working days at a standard 8h calendar
 
 export default {
@@ -386,7 +374,7 @@ export default {
         { key: 'oos', label: 'Out-of-Sequence', count: this.outOfSequenceList.length, display: this.outOfSequenceList.length, pass: this.outOfSequenceList.length === 0 },
       ]
       if (this.drivingPathAvailable) {
-        items.push({ key: 'driving', label: 'Driving Path Match', count: this.drivingMismatchList.length, display: this.drivingMismatchList.length, pass: this.drivingMismatchList.length === 0 })
+        items.push({ key: 'driving', label: 'Driving Path Mismatches', count: this.drivingMismatchList.length, display: this.drivingMismatchList.length, pass: this.drivingMismatchList.length === 0 })
       }
       if (this.data.project.has_resources) {
         items.push({ key: 'noresource', label: 'Missing Resources', count: this.noResourceList.length, display: this.noResourceList.length, pass: pct(this.noResourceList.length) < 5 })
@@ -397,6 +385,7 @@ export default {
   methods: {
     formatDate,
     formatHours,
+    formatFloat,
     codeOf(taskId) {
       const a = this.activitiesById.get(taskId)
       return a ? a.task_code : '?' + taskId
@@ -419,7 +408,7 @@ export default {
 .score-item { flex: 1; min-width: 110px; background: var(--white); padding: var(--space-3); text-align: center; }
 .score-item.pass .score-count { color: var(--ok); }
 .score-item.fail .score-count { color: var(--crit); }
-.score-count { font-family: var(--font-mono); font-size: 22px; font-weight: 700; }
+.score-count { font-family: var(--font-mono); font-size: 23px; font-weight: 700; }
 .score-label { font: var(--text-micro); color: var(--gray-700); text-transform: uppercase; letter-spacing: 0.03em; }
 
 .health-section { border-bottom: 1px solid var(--gray-300); }
@@ -429,7 +418,7 @@ export default {
 .section-title { font-weight: 600; color: var(--ink); white-space: nowrap; }
 .section-title em { font-style: normal; color: var(--accent); font-family: var(--font-mono); }
 .section-hint { font: var(--text-small); color: var(--gray-700); flex: 1; }
-.chevron { transition: transform 0.15s; color: var(--gray-500); font-size: 18px; }
+.chevron { transition: transform 0.15s; color: var(--gray-500); font-size: 19px; }
 .chevron.open { transform: rotate(90deg); }
 .section-body { padding: var(--space-4); }
 .section-note { font: var(--text-small); color: var(--gray-700); margin: var(--space-2) 0 var(--space-4); }
@@ -439,7 +428,7 @@ export default {
 
 .rel-mix { display: flex; gap: var(--space-6); flex-wrap: wrap; }
 .rel-mix-item { display: flex; flex-direction: column; gap: 2px; }
-.rel-mix-item strong { font-family: var(--font-mono); font-size: 18px; color: var(--ink); }
+.rel-mix-item strong { font-family: var(--font-mono); font-size: 19px; color: var(--ink); }
 .rel-mix-item span { font: var(--text-micro); color: var(--gray-700); }
 
 .health-table { width: 100%; border-collapse: collapse; font: var(--text-small); }
