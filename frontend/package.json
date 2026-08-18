@@ -1,6 +1,6 @@
 {
-  "name": "schedule-app",
-  "description": "Self-hosted Primavera P6 .xer schedule viewer — Gantt, critical path, health checks, progress, compare",
+  "name": "xerlock",
+  "description": "XERlock — self-hosted, read-only Primavera P6 .xer review tool: Gantt, critical path, health checks, progress, compare",
   "license": "MIT",
   "private": true,
   "version": "1.0.0",

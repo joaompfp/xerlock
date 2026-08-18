@@ -1,5 +1,5 @@
 """
-Schedule App — FastAPI backend with PyP6XER
+XERlock — FastAPI backend with PyP6XER
 Parses Primavera P6 XER files and serves structured schedule data.
 """
 
@@ -25,7 +25,7 @@ logger = logging.getLogger("schedule-app")
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 app = FastAPI(
-    title="Schedule App",
+    title="XERlock",
     version="1.0.0",
     description="Parses Primavera P6 .xer exports in memory and returns the full schedule "
     "(activities, WBS tree, project stats, longest-path trace) as JSON. Nothing is persisted.",

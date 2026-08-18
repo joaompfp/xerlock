@@ -11,7 +11,7 @@
             <path d="M7 12l2 2 4-4" />
           </svg>
         </div>
-        <h1>Schedule App</h1>
+        <h1>XERlock</h1>
         <p class="subtitle">Review Primavera P6 schedules — no P6 license required.</p>
         <p class="feature-strip">Interactive Gantt &middot; critical-path network &middot; DCMA-14 health checks &middot; snapshot compare &middot; Excel review reports</p>
 
@@ -47,7 +47,7 @@
           No file handy? <strong>Load the sample project &rarr;</strong>
         </button>
         <p v-if="!loading" class="sample-sub">A 24-activity data-centre fit-out with a real critical path, negative float, and in-progress work.</p>
-        <p class="hint">Files are parsed on the server in memory and never stored. Your last file is kept in this browser only, so you can reopen it without re-uploading.</p>
+        <p class="hint">XERlock is read-only by design — the lock in the name: files are parsed in memory, never stored, never modified. Your last file is kept in this browser only, so you can reopen it without re-uploading.</p>
         <a class="gh-link" href="https://github.com/joaompfp/schedule-app" target="_blank" rel="noopener">
           <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
           Open source on GitHub
@@ -115,14 +115,14 @@
 
       <!-- Tab navigation -->
       <nav class="tabs">
-        <a class="brand" href="https://github.com/joaompfp/schedule-app" target="_blank" rel="noopener" title="Schedule App on GitHub">
+        <a class="brand" href="https://github.com/joaompfp/schedule-app" target="_blank" rel="noopener" title="XERlock on GitHub">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" class="brand-icon" stroke-width="1.8">
             <rect x="3" y="3" width="18" height="18" rx="2" />
             <path d="M3 9h18" />
             <path d="M9 3v18" />
             <path d="M7 12l2 2 4-4" />
           </svg>
-          <span class="brand-name">Schedule App</span>
+          <span class="brand-name">XERlock</span>
         </a>
         <button :class="{ active: tab === 'gantt' }" @click="selectTab('gantt')">Gantt Chart</button>
         <button :class="{ active: tab === 'story' }" @click="selectTab('story')">Critical Path</button>
@@ -961,4 +961,56 @@ th.num { text-align: right !important; }
 
 /* WBS tree */
 .wbs-tree { border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; }
+
+/* ── Shared detail drawer (Gantt + Critical Path) ─────────────────────────── */
+.detail-drawer { position: fixed; top: 0; right: 0; bottom: 0; height: 100vh; width: 420px; max-width: 92vw; background: var(--white); border-left: 1px solid var(--gray-300); box-shadow: -8px 0 24px rgba(28,25,23,0.14); z-index: 15; overflow-y: auto; box-sizing: border-box; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-5); }
+.detail-slide-enter-active, .detail-slide-leave-active { transition: transform 0.2s ease, opacity 0.2s ease; }
+.detail-slide-enter-from, .detail-slide-leave-to { transform: translateX(24px); opacity: 0; }
+
+.detail-header { position: relative; padding-right: 26px; }
+.detail-close { position: absolute; top: -6px; right: -6px; width: 26px; height: 26px; border: none; background: var(--gray-100); color: var(--gray-700); border-radius: 50%; font-size: 19px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.detail-close:hover { background: var(--gray-150); color: var(--ink); }
+.detail-code { display: block; font-family: var(--font-mono); font-weight: 700; font-size: 14px; color: var(--accent); margin-bottom: 3px; }
+.detail-name { font-size: 17px; font-weight: 700; color: var(--ink); line-height: 1.35; margin: 0; }
+.detail-wbs-path { font-size: 12px; color: var(--gray-700); font-family: var(--font-mono); margin-top: 6px; line-height: 1.5; }
+
+.detail-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stat-tile { background: var(--gray-100); border: 1px solid var(--gray-150); border-radius: var(--radius-md); padding: 8px 10px; }
+.stat-value { font-family: var(--font-mono); font-size: 20px; font-weight: 700; color: var(--ink); line-height: 1.2; }
+.stat-value-date { font-size: 16px; }
+.stat-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gray-700); margin-top: 3px; }
+.stat-status { font-size: 15px; }
+.stat-status.status-TK_Complete { color: var(--ok); }
+.stat-status.status-TK_Active { color: var(--active); }
+.stat-status.status-TK_NotStart { color: var(--gray-700); }
+.stat-progress { height: 4px; background: var(--gray-300); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+.stat-progress-fill { height: 100%; background: var(--accent); }
+.stat-tile-crit { background: var(--crit-tint); border-color: var(--crit); }
+.stat-tile-crit .stat-value { color: var(--crit); }
+.stat-tile-near { background: var(--near-tint); border-color: var(--near); }
+.stat-tile-near .stat-value { color: var(--near); }
+.stat-tile-neg { background: var(--crit); border-color: var(--crit); }
+.stat-tile-neg .stat-value, .stat-tile-neg .stat-label { color: var(--white); }
+
+.detail-constraint { background: var(--near-tint); border: 1px solid var(--near); border-radius: var(--radius-sm); padding: 7px 10px; font-size: 13px; color: var(--ink-soft); display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
+.detail-constraint .constraint-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--near); }
+.detail-constraint strong { color: var(--ink); }
+
+.detail-rels { display: flex; flex-direction: column; gap: var(--space-5); }
+.rel-section h4 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gray-700); font-weight: 700; margin: 0 0 8px; }
+.rel-section h4 em { font-style: normal; color: var(--accent); font-family: var(--font-mono); }
+.rel-empty { font-size: 14px; color: var(--gray-500); font-style: italic; }
+.rel-item-btn { display: flex; flex-direction: column; gap: 3px; font-size: 14px; padding: 8px 10px; border: none; background: var(--gray-100); cursor: pointer; border-radius: var(--radius-sm); width: 100%; text-align: left; margin-bottom: 5px; }
+.rel-item-btn:hover { background: var(--accent-soft); }
+.rel-item-row { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.rel-item-name { color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.rel-item-sub { color: var(--gray-700); }
+.rel-code { font-family: var(--font-mono); font-weight: 700; color: var(--accent); font-size: 14px; flex-shrink: 0; }
+.rel-type { color: var(--gray-700); font-size: 11px; font-weight: 700; text-transform: uppercase; flex-shrink: 0; }
+.rel-dates { font-family: var(--font-mono); font-size: 12px; color: var(--gray-700); }
+.rel-dur { font-family: var(--font-mono); font-size: 12px; color: var(--gray-700); margin-left: auto; }
+.rel-lag { font-size: 11px; color: var(--gray-500); font-style: italic; }
+.rel-driving { flex-shrink: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--white); background: var(--crit); padding: 1px 7px; border-radius: 9px; }
+@media print { .detail-drawer { display: none; } }
+
 </style>
