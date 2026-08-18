@@ -1063,6 +1063,7 @@ th.num { text-align: right !important; }
 /* Code-filter provenance eyebrow: these dropdowns are generated from the file's own
    ACTVTYPE table — the tag says so at a glance, the tooltip spells it out. */
 .code-filter-group { position: relative; display: inline-flex; }
+.la-group { gap: 4px; }
 .code-filter-src { position: absolute; top: -5px; left: 7px; padding: 0 3px; font-family: var(--font-mono); font-size: 8px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gray-500); background: var(--white); line-height: 1; pointer-events: none; z-index: 1; max-width: calc(100% - 20px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ── Small screens ────────────────────────────────────────────────────────── */
