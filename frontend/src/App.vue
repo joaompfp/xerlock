@@ -130,6 +130,8 @@
         <button :class="{ active: tab === 'wbs' }" @click="selectTab('wbs')">WBS Tree</button>
         <button :class="{ active: tab === 'progress' }" @click="selectTab('progress')">Progress</button>
         <button :class="{ active: tab === 'health' }" @click="selectTab('health')">Health Check</button>
+        <button :class="{ active: tab === 'calendars' }" @click="selectTab('calendars')">Calendars</button>
+        <button :class="{ active: tab === 'tables' }" @click="selectTab('tables')">Tables</button>
         <button :class="{ active: tab === 'compare' }" @click="selectTab('compare')">Compare</button>
         <button v-if="annotationCount > 0" class="tab-report-btn" :disabled="exporting" @click="doExport(() => exportReviewReport(data, annotations))" title="Export the annotated Review Report (.xlsx)">
           {{ exportLabel('Report (' + annotationCount + ')') }}
@@ -315,6 +317,16 @@
         <HealthCheck :data="data" @jump="jumpToActivity" />
       </div>
 
+      <!-- Calendars -->
+      <div v-show="tab === 'calendars'" class="section section-full">
+        <CalendarView :data="data" />
+      </div>
+
+      <!-- Raw table inspector -->
+      <div v-show="tab === 'tables'" class="section section-full">
+        <TableInspector :data="data" />
+      </div>
+
       <!-- Compare -->
       <div v-show="tab === 'compare'" class="section section-full">
         <CompareView
@@ -355,6 +367,8 @@ import WBSNode from './components/WBSNode.vue'
 import CriticalPathGraph from './components/CriticalPathGraph.vue'
 import GanttChart from './components/GanttChart.vue'
 import HealthCheck from './components/HealthCheck.vue'
+import CalendarView from './components/CalendarView.vue'
+import TableInspector from './components/TableInspector.vue'
 import ProgressView from './components/ProgressView.vue'
 import CompareView from './components/CompareView.vue'
 import { formatDate, formatHours, statusLabel, isMilestone, formatFloat, timeAgo } from './utils/format'
@@ -378,7 +392,7 @@ function applyTheme(theme) {
 
 export default {
   name: 'App',
-  components: { WBSNode, CriticalPathGraph, GanttChart, HealthCheck, ProgressView, CompareView },
+  components: { WBSNode, CriticalPathGraph, GanttChart, HealthCheck, ProgressView, CompareView, CalendarView, TableInspector },
   data() {
     return {
       data: null,
