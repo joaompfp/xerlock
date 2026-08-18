@@ -3,9 +3,10 @@
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue) ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB) ![Vue 3](https://img.shields.io/badge/vue-3-42b883) ![Self-hosted](https://img.shields.io/badge/self--hosted-yes-8250df)
 
 **Review a contractor's programme in full — without a P6 license.** Upload a `.xer` export and get
-an interactive Gantt chart, a critical-path network diagram, DCMA-14-style schedule quality checks,
-progress tracking, and snapshot comparison — everything a planner needs to review a schedule in
-detail, self-hosted so the file never leaves your own infrastructure.
+an interactive Gantt chart, a critical-path network diagram, configurable DCMA-14-style schedule
+quality checks, calendar and raw-table inspection, progress tracking, and snapshot comparison —
+everything a planner needs to review a schedule in detail, self-hosted so the file never leaves
+your own infrastructure.
 
 The name is the promise: XERlock is **locked read-only**. It never modifies, never re-saves, and
 never stores your `.xer` — files are parsed in memory and discarded.
@@ -39,12 +40,16 @@ tracing rebuilds an activity's driving path link by link.*
 - Shows the critical + near-critical set by default; expand hidden neighbors on demand
 - Pan/zoom canvas, full-width, with the same detail panel and jump navigation
 
-**Health Check** — DCMA-14-inspired logic & quality scorecard
+**Health Check** — configurable DCMA-14-inspired logic & quality scorecard
 ![Health check](docs/screenshots/health-check.png)
-- Open ends (missing predecessor/successor), relationship-type mix, negative lags ("leads"),
-  oversized lags, hard/soft constraint register, negative float, high-duration activities,
-  LOE-on-critical-path anomalies, out-of-sequence progress, missing resource assignments
-- Cross-checks the app's computed longest path against P6's own `driving_path_flag`
+- 14 checks: open ends, leads, large lags, FS-relationship mix, hard constraints, negative float,
+  high float, invalid dates vs the data date, missed tasks (BEI against the current plan),
+  high-duration activities, out-of-sequence progress, LOE-on-critical-path anomalies,
+  driving-path cross-check against P6's own flag, missing resource assignments
+- **Configurable**: per-check include/exclude, thresholds, targets, and weights (contracts differ)
+  roll up into a weighted overall score; your settings persist in the browser
+- Honest by design: checks that can't run on a given file are labeled as such and never
+  counted toward the score
 - Every finding is one click away from the activity in the Gantt
 
 **Progress** — status-date-anchored monitoring
@@ -52,6 +57,22 @@ tracing rebuilds an activity's driving path link by link.*
 - Milestone tracker with target-vs-forecast variance
 - 4/8-week look-ahead window with remaining vs original durations
 - Planned-vs-actual S-curve anchored to the schedule's data date
+
+**Calendars** — the check most tools can't do without P6
+![Calendar viewer](docs/screenshots/calendars.png)
+- Month-by-month browser for every calendar in the file: weekly work patterns, holiday
+  exceptions, and — highlighted loudly — **working exceptions**, i.e. dates deliberately marked
+  to work that would normally be holidays. Stripped holidays and invented workdays are a classic
+  way a programme gets quietly compressed, and they're invisible to date-based checks.
+- Full exception register per calendar, plus which calendars are actually assigned to activities
+
+**Raw Tables** — audit-grade file inspection
+![Raw table inspector](docs/screenshots/tables.png)
+- Every table in the `.xer` exactly as exported (`TASK`, `PROJWBS`, `CALENDAR`, `TASKPRED`,
+  UDFs, …) with filter, sort, pagination, and a per-row record view — verify what the submission
+  actually contains rather than trusting any tool's interpretation (including this one's)
+- Shows P6 version and export date from the file header; correct accented characters even for
+  cp1252 exports
 
 **Compare** — diff two `.xer` snapshots
 - Upload last month's submission alongside the current one: date slips, float erosion,
