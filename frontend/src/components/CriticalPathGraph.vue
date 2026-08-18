@@ -26,6 +26,7 @@
       </div>
     </div>
 
+    <div class="graph-body">
     <div
       class="graph-canvas"
       ref="canvas"
@@ -101,69 +102,99 @@
       </svg>
     </div>
 
-    <div class="detail-panel" v-if="selected">
-      <div class="detail-header">
-        <div>
+    <Transition name="detail-slide">
+      <aside class="detail-panel" v-if="selected">
+        <div class="detail-header">
+          <button class="detail-close" @click="selectedId = null" title="Close" aria-label="Close">&times;</button>
           <span class="detail-code">{{ selected.task_code }}</span>
-          <span class="detail-name">{{ selected.task_name }}</span>
+          <h3 class="detail-name">{{ selected.task_name }}</h3>
           <div v-if="selected.wbs_path" class="detail-wbs-path">{{ selected.wbs_path }}</div>
         </div>
-        <button class="btn-tiny" @click="selectedId = null">Close</button>
-      </div>
-      <div class="detail-stats">
-        <span><strong>{{ formatDate(displayStart(selected)) }}</strong> → <strong>{{ formatDate(displayEnd(selected)) }}</strong></span>
-        <span>{{ formatHours(selected.duration_hrs, selected.calendar_hrs_per_day) }} duration</span>
-        <span :class="selected.is_negative_float ? 'float-neg' : (selected.total_float_hrs === 0 ? 'float-crit' : '')">{{ formatFloat(selected.total_float_hrs, selected.calendar_hrs_per_day) }} float</span>
-        <span>{{ statusLabel(selected.status) }}</span>
-        <span v-if="selected.cstr_type" class="detail-cstr">{{ cstrLabel(selected.cstr_type) }}{{ selected.cstr_date ? ' · ' + formatDate(selected.cstr_date) : '' }}</span>
-      </div>
-      <div class="detail-rels">
-        <div class="rel-col">
-          <h4>Predecessors ({{ selectedPredecessors.length }})</h4>
-          <div v-if="selectedPredecessors.length === 0" class="rel-empty">None</div>
-          <button v-for="p in selectedPredecessors" :key="p.task_id" class="rel-item-btn" @click="revealAndSelect(p.task_id)">
-            <div class="rel-item-row">
-              <span class="rel-code">{{ p.activity ? p.activity.task_code : '?' + p.task_id }}</span>
-              <span class="rel-item-name">{{ p.activity ? p.activity.task_name : '' }}</span>
-              <span v-if="p.driving" class="rel-driving" title="This link controls the dates — P6's 'driving' relationship flag">Driving</span>
-              <span v-if="!visibleIds.has(p.task_id)" class="rel-hidden">not shown</span>
-            </div>
-            <div class="rel-item-row rel-item-sub">
-              <span class="rel-type">{{ relTypeLabel(p.type) }}</span>
-              <template v-if="p.activity">
-                <span class="rel-dates">{{ formatDate(displayStart(p.activity)) }} → {{ formatDate(displayEnd(p.activity)) }}</span>
-                <span class="rel-dur">{{ formatHours(p.activity.duration_hrs, p.activity.calendar_hrs_per_day) }}</span>
-              </template>
-              <span v-if="p.lag_hrs" class="rel-lag">+{{ p.lag_hrs }}h lag</span>
-            </div>
-          </button>
+
+        <div class="detail-stat-grid">
+          <div class="stat-tile">
+            <div class="stat-value">{{ formatHours(selected.duration_hrs, selected.calendar_hrs_per_day) }}</div>
+            <div class="stat-label">Duration</div>
+          </div>
+          <div class="stat-tile" :class="floatTileClass(selected)">
+            <div class="stat-value">{{ formatFloat(selected.total_float_hrs, selected.calendar_hrs_per_day) }}</div>
+            <div class="stat-label">Float</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-value stat-value-date">{{ formatDate(displayStart(selected)) }}</div>
+            <div class="stat-label">Start</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-value stat-value-date">{{ formatDate(displayEnd(selected)) }}</div>
+            <div class="stat-label">Finish</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-value stat-status" :class="'status-' + selected.status">{{ statusLabel(selected.status) }}</div>
+            <div class="stat-label">Status</div>
+          </div>
+          <div class="stat-tile">
+            <div class="stat-value">{{ selected.pct_complete }}%</div>
+            <div class="stat-progress"><div class="stat-progress-fill" :style="{ width: selected.pct_complete + '%' }"></div></div>
+            <div class="stat-label">Complete</div>
+          </div>
         </div>
-        <div class="rel-col">
-          <h4>Successors ({{ selectedSuccessors.length }})</h4>
-          <div v-if="selectedSuccessors.length === 0" class="rel-empty">None</div>
-          <button v-for="s in selectedSuccessors" :key="s.task_id" class="rel-item-btn" @click="revealAndSelect(s.task_id)">
-            <div class="rel-item-row">
-              <span class="rel-code">{{ s.activity ? s.activity.task_code : '?' + s.task_id }}</span>
-              <span class="rel-item-name">{{ s.activity ? s.activity.task_name : '' }}</span>
-              <span v-if="s.driving" class="rel-driving" title="This link controls the dates — P6's 'driving' relationship flag">Driving</span>
-              <span v-if="!visibleIds.has(s.task_id)" class="rel-hidden">not shown</span>
-            </div>
-            <div class="rel-item-row rel-item-sub">
-              <span class="rel-type">{{ relTypeLabel(s.type) }}</span>
-              <template v-if="s.activity">
-                <span class="rel-dates">{{ formatDate(displayStart(s.activity)) }} → {{ formatDate(displayEnd(s.activity)) }}</span>
-                <span class="rel-dur">{{ formatHours(s.activity.duration_hrs, s.activity.calendar_hrs_per_day) }}</span>
-              </template>
-              <span v-if="s.lag_hrs" class="rel-lag">+{{ s.lag_hrs }}h lag</span>
-            </div>
-          </button>
+
+        <div v-if="selected.cstr_type" class="detail-constraint">
+          <span class="constraint-label">Constraint</span>
+          <strong>{{ cstrLabel(selected.cstr_type) }}</strong>
+          <span v-if="selected.cstr_date">&middot; {{ formatDate(selected.cstr_date) }}</span>
         </div>
-      </div>
-      <AnnotationEditor
-        :annotation="annotations[selected.task_id] || null"
-        @save="patch => $emit('annotate', selected.task_id, patch)"
-        @remove="$emit('unannotate', selected.task_id)"
-      />
+
+        <div class="detail-rels">
+          <div class="rel-section">
+            <h4>Predecessors <em>{{ selectedPredecessors.length }}</em></h4>
+            <div v-if="selectedPredecessors.length === 0" class="rel-empty">None</div>
+            <button v-for="p in selectedPredecessors" :key="p.task_id" class="rel-item-btn" @click="revealAndSelect(p.task_id)">
+              <div class="rel-item-row">
+                <span class="rel-code">{{ p.activity ? p.activity.task_code : '?' + p.task_id }}</span>
+                <span class="rel-item-name">{{ p.activity ? p.activity.task_name : '' }}</span>
+                <span v-if="p.driving" class="rel-driving" title="This link controls the dates — P6's 'driving' relationship flag">Driving</span>
+                <span v-if="!visibleIds.has(p.task_id)" class="rel-hidden">not shown</span>
+              </div>
+              <div class="rel-item-row rel-item-sub">
+                <span class="rel-type">{{ relTypeLabel(p.type) }}</span>
+                <template v-if="p.activity">
+                  <span class="rel-dates">{{ formatDate(displayStart(p.activity)) }} → {{ formatDate(displayEnd(p.activity)) }}</span>
+                  <span class="rel-dur">{{ formatHours(p.activity.duration_hrs, p.activity.calendar_hrs_per_day) }}</span>
+                </template>
+                <span v-if="p.lag_hrs" class="rel-lag">+{{ p.lag_hrs }}h lag</span>
+              </div>
+            </button>
+          </div>
+          <div class="rel-section">
+            <h4>Successors <em>{{ selectedSuccessors.length }}</em></h4>
+            <div v-if="selectedSuccessors.length === 0" class="rel-empty">None</div>
+            <button v-for="s in selectedSuccessors" :key="s.task_id" class="rel-item-btn" @click="revealAndSelect(s.task_id)">
+              <div class="rel-item-row">
+                <span class="rel-code">{{ s.activity ? s.activity.task_code : '?' + s.task_id }}</span>
+                <span class="rel-item-name">{{ s.activity ? s.activity.task_name : '' }}</span>
+                <span v-if="s.driving" class="rel-driving" title="This link controls the dates — P6's 'driving' relationship flag">Driving</span>
+                <span v-if="!visibleIds.has(s.task_id)" class="rel-hidden">not shown</span>
+              </div>
+              <div class="rel-item-row rel-item-sub">
+                <span class="rel-type">{{ relTypeLabel(s.type) }}</span>
+                <template v-if="s.activity">
+                  <span class="rel-dates">{{ formatDate(displayStart(s.activity)) }} → {{ formatDate(displayEnd(s.activity)) }}</span>
+                  <span class="rel-dur">{{ formatHours(s.activity.duration_hrs, s.activity.calendar_hrs_per_day) }}</span>
+                </template>
+                <span v-if="s.lag_hrs" class="rel-lag">+{{ s.lag_hrs }}h lag</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <AnnotationEditor
+          :annotation="annotations[selected.task_id] || null"
+          @save="patch => $emit('annotate', selected.task_id, patch)"
+          @remove="$emit('unannotate', selected.task_id)"
+        />
+      </aside>
+    </Transition>
     </div>
   </div>
 </template>
@@ -425,6 +456,12 @@ export default {
     cstrLabel,
     displayStart,
     displayEnd,
+    floatTileClass(a) {
+      if (a.is_negative_float) return 'stat-tile-neg'
+      if (a.total_float_hrs === 0) return 'stat-tile-crit'
+      if (a.total_float_hrs != null && a.total_float_hrs <= 80) return 'stat-tile-near'
+      return ''
+    },
     truncate(s, n) {
       if (!s) return ''
       return s.length > n ? s.slice(0, n - 1) + '…' : s
@@ -577,6 +614,7 @@ export default {
 <style scoped>
 .graph-wrap { border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; background: var(--white); margin-bottom: var(--space-6); font-family: var(--font-ui); }
 .graph-wrap.is-fullscreen { border-radius: 0; display: flex; flex-direction: column; height: 100vh; }
+.graph-wrap.is-fullscreen .graph-body { flex: 1; min-height: 0; display: flex; }
 .graph-wrap.is-fullscreen .graph-canvas { flex: 1; height: auto; }
 
 .graph-strip { display: flex; justify-content: space-between; align-items: center; padding: 8px 18px; background: var(--ink); gap: var(--space-3); }
@@ -647,29 +685,57 @@ export default {
 .expand-btn text { fill: white; font-size: 12px; font-weight: 700; }
 .expand-btn:hover circle { fill: var(--ink-soft); }
 
-.detail-panel { border-top: 1px solid var(--gray-300); padding: var(--space-4); background: var(--gray-100); }
-.detail-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: var(--space-2); }
-.detail-code { font-family: var(--font-mono); font-weight: 700; color: var(--accent); margin-right: var(--space-2); }
-.detail-name { font-weight: 600; color: var(--ink); }
-.detail-wbs-path { font: var(--text-micro); color: var(--gray-700); font-family: var(--font-mono); margin-top: 2px; }
-.detail-stats { display: flex; gap: 18px; font: var(--text-small); color: var(--gray-700); margin-bottom: var(--space-3); flex-wrap: wrap; }
-.float-crit { color: var(--crit); font-weight: 700; }
-.detail-cstr { background: var(--near-tint); color: var(--near); font-weight: 600; padding: 1px 8px; border-radius: var(--radius-sm); }
-.float-neg { color: var(--white); background: var(--crit); font-weight: 700; padding: 1px 6px; border-radius: var(--radius-sm); }
-.detail-rels { display: flex; gap: var(--space-8); flex-wrap: wrap; }
-.rel-col { flex: 1; min-width: 200px; }
-.rel-col h4 { font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); letter-spacing: 0.04em; margin-bottom: var(--space-2); }
-.rel-empty { font: var(--text-small); color: var(--gray-500); font-style: italic; }
-.rel-item-btn { display: flex; flex-direction: column; gap: 2px; font: var(--text-small); padding: 5px 6px; border: none; background: none; cursor: pointer; border-radius: var(--radius-sm); width: 100%; text-align: left; }
+/* Wraps the canvas so the detail drawer anchors to exactly its bounds. */
+.graph-body { position: relative; }
+
+/* Right-side drawer — same treatment as the Gantt's activity drawer. */
+.detail-panel { position: absolute; top: 0; right: 0; bottom: 0; width: 420px; max-width: 92%; background: var(--white); border-left: 1px solid var(--gray-300); box-shadow: -8px 0 24px rgba(28,25,23,0.14); z-index: 15; overflow-y: auto; box-sizing: border-box; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-5); }
+.detail-slide-enter-active, .detail-slide-leave-active { transition: transform 0.2s ease, opacity 0.2s ease; }
+.detail-slide-enter-from, .detail-slide-leave-to { transform: translateX(24px); opacity: 0; }
+
+.detail-header { position: relative; padding-right: 26px; }
+.detail-close { position: absolute; top: -6px; right: -6px; width: 26px; height: 26px; border: none; background: var(--gray-100); color: var(--gray-700); border-radius: 50%; font-size: 19px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.detail-close:hover { background: var(--gray-150); color: var(--ink); }
+.detail-code { display: block; font-family: var(--font-mono); font-weight: 700; font-size: 14px; color: var(--accent); margin-bottom: 3px; }
+.detail-name { font-size: 17px; font-weight: 700; color: var(--ink); line-height: 1.35; margin: 0; }
+.detail-wbs-path { font-size: 12px; color: var(--gray-700); font-family: var(--font-mono); margin-top: 6px; line-height: 1.5; }
+
+.detail-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stat-tile { background: var(--gray-100); border: 1px solid var(--gray-150); border-radius: var(--radius-md); padding: 8px 10px; }
+.stat-value { font-family: var(--font-mono); font-size: 20px; font-weight: 700; color: var(--ink); line-height: 1.2; }
+.stat-value-date { font-size: 16px; }
+.stat-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gray-700); margin-top: 3px; }
+.stat-status { font-size: 15px; }
+.stat-status.status-TK_Complete { color: var(--ok); }
+.stat-status.status-TK_Active { color: var(--accent); }
+.stat-status.status-TK_NotStart { color: var(--gray-700); }
+.stat-progress { height: 4px; background: var(--gray-300); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+.stat-progress-fill { height: 100%; background: var(--accent); }
+.stat-tile-crit { background: var(--crit-tint); border-color: var(--crit); }
+.stat-tile-crit .stat-value { color: var(--crit); }
+.stat-tile-near { background: var(--near-tint); border-color: var(--near); }
+.stat-tile-near .stat-value { color: var(--near); }
+.stat-tile-neg { background: var(--crit); border-color: var(--crit); }
+.stat-tile-neg .stat-value, .stat-tile-neg .stat-label { color: var(--white); }
+
+.detail-constraint { background: var(--near-tint); border: 1px solid var(--near); border-radius: var(--radius-sm); padding: 7px 10px; font-size: 13px; color: var(--ink-soft); display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
+.detail-constraint .constraint-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--near); }
+.detail-constraint strong { color: var(--ink); }
+
+.detail-rels { display: flex; flex-direction: column; gap: var(--space-5); }
+.rel-section h4 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gray-700); font-weight: 700; margin: 0 0 8px; }
+.rel-section h4 em { font-style: normal; color: var(--accent); font-family: var(--font-mono); }
+.rel-empty { font-size: 14px; color: var(--gray-500); font-style: italic; }
+.rel-item-btn { display: flex; flex-direction: column; gap: 3px; font-size: 14px; padding: 8px 10px; border: none; background: var(--gray-100); cursor: pointer; border-radius: var(--radius-sm); width: 100%; text-align: left; margin-bottom: 5px; }
 .rel-item-btn:hover { background: var(--accent-soft); }
-.rel-item-row { display: flex; gap: var(--space-2); align-items: baseline; }
-.rel-item-name { color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rel-item-row { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.rel-item-name { color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .rel-item-sub { color: var(--gray-700); }
-.rel-code { font-family: var(--font-mono); font-weight: 600; color: var(--accent); min-width: 60px; flex-shrink: 0; }
-.rel-type { color: var(--gray-700); font: var(--text-micro); min-width: 60px; flex-shrink: 0; }
-.rel-dates { font-family: var(--font-mono); font: var(--text-micro); color: var(--gray-700); }
-.rel-dur { font-family: var(--font-mono); font: var(--text-micro); color: var(--gray-700); margin-left: auto; }
-.rel-lag { font: var(--text-micro); color: var(--gray-500); font-style: italic; }
-.rel-hidden { color: var(--gray-500); font: var(--text-micro); font-style: italic; margin-left: auto; }
-.rel-driving { flex-shrink: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--white); background: var(--crit); padding: 1px 7px; border-radius: 9px; }
+.rel-code { font-family: var(--font-mono); font-weight: 700; color: var(--accent); font-size: 14px; flex-shrink: 0; }
+.rel-type { color: var(--gray-700); font-size: 11px; font-weight: 700; text-transform: uppercase; flex-shrink: 0; }
+.rel-dates { font-family: var(--font-mono); font-size: 12px; color: var(--gray-700); }
+.rel-dur { font-family: var(--font-mono); font-size: 12px; color: var(--gray-700); margin-left: auto; }
+.rel-lag { font-size: 11px; color: var(--gray-500); font-style: italic; }
+.rel-hidden { color: var(--gray-500); font: var(--text-micro); font-style: italic; }
+.rel-driving { flex-shrink: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--white); background: var(--crit); padding: 1px 7px; border-radius: 9px; }
 </style>
