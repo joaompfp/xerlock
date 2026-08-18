@@ -7,12 +7,13 @@ import codecs
 import logging
 import os
 import tempfile
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.concurrency import run_in_threadpool
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -33,6 +34,10 @@ app = FastAPI(
 
 # No CORS middleware: the frontend is served same-origin by this app in production, and the
 # Vite dev server proxies /api. Cross-origin API consumers should host their own instance.
+
+# The raw-table payload roughly doubles the response size of large schedules; tab-separated
+# text compresses extremely well, so gzip keeps the wire size close to what it was before.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 @app.middleware("http")
@@ -66,6 +71,7 @@ class ActivitySummary(BaseModel):
     duration_hrs: float
     remain_duration_hrs: float
     task_type: str
+    clndr_id: str
     calendar: Optional[str]
     calendar_hrs_per_day: float
     predecessors: list
@@ -119,6 +125,168 @@ class ScheduleData(BaseModel):
     wbs_tree: list
     activities: list
     warnings: list = []
+    calendars: list = []
+    # {table_name: {"fields": [...], "rows": [[...]], "row_count": N, "truncated": bool}}
+    raw_tables: dict = {}
+    ermhdr: dict = {}
+
+
+# Per-table row cap for the raw inspector. Far above any real single-project export
+# (TASKPRED on a 10k-activity file is ~30k rows, which still fits) but bounds the JSON
+# payload; the frontend surfaces `truncated` explicitly so nothing is silently dropped.
+RAW_TABLE_ROW_CAP = 50_000
+
+# P6 stores calendar exception dates as day serials with this epoch (Excel-compatible).
+_CAL_EPOCH = date(1899, 12, 30)
+
+
+def parse_raw_tables(text: str):
+    """Parse the XER's own %T/%F/%R structure verbatim — audit-grade: no interpretation,
+    every table and field in the file, exactly as the contractor exported it."""
+    tables = {}
+    ermhdr = {}
+    current = None
+    for line in text.split("\n"):
+        line = line.rstrip("\r")
+        if not line:
+            continue
+        if line.startswith("ERMHDR"):
+            parts = line.split("\t")
+            # ERMHDR: version, export date, then user/db context fields whose exact
+            # layout varies by P6 version — expose the interesting leading ones.
+            ermhdr = {
+                "version": parts[1] if len(parts) > 1 else "",
+                "export_date": parts[2] if len(parts) > 2 else "",
+                "fields": parts[1:],
+            }
+        elif line.startswith("%T\t"):
+            name = line.split("\t", 1)[1].strip()
+            current = {"fields": [], "rows": [], "row_count": 0, "truncated": False}
+            tables[name] = current
+        elif line.startswith("%F\t") and current is not None:
+            current["fields"] = line.split("\t")[1:]
+        elif line.startswith("%R\t") and current is not None:
+            current["row_count"] += 1
+            if current["row_count"] <= RAW_TABLE_ROW_CAP:
+                row = line.split("\t")[1:]
+                # Pad/trim to the field count so the frontend can rely on alignment.
+                nf = len(current["fields"])
+                row = (row + [""] * nf)[:nf]
+                current["rows"].append(row)
+            else:
+                current["truncated"] = True
+    return tables, ermhdr
+
+
+def _parse_cal_node(s: str, i: int):
+    """Recursive-descent parser for one node of P6's CalendarData format:
+    ``(0||name(params)(child child ...))`` — params contain no parentheses, and
+    children (further nodes) are wrapped in their own paren *group* after the
+    params, which may be empty: ``()``."""
+    j = s.index("||", i)
+    k = s.index("(", j + 2)
+    name = s[j + 2 : k]
+    p = s.index(")", k)
+    params = s[k + 1 : p]
+    i = p + 1
+    children = []
+    while i < len(s):
+        c = s[i]
+        if c in " \t\r\n":
+            i += 1
+        elif c == "(":
+            # A child group: ( node* )
+            i += 1
+            while i < len(s):
+                if s[i] in " \t\r\n":
+                    i += 1
+                elif s[i] == "(":
+                    child, i = _parse_cal_node(s, i)
+                    children.append(child)
+                elif s[i] == ")":
+                    i += 1
+                    break
+                else:
+                    i += 1
+        elif c == ")":
+            return {"name": name, "params": params, "children": children}, i + 1
+        else:
+            i += 1
+    return {"name": name, "params": params, "children": children}, i
+
+
+def _periods_of(node):
+    out = []
+    for ch in node["children"]:
+        parts = ch["params"].split("|")
+        if len(parts) >= 4 and parts[0] == "s" and parts[2] == "f":
+            out.append({"start": parts[1], "finish": parts[3]})
+    return out
+
+
+def parse_calendar_data(blob: str):
+    """Decode clndr_data into weekday work patterns and dated exceptions.
+    Weekday keys are P6's 1..7 = Sunday..Saturday; a day/exception with no work
+    periods is non-working (a holiday, when it appears as an exception)."""
+    weekdays = {str(d): [] for d in range(1, 8)}
+    exceptions = []
+    start = blob.find("(")
+    if start == -1:
+        return weekdays, exceptions
+    try:
+        root, _ = _parse_cal_node(blob, start)
+    except (ValueError, IndexError):
+        logger.warning("Unparseable clndr_data blob (len=%d)", len(blob))
+        return weekdays, exceptions
+    for section in root["children"]:
+        if section["name"] == "DaysOfWeek":
+            for day in section["children"]:
+                if day["name"] in weekdays:
+                    weekdays[day["name"]] = _periods_of(day)
+        elif section["name"] == "Exceptions":
+            for exc in section["children"]:
+                parts = exc["params"].split("|")
+                if len(parts) >= 2 and parts[0] == "d":
+                    try:
+                        d = _CAL_EPOCH + timedelta(days=int(parts[1]))
+                    except (ValueError, OverflowError):
+                        continue
+                    exceptions.append({"date": d.isoformat(), "periods": _periods_of(exc)})
+    exceptions.sort(key=lambda e: e["date"])
+    return weekdays, exceptions
+
+
+def build_calendars(raw_tables: dict, activities: list):
+    """Calendar register from the raw CALENDAR table (not PyP6XER's objects, so the
+    inspector and viewer agree byte-for-byte with the file)."""
+    tbl = raw_tables.get("CALENDAR")
+    if not tbl or not tbl["rows"]:
+        return []
+    idx = {f: n for n, f in enumerate(tbl["fields"])}
+    def cell(row, field):
+        n = idx.get(field)
+        return row[n] if n is not None and n < len(row) else ""
+    assigned = {}
+    for a in activities:
+        assigned[a["clndr_id"]] = assigned.get(a["clndr_id"], 0) + 1
+    out = []
+    for row in tbl["rows"]:
+        cid = cell(row, "clndr_id")
+        weekdays, exceptions = parse_calendar_data(cell(row, "clndr_data"))
+        out.append({
+            "clndr_id": cid,
+            "clndr_name": cell(row, "clndr_name"),
+            "clndr_type": cell(row, "clndr_type"),
+            "default_flag": cell(row, "default_flag") == "Y",
+            "day_hr_cnt": float(cell(row, "day_hr_cnt") or 8),
+            "week_hr_cnt": float(cell(row, "week_hr_cnt") or 40),
+            "assigned_count": assigned.get(cid, 0),
+            "weekdays": weekdays,
+            "exceptions": exceptions,
+        })
+    # Most-used first; unused resource calendars sink to the bottom.
+    out.sort(key=lambda c: -c["assigned_count"])
+    return out
 
 def safe_float(val, default=0.0):
     """Convert to float, handling None and falsy 0.0 correctly."""
@@ -133,6 +301,16 @@ def safe_float_or(val, default=999.0):
     return float(val)
 
 def parse_xer(filepath: str) -> ScheduleData:
+    # Raw pass first, independent of PyP6XER: decode as UTF-8 with cp1252 fallback
+    # (P6's usual export encoding), so the table inspector shows accented characters
+    # correctly even where the object parser drops them.
+    raw_bytes = Path(filepath).read_bytes()
+    try:
+        raw_text = raw_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        raw_text = raw_bytes.decode("cp1252", errors="replace")
+    raw_tables, ermhdr = parse_raw_tables(raw_text)
+
     reader = Reader(filepath)
     # Deliberately single-project: this is a one-file, one-programme review tool. When an
     # export carries several projects (common with embedded baselines), take the first and
@@ -388,6 +566,7 @@ def parse_xer(filepath: str) -> ScheduleData:
             "duration_hrs": safe_float(a.target_drtn_hr_cnt),
             "remain_duration_hrs": safe_float(a.remain_drtn_hr_cnt),
             "task_type": a.task_type or "",
+            "clndr_id": str(a.clndr_id) if a.clndr_id is not None else "",
             "calendar": cal_name,
             "calendar_hrs_per_day": cal_hrs_dict.get(a.clndr_id, 8.0),
             "predecessors": pred_map.get(a.task_id, []),
@@ -469,6 +648,9 @@ def parse_xer(filepath: str) -> ScheduleData:
         wbs_tree=wbs_tree,
         activities=activities,
         warnings=warnings,
+        calendars=build_calendars(raw_tables, activities),
+        raw_tables=raw_tables,
+        ermhdr=ermhdr,
     )
 
 
