@@ -23,6 +23,7 @@
           <button class="zbtn" @click="resetView">Fit</button>
           <button class="zbtn" @click="zoomBy(1.3)">+</button>
         </div>
+        <span class="gesture-hint">Scroll to zoom &middot; drag to pan &middot; Esc closes</span>
       </div>
     </div>
 
@@ -189,6 +190,7 @@
         </div>
 
         <AnnotationEditor
+          :key="selected.task_id"
           :annotation="annotations[selected.task_id] || null"
           @save="patch => $emit('annotate', selected.task_id, patch)"
           @remove="$emit('unannotate', selected.task_id)"
@@ -220,6 +222,7 @@ export default {
     activities: { type: Array, required: true },
     extraRoom: { type: Boolean, default: false },
     annotations: { type: Object, default: () => ({}) },
+    visible: { type: Boolean, default: true },
   },
   emits: ['annotate', 'unannotate'],
   components: { AnnotationEditor },
@@ -238,6 +241,11 @@ export default {
     }
   },
   mounted() {
+    window.addEventListener('keydown', this._onKeydown = (e) => {
+      if (e.key === 'Escape' && this.selectedId != null && this.$el && this.$el.offsetParent !== null) {
+        this.selectedId = null
+      }
+    })
     if (this.$refs.canvas) {
       this.canvasWidth = this.$refs.canvas.clientWidth
       this._resizeObserver = new ResizeObserver(entries => {
@@ -249,6 +257,7 @@ export default {
     this.$nextTick(this.resetView)
   },
   beforeUnmount() {
+    window.removeEventListener('keydown', this._onKeydown)
     this._resizeObserver?.disconnect()
     clearTimeout(this._animTimer)
     document.removeEventListener('fullscreenchange', this.onFullscreenChange)
@@ -258,6 +267,22 @@ export default {
       this.expandedExtra = new Set()
       this.selectedId = null
       this.$nextTick(this.resetView)
+    },
+    visible(v) {
+      // Tabs stay mounted (v-show); the canvas measures 0x0 while hidden, so both the
+      // mount-time layout (snake wrap uses canvasWidth) and fit are garbage. Flag a
+      // pending fit — it runs from the canvasWidth watcher once the ResizeObserver
+      // delivers the real width, i.e. after the layout has re-wrapped correctly.
+      if (v && !this._fitDone) {
+        this._pendingFit = true
+      }
+    },
+    canvasWidth(w) {
+      if (this._pendingFit && w > 0) {
+        this._pendingFit = false
+        this._fitDone = true
+        this.$nextTick(this.resetView)
+      }
     },
   },
   computed: {
@@ -617,14 +642,14 @@ export default {
 .graph-wrap.is-fullscreen .graph-body { flex: 1; min-height: 0; display: flex; }
 .graph-wrap.is-fullscreen .graph-canvas { flex: 1; height: auto; }
 
-.graph-strip { display: flex; justify-content: space-between; align-items: center; padding: 8px 18px; background: var(--ink); gap: var(--space-3); }
+.graph-strip { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-4); background: var(--ink); gap: var(--space-3); }
 .strip-title { display: flex; align-items: baseline; gap: var(--space-2); }
 .strip-title h2 { font: var(--text-h2); color: var(--white); }
 .strip-sub { font: var(--text-micro); color: var(--gray-300); text-transform: uppercase; letter-spacing: 0.04em; }
 .ctrl-btn-accent { padding: 4px 10px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: none; cursor: pointer; font: var(--text-small); color: var(--accent-soft); }
 .ctrl-btn-accent:hover { background: var(--ink-soft); }
 
-.graph-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 8px 18px; border-bottom: 1px solid var(--gray-300); background: var(--gray-100); flex-wrap: wrap; gap: var(--space-2); }
+.graph-toolbar { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--gray-300); background: var(--gray-100); flex-wrap: wrap; gap: var(--space-2); }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; }
 .legend-item { display: flex; align-items: center; gap: 5px; font: var(--text-small); color: var(--gray-700); }
 .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
@@ -634,11 +659,12 @@ export default {
 .lg-node-neg { width: 16px; height: 11px; display: inline-block; box-sizing: border-box; background: var(--crit-tint); border: 1px solid var(--crit); border-top: 4px solid var(--crit); border-radius: 2px; }
 .diamond { width: 8px; height: 8px; background: var(--milestone); display: inline-block; transform: rotate(45deg); }
 .toolbar-actions { display: flex; align-items: center; gap: var(--space-2); }
-.btn-tiny { padding: 3px 10px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); background: white; cursor: pointer; font: var(--text-small); color: var(--gray-700); }
+.btn-tiny { padding: 4px 10px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); background: var(--white); cursor: pointer; font: var(--text-small); color: var(--gray-700); }
 .btn-tiny:hover:not(:disabled) { background: var(--gray-150); }
 .btn-tiny:disabled { opacity: 0.4; cursor: default; }
+.gesture-hint { font: var(--text-micro); color: var(--gray-500); white-space: nowrap; margin-left: var(--space-2); }
 .zoom-adjust { display: flex; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); overflow: hidden; }
-.zbtn { padding: 3px 10px; border: none; border-right: 1px solid var(--gray-300); background: white; cursor: pointer; font-size: 14px; color: var(--gray-700); font-weight: 700; }
+.zbtn { padding: 4px 10px; border: none; border-right: 1px solid var(--gray-300); background: var(--white); cursor: pointer; font: var(--text-small); font-weight: 700; color: var(--gray-700); }
 .zbtn:last-child { border-right: none; }
 .zbtn:hover { background: var(--gray-150); }
 
@@ -665,7 +691,7 @@ export default {
 .node.negative .node-rect { stroke-width: 3.5; }
 .node-neg-flag { fill: var(--crit); }
 .node-annotation-flag { fill: var(--gray-500); stroke: var(--white); stroke-width: 1; }
-.node-annotation-flag.sev-query { fill: var(--accent); }
+.node-annotation-flag.sev-query { fill: var(--active); }
 .node-annotation-flag.sev-risk { fill: var(--near); }
 .node-annotation-flag.sev-logic { fill: var(--crit); }
 .node-annotation-flag.sev-resolved { fill: var(--ok); }
@@ -682,14 +708,14 @@ export default {
 .node-meta.node-meta-neg { fill: var(--crit); font-weight: 700; }
 
 .expand-btn circle { fill: var(--accent); opacity: 0.92; }
-.expand-btn text { fill: white; font-size: 12px; font-weight: 700; }
+.expand-btn text { fill: var(--white); font-size: 12px; font-weight: 700; }
 .expand-btn:hover circle { fill: var(--ink-soft); }
 
 /* Wraps the canvas so the detail drawer anchors to exactly its bounds. */
 .graph-body { position: relative; }
 
 /* Right-side drawer — same treatment as the Gantt's activity drawer. */
-.detail-panel { position: absolute; top: 0; right: 0; bottom: 0; width: 420px; max-width: 92%; background: var(--white); border-left: 1px solid var(--gray-300); box-shadow: -8px 0 24px rgba(28,25,23,0.14); z-index: 15; overflow-y: auto; box-sizing: border-box; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-5); }
+.detail-panel { position: fixed; top: 0; right: 0; bottom: 0; height: 100vh; width: 420px; max-width: 92vw; background: var(--white); border-left: 1px solid var(--gray-300); box-shadow: -8px 0 24px rgba(28,25,23,0.14); z-index: 15; overflow-y: auto; box-sizing: border-box; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-5); }
 .detail-slide-enter-active, .detail-slide-leave-active { transition: transform 0.2s ease, opacity 0.2s ease; }
 .detail-slide-enter-from, .detail-slide-leave-to { transform: translateX(24px); opacity: 0; }
 

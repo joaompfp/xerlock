@@ -12,7 +12,8 @@
           </svg>
         </div>
         <h1>Schedule App</h1>
-        <p class="subtitle">Primavera P6 XER viewer with critical path analysis</p>
+        <p class="subtitle">Review Primavera P6 schedules — no P6 license required.</p>
+        <p class="feature-strip">Interactive Gantt &middot; critical-path network &middot; DCMA-14 health checks &middot; snapshot compare &middot; Excel review reports</p>
 
         <div class="reopen-card" v-if="lastFile">
           <div class="reopen-info">
@@ -38,14 +39,20 @@
               <path d="M12 5v14M5 12h14" />
             </svg>
             <span v-if="!loading">Drop a .xer file here, or click to browse</span>
-            <span v-else class="loading">Parsing schedule...</span>
+            <span v-else class="loading">{{ parsingMessage }}</span>
           </label>
         </div>
+        <p v-if="uploadError" class="upload-error">{{ uploadError }}</p>
+        <button v-if="!loading" class="sample-link" @click="loadSample">
+          No file handy? <strong>Load the sample project &rarr;</strong>
+        </button>
+        <p v-if="!loading" class="sample-sub">A 24-activity data-centre fit-out with a real critical path, negative float, and in-progress work.</p>
         <p class="hint">Files are parsed on the server in memory and never stored. Your last file is kept in this browser only, so you can reopen it without re-uploading.</p>
         <a class="gh-link" href="https://github.com/joaompfp/schedule-app" target="_blank" rel="noopener">
           <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
           Open source on GitHub
         </a>
+        <span class="version-tag">v1.0 &middot; MIT</span>
       </div>
     </div>
 
@@ -68,10 +75,10 @@
           </div>
           <div class="header-right">
             <button class="btn-outline" v-if="annotationCount > 0" @click="doExport(() => exportReviewReport(data, annotations))">
-              Export Review Report ({{ annotationCount }})
+              {{ exportLabel('Export Review Report (' + annotationCount + ')') }}
             </button>
             <button class="btn-outline" @click="doExport(() => exportWorkbook(data))">
-              Export to Excel (.xlsx)
+              {{ exportLabel('Export to Excel (.xlsx)') }}
             </button>
             <button class="btn-outline" @click="data = null">Load another</button>
           </div>
@@ -117,45 +124,51 @@
           </svg>
           <span class="brand-name">Schedule App</span>
         </a>
-        <button :class="{ active: tab === 'gantt' }" @click="tab = 'gantt'">Gantt Chart</button>
-        <button :class="{ active: tab === 'story' }" @click="tab = 'story'">Critical Path</button>
-        <button :class="{ active: tab === 'table' }" @click="tab = 'table'">Activity Table</button>
-        <button :class="{ active: tab === 'wbs' }" @click="tab = 'wbs'">WBS Tree</button>
-        <button :class="{ active: tab === 'progress' }" @click="tab = 'progress'">Progress</button>
-        <button :class="{ active: tab === 'health' }" @click="tab = 'health'">Health Check</button>
-        <button :class="{ active: tab === 'compare' }" @click="tab = 'compare'">Compare</button>
+        <button :class="{ active: tab === 'gantt' }" @click="selectTab('gantt')">Gantt Chart</button>
+        <button :class="{ active: tab === 'story' }" @click="selectTab('story')">Critical Path</button>
+        <button :class="{ active: tab === 'table' }" @click="selectTab('table')">Activity Table</button>
+        <button :class="{ active: tab === 'wbs' }" @click="selectTab('wbs')">WBS Tree</button>
+        <button :class="{ active: tab === 'progress' }" @click="selectTab('progress')">Progress</button>
+        <button :class="{ active: tab === 'health' }" @click="selectTab('health')">Health Check</button>
+        <button :class="{ active: tab === 'compare' }" @click="selectTab('compare')">Compare</button>
+        <button v-if="annotationCount > 0" class="tab-report-btn" :disabled="exporting" @click="doExport(() => exportReviewReport(data, annotations))" title="Export the annotated Review Report (.xlsx)">
+          {{ exportLabel('Report (' + annotationCount + ')') }}
+        </button>
         <select class="theme-select" v-model="theme" title="Color theme">
           <option v-for="(label, key) in themeOptions" :key="key" :value="key">{{ label }}</option>
         </select>
-        <button class="btn-collapse" @click="headerCollapsed = !headerCollapsed" :title="headerCollapsed ? 'Show header' : 'Hide header for more room'">
-          {{ headerCollapsed ? '⌄ Show header' : '⌃ Hide header' }}
+        <button class="btn-collapse" @click="headerCollapsed = !headerCollapsed" :title="headerCollapsed ? 'Show the project summary and export buttons' : 'Hide the project summary for more room'">
+          {{ headerCollapsed ? '⌄ Project summary' : '⌃ Hide summary' }}
         </button>
       </nav>
 
       <!-- Gantt Chart (primary view) -->
-      <div v-if="tab === 'gantt'" class="section section-full">
+      <div v-show="tab === 'gantt'" class="section section-full">
         <GanttChart
           :data="data"
           :extra-room="headerCollapsed"
           :jump-to="pendingJump"
           :annotations="annotations"
+          :return-tab="jumpOrigin ? (tabLabels[jumpOrigin] || '') : ''"
           @jumped="pendingJump = null"
+          @return-to-origin="returnToOrigin"
           @annotate="setAnnotation"
           @unannotate="removeAnnotationFor"
         />
       </div>
 
       <!-- Critical Path Graph -->
-      <div v-if="tab === 'story'" class="section section-full">
+      <div v-show="tab === 'story'" class="section section-full">
         <CriticalPathGraph
           :activities="data.activities"
           :extra-room="headerCollapsed"
+          :visible="tab === 'story'"
           :annotations="annotations"
           @annotate="setAnnotation"
           @unannotate="removeAnnotationFor"
         />
       </div>
-      <div v-if="tab === 'story'" class="section">
+      <div v-show="tab === 'story'" class="section">
         <!-- Near-critical watchlist -->
         <div class="insight-card" v-if="nearCritical.length > 0">
           <h3>Near-critical watchlist</h3>
@@ -165,9 +178,9 @@
               <tr>
                 <th>Code</th>
                 <th>Activity</th>
-                <th>Float</th>
-                <th>Duration</th>
-                <th>End</th>
+                <th class="num">Float</th>
+                <th class="num">Duration</th>
+                <th class="num">End</th>
               </tr>
             </thead>
             <tbody>
@@ -184,7 +197,7 @@
       </div>
 
       <!-- Activity Table -->
-      <div v-if="tab === 'table'" class="section">
+      <div v-show="tab === 'table'" class="section">
         <div class="table-controls">
           <input
             type="text"
@@ -217,11 +230,11 @@
                 <th @click="sortBy('task_code')" class="sortable">Code {{ sortIcon('task_code') }}</th>
                 <th @click="sortBy('task_name')" class="sortable name-col">Activity {{ sortIcon('task_name') }}</th>
                 <th @click="sortBy('status')" class="sortable">Status {{ sortIcon('status') }}</th>
-                <th @click="sortBy('pct_complete')" class="sortable">% {{ sortIcon('pct_complete') }}</th>
-                <th @click="sortBy('duration_hrs')" class="sortable">Dur {{ sortIcon('duration_hrs') }}</th>
-                <th @click="sortBy('early_start')" class="sortable">Start {{ sortIcon('early_start') }}</th>
-                <th @click="sortBy('early_end')" class="sortable">End {{ sortIcon('early_end') }}</th>
-                <th @click="sortBy('total_float_hrs')" class="sortable">Float {{ sortIcon('total_float_hrs') }}</th>
+                <th @click="sortBy('pct_complete')" class="sortable num">% {{ sortIcon('pct_complete') }}</th>
+                <th @click="sortBy('duration_hrs')" class="sortable num">Dur {{ sortIcon('duration_hrs') }}</th>
+                <th @click="sortBy('early_start')" class="sortable num">Start {{ sortIcon('early_start') }}</th>
+                <th @click="sortBy('early_end')" class="sortable num">End {{ sortIcon('early_end') }}</th>
+                <th @click="sortBy('total_float_hrs')" class="sortable num">Float {{ sortIcon('total_float_hrs') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -280,7 +293,7 @@
       </div>
 
       <!-- WBS Tree -->
-      <div v-if="tab === 'wbs'" class="section">
+      <div v-show="tab === 'wbs'" class="section">
         <div class="wbs-tree">
           <WBSNode
             v-for="(node, i) in data.wbs_tree"
@@ -293,17 +306,17 @@
       </div>
 
       <!-- Progress -->
-      <div v-if="tab === 'progress'" class="section section-full">
+      <div v-show="tab === 'progress'" class="section section-full">
         <ProgressView :data="data" @jump="jumpToActivity" />
       </div>
 
       <!-- Health Check -->
-      <div v-if="tab === 'health'" class="section section-full">
+      <div v-show="tab === 'health'" class="section section-full">
         <HealthCheck :data="data" @jump="jumpToActivity" />
       </div>
 
       <!-- Compare -->
-      <div v-if="tab === 'compare'" class="section section-full">
+      <div v-show="tab === 'compare'" class="section section-full">
         <CompareView
           v-if="compareData"
           :current="data"
@@ -314,7 +327,7 @@
         />
         <div v-else class="compare-upload-card">
           <h2>Compare against a previous snapshot</h2>
-          <p class="subtitle">Upload an earlier export of this same project (e.g. last month's contractor submission) to see what changed — slipped dates, float erosion, logic changes, and critical path movement.</p>
+          <p class="subtitle">Upload an earlier export of this same project (e.g. last month's contractor submission) to see what changed — slipped dates, float erosion, logic changes, and critical path movement. Your current file stays loaded — the snapshot is only used for the diff.</p>
           <div
             class="drop-zone"
             @dragover.prevent="compareDragOver = true"
@@ -350,6 +363,13 @@ import { loadLastFile, saveLastFile, clearLastFile } from './utils/lastFile'
 import { loadAnnotations, saveAnnotation, removeAnnotation } from './utils/annotations'
 import { displayStart, displayEnd } from './utils/p6'
 
+const PARSE_STAGES = [
+  'Reading XER tables…',
+  'Building the WBS tree…',
+  'Computing the longest path…',
+  'Laying out the Gantt…',
+]
+
 function applyTheme(theme) {
   // Default theme lives on :root directly; named themes override via the attribute.
   if (theme === 'sepia') document.documentElement.removeAttribute('data-theme')
@@ -381,6 +401,11 @@ export default {
       compareFilename: '',
       dismissedWarnings: [],
       theme: localStorage.getItem('schedule-app:theme') || 'sepia',
+      uploadError: null,
+      parsingStage: 0,
+      jumpOrigin: null,
+      tabLabels: { gantt: 'Gantt Chart', story: 'Critical Path', table: 'Activity Table', wbs: 'WBS Tree', progress: 'Progress', health: 'Health Check', compare: 'Compare' },
+      exportState: '',
       themeOptions: { sepia: 'Sepia', slate: 'Slate', clay: 'Clay', ink: 'Ink' },
       compareLoading: false,
       compareDragOver: false,
@@ -443,6 +468,9 @@ export default {
         .filter(a => a.status !== 'TK_Complete' && !a.is_critical && a.total_float_hrs > 0 && a.total_float_hrs <= 80)
         .sort((a, b) => a.total_float_hrs - b.total_float_hrs)
         .slice(0, 15)
+    },
+    parsingMessage() {
+      return PARSE_STAGES[this.parsingStage % PARSE_STAGES.length]
     },
     visibleWarnings() {
       const ws = (this.data && this.data.warnings) || []
@@ -518,22 +546,38 @@ export default {
         return
       }
       this.loading = true
+      this.uploadError = null
+      this.parsingStage = 0
+      const stageTimer = setInterval(() => { this.parsingStage++ }, 800)
       const form = new FormData()
       form.append('file', file)
       try {
         const res = await fetch('/api/upload', { method: 'POST', body: form })
         if (!res.ok) {
-          const err = await res.text()
-          throw new Error(err)
+          let msg = 'Could not parse this file.'
+          try { msg = (await res.json()).detail || msg } catch { /* non-JSON error body */ }
+          throw new Error(msg)
         }
         const parsed = await res.json()
         this.activateData(parsed)
         saveLastFile(file.name, parsed)
         this.lastFile = loadLastFile()
       } catch (e) {
-        alert('Failed to parse: ' + e.message)
+        this.uploadError = `${e.message} — check the file is a P6 .xer export, or try the sample project below.`
       } finally {
+        clearInterval(stageTimer)
         this.loading = false
+      }
+    },
+    async loadSample() {
+      // The bundled demo schedule (fully synthetic) — fetched from our own static assets
+      // and pushed through the exact same upload path as a user file.
+      try {
+        const res = await fetch('/sample-schedule.xer')
+        const blob = await res.blob()
+        await this.uploadFile(new File([blob], 'sample-schedule.xer'))
+      } catch {
+        this.uploadError = 'Could not load the sample project.'
       }
     },
     activateData(parsed) {
@@ -595,8 +639,25 @@ export default {
       this.dismissedWarnings.push(w)
     },
     jumpToActivity(taskId) {
+      // Remember where the jump came from so the Gantt can offer a way back.
+      this.jumpOrigin = this.tab !== 'gantt' ? this.tab : null
       this.tab = 'gantt'
       this.pendingJump = taskId
+    },
+    selectTab(t) {
+      this.tab = t
+      this.jumpOrigin = null
+    },
+    returnToOrigin() {
+      if (this.jumpOrigin) {
+        this.tab = this.jumpOrigin
+        this.jumpOrigin = null
+      }
+    },
+    exportLabel(idle) {
+      if (this.exportState === 'working') return 'Generating…'
+      if (this.exportState === 'done') return 'Saved ✓'
+      return idle
     },
     slugName() {
       return (this.data.project.proj_short_name || 'schedule')
@@ -607,9 +668,13 @@ export default {
     async doExport(fn) {
       if (this.exporting) return
       this.exporting = true
+      this.exportState = 'working'
       try {
         await fn()
+        this.exportState = 'done'
+        setTimeout(() => { this.exportState = '' }, 2000)
       } catch (e) {
+        this.exportState = ''
         alert('Export failed: ' + e.message)
       } finally {
         this.exporting = false
@@ -646,6 +711,9 @@ export default {
   --ok: #3F7355;
   --ok-tint: #E2ECE3;
   --milestone: #6A3E9E;
+  --active: #2951C4;
+  --active-soft: #E4EAFB;
+  --crit-deep: #6E150D;
 
   /* Neutrals (warm stone scale — paper/graphite, not blue-gray) */
   --gray-900: #1F1B17;
@@ -670,6 +738,7 @@ export default {
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
+  --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
   --radius-sm: 4px;
@@ -725,6 +794,8 @@ export default {
 
 /* ── Reset & base ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
 body { font-family: var(--font-ui); background: var(--white); color: var(--ink); font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
 
 /* Every number in the app reads as instrument output, not prose — codes, dates,
@@ -734,6 +805,8 @@ body { font-family: var(--font-ui); background: var(--white); color: var(--ink);
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
+.num-cell { text-align: right; }
+th.num { text-align: right !important; }
 
 /* ── Upload screen ── */
 .upload-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: var(--space-6); }
@@ -741,7 +814,7 @@ body { font-family: var(--font-ui); background: var(--white); color: var(--ink);
 .upload-card .logo { margin-bottom: var(--space-4); }
 .logo-icon { stroke: var(--accent); }
 .upload-card h1 { font: var(--text-h1); color: var(--ink); margin-bottom: var(--space-1); }
-.upload-card .subtitle { font: var(--text-body); color: var(--gray-700); margin-bottom: var(--space-8); }
+.upload-card .subtitle { font: var(--text-body); color: var(--gray-700); font-weight: 600; margin-bottom: 2px; }
 .reopen-card { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); background: var(--accent-soft); border: 1px solid var(--accent); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4); text-align: left; }
 .reopen-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .reopen-info strong { font: var(--text-body); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -754,12 +827,23 @@ body { font-family: var(--font-ui); background: var(--white); color: var(--ink);
 .compare-upload-card .subtitle { color: var(--gray-700); margin-bottom: var(--space-5); }
 .drop-zone { border: 1px solid var(--gray-300); border-radius: var(--radius-md); padding: 48px var(--space-6); cursor: pointer; transition: all 0.2s; background: var(--gray-100); }
 .drop-zone:hover, .drop-zone.active { border-color: var(--accent); background: var(--accent-soft); }
-.drop-zone input { display: none; }
+.drop-zone input { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; }
+.drop-zone:focus-within { border-color: var(--accent); }
 .drop-zone label { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); cursor: pointer; color: var(--gray-700); font: var(--text-body); }
 .drop-zone label svg { color: var(--accent); }
 .drop-zone .loading { color: var(--accent); font-weight: 600; }
 .hint { font: var(--text-small); color: var(--gray-500); margin-top: var(--space-4); }
 .gh-link { display: inline-flex; align-items: center; gap: 6px; margin-top: var(--space-4); font: var(--text-small); color: var(--gray-700); text-decoration: none; }
+.version-tag { display: inline-block; margin-left: var(--space-3); font: var(--text-micro); color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.04em; }
+.feature-strip { font: var(--text-micro); color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.06em; margin: 6px 0 var(--space-6); }
+.sample-link { display: block; margin: var(--space-4) auto 0; border: none; background: none; cursor: pointer; font: var(--text-body); color: var(--gray-700); }
+.sample-link strong { color: var(--accent); }
+.sample-link:hover strong { text-decoration: underline; }
+.sample-sub { font: var(--text-micro); color: var(--gray-500); margin-top: 4px; }
+.upload-error { margin-top: var(--space-3); font: var(--text-small); color: var(--crit); background: var(--crit-tint); border: 1px solid var(--crit); border-radius: var(--radius-sm); padding: 8px 12px; }
+.tab-report-btn { margin-left: var(--space-2); margin-bottom: 4px; padding: 5px 12px; font: var(--text-small); font-weight: 700; color: var(--white); background: var(--accent); border: none; border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap; }
+.tab-report-btn:hover { opacity: 0.92; }
+.tab-report-btn:disabled { opacity: 0.6; cursor: default; }
 .gh-link:hover { color: var(--accent); }
 
 /* ── Dashboard ── */
@@ -837,7 +921,7 @@ body { font-family: var(--font-ui); background: var(--white); color: var(--ink);
 .data-table .name-col { min-width: 200px; }
 .act-name { font-weight: 500; }
 .annotation-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--gray-500); margin-right: 5px; vertical-align: middle; }
-.annotation-dot.sev-query { background: var(--accent); }
+.annotation-dot.sev-query { background: var(--active); }
 .annotation-dot.sev-risk { background: var(--near); }
 .annotation-dot.sev-logic { background: var(--crit); }
 .annotation-dot.sev-resolved { background: var(--ok); }
@@ -848,7 +932,7 @@ body { font-family: var(--font-ui); background: var(--white); color: var(--ink);
 .status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .status-badge.TK_Complete { background: var(--ok-tint); color: var(--ok); }
 .status-badge.TK_Complete .status-dot { background: var(--ok); }
-.status-badge.TK_Active { background: var(--accent-soft); color: var(--accent); }
+.status-badge.TK_Active { background: var(--active-soft); color: var(--active); }
 .status-badge.TK_Active .status-dot { background: var(--accent); }
 .status-badge.TK_NotStart { background: var(--gray-150); color: var(--gray-700); }
 .status-badge.TK_NotStart .status-dot { background: var(--gray-500); }

@@ -16,9 +16,9 @@
       <div class="section-body">
         <div v-if="milestoneList.length === 0" class="empty-state">No milestones found.</div>
         <table v-else class="progress-table">
-          <thead><tr><th>Code</th><th>Milestone</th><th>Target</th><th>Forecast</th><th>Variance</th><th>Status</th></tr></thead>
+          <thead><tr><th>Code</th><th>Milestone</th><th class="num">Target</th><th class="num">Forecast</th><th class="num">Variance</th><th>Status</th></tr></thead>
           <tbody>
-            <tr v-for="m in milestoneList" :key="m.task_id" class="jump-row" @click="$emit('jump', m.task_id)">
+            <tr v-for="m in milestoneList" :key="m.task_id" class="jump-row" title="Show in Gantt" @click="$emit('jump', m.task_id)">
               <td class="code">{{ m.task_code }}</td>
               <td class="name-cell">{{ m.task_name }}</td>
               <td class="num-cell">{{ m.target ? formatDate(m.target) : '—' }}</td>
@@ -45,9 +45,9 @@
         <div v-if="!dataDateObj" class="empty-state warn">No data date available in this file — look-ahead window can't be anchored.</div>
         <div v-else-if="lookaheadList.length === 0" class="empty-state">No incomplete activities fall within this window.</div>
         <table v-else class="progress-table">
-          <thead><tr><th>Code</th><th>Activity</th><th>Start</th><th>Finish</th><th>Float</th><th>% Complete</th><th>Remaining / Original</th></tr></thead>
+          <thead><tr><th>Code</th><th>Activity</th><th class="num">Start</th><th class="num">Finish</th><th class="num">Float</th><th class="num">% Complete</th><th class="num">Remaining / Original</th></tr></thead>
           <tbody>
-            <tr v-for="a in lookaheadList" :key="a.task_id" class="jump-row" @click="$emit('jump', a.task_id)" :class="{ critical: a.is_critical }">
+            <tr v-for="a in lookaheadList" :key="a.task_id" class="jump-row" title="Show in Gantt" @click="$emit('jump', a.task_id)" :class="{ critical: a.is_critical }">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
               <td class="num-cell">{{ formatDate(a.early_start) }}</td>
@@ -252,11 +252,11 @@ export default {
 .week-toggle button { font: var(--text-small); padding: 4px 10px; border: 1px solid var(--gray-300); background: var(--white); cursor: pointer; }
 .week-toggle button:first-child { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
 .week-toggle button:last-child { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; border-left: none; }
-.week-toggle button.active { background: var(--ink); color: var(--white); border-color: var(--ink); }
+.week-toggle button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 700; }
 
 .progress-table { width: 100%; border-collapse: collapse; font: var(--text-small); }
-.progress-table th { text-align: left; font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); border-bottom: 1px solid var(--gray-300); padding: var(--space-2); }
-.progress-table td { padding: var(--space-2); border-bottom: 1px solid var(--gray-150); }
+.progress-table th { text-align: left; font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); background: var(--gray-100); border-bottom: 2px solid var(--gray-300); padding: var(--space-2) var(--space-3); }
+.progress-table td { padding: 6px var(--space-3); border-bottom: 1px solid var(--gray-150); }
 .jump-row { cursor: pointer; }
 .jump-row:hover td { background: var(--accent-soft); }
 .jump-row.critical td { border-left: 3px solid var(--crit); }
@@ -278,11 +278,11 @@ export default {
 .axis-label { font: var(--text-micro); fill: var(--gray-700); font-family: var(--font-mono); }
 .data-date-line { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 4 3; }
 .data-date-label { fill: var(--ink); font-weight: 600; }
-.curve-planned { fill: none; stroke: var(--accent); stroke-width: 2.5; }
+.curve-planned { fill: none; stroke: var(--active); stroke-width: 2.5; }
 .curve-actual { fill: none; stroke: var(--ok); stroke-width: 2.5; }
 .scurve-legend { display: flex; gap: var(--space-5); margin-top: var(--space-2); }
 .legend-item { display: flex; align-items: center; gap: 5px; font: var(--text-small); color: var(--gray-700); }
 .swatch { width: 14px; height: 3px; display: inline-block; }
-.swatch-planned { background: var(--accent); }
+.swatch-planned { background: var(--active); }
 .swatch-actual { background: var(--ok); }
 </style>

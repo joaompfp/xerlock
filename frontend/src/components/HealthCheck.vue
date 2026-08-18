@@ -17,16 +17,16 @@
     <!-- Open Ends -->
     <section class="health-section">
       <button class="section-head" @click="toggle('openEnds')">
-        <span class="section-title">Open Ends <em>({{ openEnds.length }})</em></span>
+        <span class="section-title">Open Ends <em :class="{ pass: openEnds.length === 0 }">({{ openEnds.length }})</em></span>
         <span class="section-hint">Activities missing a driving predecessor or successor — can float freely with no network effect</span>
         <span class="chevron" :class="{ open: expanded.openEnds }">&rsaquo;</span>
       </button>
       <div v-if="expanded.openEnds" class="section-body">
-        <div v-if="openEnds.length === 0" class="empty-state">No open ends found.</div>
+        <div v-if="openEnds.length === 0" class="empty-state">✓ Every activity is tied into the network at both ends.</div>
         <table v-else class="health-table">
           <thead><tr><th>Code</th><th>Activity</th><th>Issue</th><th>WBS</th></tr></thead>
           <tbody>
-            <tr v-for="a in openEnds" :key="a.task_id" class="jump-row" @click="$emit('jump', a.task_id)">
+            <tr v-for="a in openEnds" :key="a.task_id" class="jump-row" title="Show in Gantt" @click="$emit('jump', a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
               <td><span class="issue-badge" :class="a.bothOpen ? 'issue-severe' : 'issue-warn'">{{ a.bothOpen ? 'Fully dangling' : (a.openStart ? 'Open start' : 'Open finish') }}</span></td>
@@ -55,9 +55,9 @@
 
         <h4 v-if="relationshipStats.leads.length">Negative lag ("leads") — {{ relationshipStats.leads.length }}</h4>
         <table v-if="relationshipStats.leads.length" class="health-table">
-          <thead><tr><th>Predecessor</th><th>Type</th><th>Successor</th><th>Lag</th></tr></thead>
+          <thead><tr><th>Predecessor</th><th>Type</th><th>Successor</th><th class="num">Lag</th></tr></thead>
           <tbody>
-            <tr v-for="(r, i) in relationshipStats.leads" :key="'lead' + i" class="jump-row" @click="$emit('jump', r.succ.task_id)">
+            <tr v-for="(r, i) in relationshipStats.leads" :key="'lead' + i" class="jump-row" title="Show in Gantt" @click="$emit('jump', r.succ.task_id)">
               <td class="code">{{ codeOf(r.predId) }}</td>
               <td>{{ relTypeLabels[r.type] || r.type }}</td>
               <td class="code">{{ r.succ.task_code }}</td>
@@ -68,9 +68,9 @@
 
         <h4 v-if="relationshipStats.bigLags.length">Large lag (&gt;10 working days) — {{ relationshipStats.bigLags.length }}</h4>
         <table v-if="relationshipStats.bigLags.length" class="health-table">
-          <thead><tr><th>Predecessor</th><th>Type</th><th>Successor</th><th>Lag</th></tr></thead>
+          <thead><tr><th>Predecessor</th><th>Type</th><th>Successor</th><th class="num">Lag</th></tr></thead>
           <tbody>
-            <tr v-for="(r, i) in relationshipStats.bigLags" :key="'lag' + i" class="jump-row" @click="$emit('jump', r.succ.task_id)">
+            <tr v-for="(r, i) in relationshipStats.bigLags" :key="'lag' + i" class="jump-row" title="Show in Gantt" @click="$emit('jump', r.succ.task_id)">
               <td class="code">{{ codeOf(r.predId) }}</td>
               <td>{{ relTypeLabels[r.type] || r.type }}</td>
               <td class="code">{{ r.succ.task_code }}</td>
@@ -89,11 +89,11 @@
         <span class="chevron" :class="{ open: expanded.constraints }">&rsaquo;</span>
       </button>
       <div v-if="expanded.constraints" class="section-body">
-        <div v-if="constraintList.length === 0" class="empty-state">No constrained activities found.</div>
+        <div v-if="constraintList.length === 0" class="empty-state">✓ No imposed dates — the network logic alone drives every date.</div>
         <table v-else class="health-table">
-          <thead><tr><th>Code</th><th>Activity</th><th>Constraint</th><th>Date</th><th>Severity</th><th>Note</th></tr></thead>
+          <thead><tr><th>Code</th><th>Activity</th><th>Constraint</th><th class="num">Date</th><th>Severity</th><th>Note</th></tr></thead>
           <tbody>
-            <tr v-for="a in constraintList" :key="a.task_id" class="jump-row" @click="$emit('jump', a.task_id)">
+            <tr v-for="a in constraintList" :key="a.task_id" class="jump-row" title="Show in Gantt" @click="$emit('jump', a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
               <td>{{ cstrLabels[a.cstr_type] || a.cstr_type }}</td>
@@ -109,16 +109,16 @@
     <!-- Negative float -->
     <section class="health-section">
       <button class="section-head" @click="toggle('negfloat')">
-        <span class="section-title">Negative Float <em>({{ negativeFloatList.length }})</em></span>
+        <span class="section-title">Negative Float <em :class="{ pass: negativeFloatList.length === 0 }">({{ negativeFloatList.length }})</em></span>
         <span class="section-hint">Activities already behind an imposed date — the schedule is telling you it can't hit its own constraints</span>
         <span class="chevron" :class="{ open: expanded.negfloat }">&rsaquo;</span>
       </button>
       <div v-if="expanded.negfloat" class="section-body">
-        <div v-if="negativeFloatList.length === 0" class="empty-state">No negative float found.</div>
+        <div v-if="negativeFloatList.length === 0" class="empty-state">✓ No activity is behind its constraints.</div>
         <table v-else class="health-table">
-          <thead><tr><th>Code</th><th>Activity</th><th>Float</th><th>Finish</th></tr></thead>
+          <thead><tr><th>Code</th><th>Activity</th><th class="num">Float</th><th class="num">Finish</th></tr></thead>
           <tbody>
-            <tr v-for="a in negativeFloatList" :key="a.task_id" class="jump-row" @click="$emit('jump', a.task_id)">
+            <tr v-for="a in negativeFloatList" :key="a.task_id" class="jump-row" title="Show in Gantt" @click="$emit('jump', a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
               <td class="num-cell lag-neg">{{ formatFloat(a.total_float_hrs, a.calendar_hrs_per_day) }}</td>
@@ -137,11 +137,11 @@
         <span class="chevron" :class="{ open: expanded.highdur }">&rsaquo;</span>
       </button>
       <div v-if="expanded.highdur" class="section-body">
-        <div v-if="highDurationList.length === 0" class="empty-state">No overly-long activities found.</div>
+        <div v-if="highDurationList.length === 0" class="empty-state">✓ No task runs long enough to need breaking down.</div>
         <table v-else class="health-table">
-          <thead><tr><th>Code</th><th>Activity</th><th>Duration</th></tr></thead>
+          <thead><tr><th>Code</th><th>Activity</th><th class="num">Duration</th></tr></thead>
           <tbody>
-            <tr v-for="a in highDurationList" :key="a.task_id" class="jump-row" @click="$emit('jump', a.task_id)">
+            <tr v-for="a in highDurationList" :key="a.task_id" class="jump-row" title="Show in Gantt" @click="$emit('jump', a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
               <td class="num-cell">{{ formatHours(a.duration_hrs, a.calendar_hrs_per_day) }}</td>
@@ -159,11 +159,11 @@
         <span class="chevron" :class="{ open: expanded.loe }">&rsaquo;</span>
       </button>
       <div v-if="expanded.loe" class="section-body">
-        <div v-if="loeOnCriticalList.length === 0" class="empty-state">No LOE activities on the critical path.</div>
+        <div v-if="loeOnCriticalList.length === 0" class="empty-state">✓ No level-of-effort activity drives the critical path.</div>
         <table v-else class="health-table">
           <thead><tr><th>Code</th><th>Activity</th></tr></thead>
           <tbody>
-            <tr v-for="a in loeOnCriticalList" :key="a.task_id" class="jump-row" @click="$emit('jump', a.task_id)">
+            <tr v-for="a in loeOnCriticalList" :key="a.task_id" class="jump-row" title="Show in Gantt" @click="$emit('jump', a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
             </tr>
@@ -184,7 +184,7 @@
         <table v-else class="health-table">
           <thead><tr><th>Code</th><th>Activity</th><th>P6 driving?</th><th>App longest path?</th></tr></thead>
           <tbody>
-            <tr v-for="a in drivingMismatchList" :key="a.task_id" class="jump-row" @click="$emit('jump', a.task_id)">
+            <tr v-for="a in drivingMismatchList" :key="a.task_id" class="jump-row" title="Show in Gantt" @click="$emit('jump', a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
               <td>{{ a.driving_path_flag ? 'Yes' : 'No' }}</td>
@@ -203,11 +203,11 @@
         <span class="chevron" :class="{ open: expanded.oos }">&rsaquo;</span>
       </button>
       <div v-if="expanded.oos" class="section-body">
-        <div v-if="outOfSequenceList.length === 0" class="empty-state">No out-of-sequence progress found.</div>
+        <div v-if="outOfSequenceList.length === 0" class="empty-state">✓ All recorded progress respects the network logic.</div>
         <table v-else class="health-table">
-          <thead><tr><th>Activity</th><th>Started</th><th>Predecessor</th><th>Predecessor finished</th></tr></thead>
+          <thead><tr><th>Activity</th><th class="num">Started</th><th>Predecessor</th><th class="num">Predecessor finished</th></tr></thead>
           <tbody>
-            <tr v-for="(r, i) in outOfSequenceList" :key="i" class="jump-row" @click="$emit('jump', r.activity.task_id)">
+            <tr v-for="(r, i) in outOfSequenceList" :key="i" class="jump-row" title="Show in Gantt" @click="$emit('jump', r.activity.task_id)">
               <td class="code">{{ r.activity.task_code }}</td>
               <td class="num-cell">{{ formatDate(r.activity.act_start) }}</td>
               <td class="code">{{ r.predecessor.task_code }}</td>
@@ -230,7 +230,7 @@
         <table v-else class="health-table">
           <thead><tr><th>Code</th><th>Activity</th></tr></thead>
           <tbody>
-            <tr v-for="a in noResourceList" :key="a.task_id" class="jump-row" @click="$emit('jump', a.task_id)">
+            <tr v-for="a in noResourceList" :key="a.task_id" class="jump-row" title="Show in Gantt" @click="$emit('jump', a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
             </tr>
@@ -413,16 +413,18 @@ export default {
 
 .health-section { border-bottom: 1px solid var(--gray-300); }
 .health-section:last-child { border-bottom: none; }
+.section-title { font: 600 15px/1.4 var(--font-ui); }
 .section-head { width: 100%; display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4); background: var(--gray-100); border: none; cursor: pointer; text-align: left; }
 .section-head:hover { background: var(--gray-150); }
 .section-title { font-weight: 600; color: var(--ink); white-space: nowrap; }
 .section-title em { font-style: normal; color: var(--accent); font-family: var(--font-mono); }
+.section-title em.pass { color: var(--ok); }
 .section-hint { font: var(--text-small); color: var(--gray-700); flex: 1; }
 .chevron { transition: transform 0.15s; color: var(--gray-500); font-size: 19px; }
 .chevron.open { transform: rotate(90deg); }
 .section-body { padding: var(--space-4); }
 .section-note { font: var(--text-small); color: var(--gray-700); margin: var(--space-2) 0 var(--space-4); }
-.section-body h4 { font: var(--text-small); color: var(--ink); margin: var(--space-4) 0 var(--space-2); }
+.section-body h4 { font: var(--text-small); font-weight: 700; color: var(--ink); margin: var(--space-4) 0 var(--space-2); }
 .section-body h4:first-child { margin-top: 0; }
 .empty-state { font: var(--text-small); color: var(--ok); }
 
@@ -432,8 +434,8 @@ export default {
 .rel-mix-item span { font: var(--text-micro); color: var(--gray-700); }
 
 .health-table { width: 100%; border-collapse: collapse; font: var(--text-small); }
-.health-table th { text-align: left; font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); border-bottom: 1px solid var(--gray-300); padding: var(--space-2); }
-.health-table td { padding: var(--space-2); border-bottom: 1px solid var(--gray-150); }
+.health-table th { text-align: left; font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); background: var(--gray-100); border-bottom: 2px solid var(--gray-300); padding: var(--space-2) var(--space-3); }
+.health-table td { padding: 6px var(--space-3); border-bottom: 1px solid var(--gray-150); }
 .jump-row { cursor: pointer; }
 .jump-row:hover td { background: var(--accent-soft); }
 .code { font-family: var(--font-mono); font-weight: 600; color: var(--accent); white-space: nowrap; }
