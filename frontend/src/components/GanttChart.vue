@@ -67,13 +67,6 @@
         <option value="TK_Complete">Complete</option>
       </select>
       <label class="filter-check"><input type="checkbox" v-model="filterCriticalOnly" /> Critical only</label>
-      <span v-for="t in codeTypesAvailable" :key="t" class="code-filter-group">
-        <span class="code-filter-src" aria-hidden="true">{{ t }}</span>
-        <select v-model="filterCodes[t]" class="filter-select" :title="`P6 activity code category '${t}' — name and values read verbatim from this file's ACTVTYPE/ACTVCODE tables`">
-          <option value="">All {{ t }}</option>
-          <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
-        </select>
-      </span>
       <span class="date-range-filter" title="Show only activities whose dates touch this window">
         <span class="code-filter-group">
           <span class="code-filter-src" aria-hidden="true">From</span>
@@ -89,6 +82,13 @@
           <button class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(28) }" @click="setLookAhead(28)" title="4-week look-ahead from the data date">4 wk</button>
           <button class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(56) }" @click="setLookAhead(56)" title="8-week look-ahead from the data date">8 wk</button>
         </span>
+      </span>
+      <span v-for="t in codeTypesAvailable" :key="t" class="code-filter-group">
+        <span class="code-filter-src" aria-hidden="true">{{ t }}</span>
+        <select v-model="filterCodes[t]" class="filter-select" :title="`P6 activity code category '${t}' — name and values read verbatim from this file's ACTVTYPE/ACTVCODE tables`">
+          <option value="">All {{ t }}</option>
+          <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
+        </select>
       </span>
       <button v-if="returnTab" class="return-chip" @click="$emit('return-to-origin')">&larr; Back to {{ returnTab }}</button>
       <span v-if="isolationActive" class="isolation-chip">
