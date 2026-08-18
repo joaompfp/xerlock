@@ -29,7 +29,10 @@ tracing rebuilds an activity's driving path link by link.*
 - Continuous zoom (presets + Ctrl/scroll), drag-pan, fit-to-width, resizable activity column
 - Critical-path link overlay drawn *above* bars so logic never hides behind unrelated activities
 - Two critical-basis modes: TF ≤ 0 or Longest Path (driving-chain trace from the finish)
-- Progress line, today marker, weekend shading, filter bar (text/status/critical/activity codes)
+- Progress line, today + data-date markers, weekend shading, filter bar (text/status/critical/
+  activity codes/date window with 4- and 8-week look-ahead presets from the data date)
+- Baseline ghost bars: with a Compare baseline loaded, every activity draws a hollow bar at its
+  baseline position — slips read as horizontal offsets, right in the Gantt
 - Right-side detail drawer: stat tiles for duration/float/dates/status, predecessor and successor
   lists with dates, durations, and lags — click any related activity to jump to it
 - Print-friendly export
@@ -75,9 +78,11 @@ tracing rebuilds an activity's driving path link by link.*
   cp1252 exports
 
 **Compare** — diff two `.xer` snapshots
-- Upload last month's submission alongside the current one: date slips, duration edits,
-  float erosion, critical-path churn (with a stability score), logic changes,
-  added/removed activities
+- Leads with the verdict: project finish baseline → current with the day delta, then milestone
+  dumbbell chart (baseline ● — ● current per milestone) and a slip tornado of the biggest
+  movers — tables below for drill-down
+- Date slips, duration edits, float erosion, critical-path churn (with a stability score),
+  logic changes, added/removed activities
 - **Snapshot register**: save the current parse in the browser (IndexedDB) and diff
   against it next month — no need to keep old `.xer` files at hand; nothing leaves
   the browser

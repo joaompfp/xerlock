@@ -26,6 +26,7 @@
         <span class="legend-item"><i class="lg-bar lg-negative"></i>Negative float (late)</span>
         <span class="legend-item"><i class="diamond"></i>Milestone</span>
         <span class="legend-item"><i class="bar-wbs"></i>WBS rollup</span>
+        <span class="legend-item" v-if="baseline && showBaseline"><i class="lg-bar lg-ghost"></i>Baseline</span>
         <span class="legend-item" v-if="showProgressLine"><i class="progress-swatch"></i>Progress line</span>
       </div>
 
@@ -33,6 +34,7 @@
 
       <label class="ctrl-toggle"><input type="checkbox" v-model="showLinks" /> Links</label>
       <label class="ctrl-toggle"><input type="checkbox" v-model="showProgressLine" /> Progress line</label>
+      <label v-if="baseline" class="ctrl-toggle" title="Ghost bars at each activity's position in the compared snapshot"><input type="checkbox" v-model="showBaseline" /> Baseline</label>
       <div class="zoom-group">
         <button
           v-for="z in zoomLevels"
@@ -69,6 +71,15 @@
         <option value="">All {{ t }}</option>
         <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
       </select>
+      <span class="date-range-filter" title="Show only activities whose dates touch this window">
+        <input type="date" v-model="filterFrom" class="filter-date" title="Window start — activities finishing before this are hidden" />
+        <span class="date-range-sep">&ndash;</span>
+        <input type="date" v-model="filterTo" class="filter-date" title="Window end — activities starting after this are hidden" />
+        <template v-if="data.project.data_date">
+          <button class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(28) }" @click="setLookAhead(28)" title="4-week look-ahead from the data date">4 wk</button>
+          <button class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(56) }" @click="setLookAhead(56)" title="8-week look-ahead from the data date">8 wk</button>
+        </template>
+      </span>
       <button v-if="returnTab" class="return-chip" @click="$emit('return-to-origin')">&larr; Back to {{ returnTab }}</button>
       <span v-if="isolationActive" class="isolation-chip">
         Chain trace &middot; {{ isolatedIds.size }} {{ isolatedIds.size === 1 ? 'activity' : 'activities' }}
@@ -216,7 +227,7 @@
             @click="row.type === 'wbs' ? toggleWbs(row.wbsId) : selectActivity(row.activity)"
           >
             <template v-if="row.type === 'wbs'">
-              <IconChevron class="g-toggle" :expanded="expandedWbs.has(row.wbsId)" />
+              <IconChevron class="g-toggle" :expanded="isFilterActive ? !filterCollapsed.has(row.wbsId) : expandedWbs.has(row.wbsId)" />
               <span class="g-wbs-name">{{ row.name }}</span>
               <span class="g-wbs-count">{{ row.count }}</span>
               <span class="g-col-dur"></span>
@@ -245,6 +256,12 @@
             ></div>
             <template v-else-if="row.milestone">
               <div
+                v-if="ghostFor(row.activity)"
+                class="g-milestone-ghost"
+                :style="{ left: ghostFor(row.activity).x + 'px' }"
+                :title="'Baseline: ' + ghostFor(row.activity).label"
+              ></div>
+              <div
                 class="g-milestone"
                 :class="row.cls"
                 :style="{ left: row.x + 'px' }"
@@ -252,16 +269,23 @@
                 @click="selectActivity(row.activity)"
               ></div>
             </template>
-            <div
-              v-else
-              class="g-bar"
-              :class="[row.cls, { selected: row.activity.task_id === selectedTaskId }]"
-              :style="{ left: row.x + 'px', width: row.w + 'px' }"
-              :title="barTitle(row.activity)"
-              @click="selectActivity(row.activity)"
-            >
-              <div class="g-bar-progress" :style="{ width: row.activity.pct_complete + '%' }"></div>
-            </div>
+            <template v-else>
+              <div
+                v-if="ghostFor(row.activity)"
+                class="g-bar-ghost"
+                :style="{ left: ghostFor(row.activity).x + 'px', width: ghostFor(row.activity).w + 'px' }"
+                :title="'Baseline: ' + ghostFor(row.activity).label"
+              ></div>
+              <div
+                class="g-bar"
+                :class="[row.cls, { selected: row.activity.task_id === selectedTaskId }]"
+                :style="{ left: row.x + 'px', width: row.w + 'px' }"
+                :title="barTitle(row.activity)"
+                @click="selectActivity(row.activity)"
+              >
+                <div class="g-bar-progress" :style="{ width: row.activity.pct_complete + '%' }"></div>
+              </div>
+            </template>
           </div>
         </template>
       </div>
@@ -417,6 +441,9 @@ export default {
     jumpTo: { type: [Number, String], default: null },
     annotations: { type: Object, default: () => ({}) },
     returnTab: { type: String, default: '' },
+    // Parsed baseline schedule (from the Compare tab's snapshot/upload). When present,
+    // activities matched by code can draw a ghost bar at their baseline position.
+    baseline: { type: Object, default: null },
   },
   emits: ['jumped', 'annotate', 'unannotate', 'return-to-origin'],
   data() {
@@ -443,6 +470,11 @@ export default {
       labelColWidth: Math.min(saved.labelColWidth || LABEL_COL_WIDTH_DEFAULT, Math.max(220, Math.floor(window.innerWidth * 0.55))),
       criticalBasis: saved.criticalBasis || 'tf0',
       expandedWbs,
+      // WBS ids collapsed while a filter is active. Filtering auto-expands everything so
+      // matches are revealed, but a collapse click during filtering must still stick —
+      // this set records those, and clears when filters clear.
+      filterCollapsed: new Set(),
+      showBaseline: true,
       showLinks: saved.showLinks ?? true,
       showProgressLine: saved.showProgressLine ?? false,
       selectedTaskId: null,
@@ -450,6 +482,8 @@ export default {
       filterText: '',
       filterStatus: '',
       filterCriticalOnly: false,
+      filterFrom: '',
+      filterTo: '',
       filterCodes: {},
       // Chain tracing: null = off; a Set of task_ids = show ONLY these activities.
       // Grown one activity at a time by clicking predecessors/successors in the drawer,
@@ -660,7 +694,7 @@ export default {
       return this.isolatedIds !== null
     },
     isFilterActive() {
-      return this.isolationActive || !!(this.filterText.trim() || this.filterStatus || this.filterCriticalOnly || this.activeCodeFilters.length)
+      return this.isolationActive || !!(this.filterText.trim() || this.filterStatus || this.filterCriticalOnly || this.filterFrom || this.filterTo || this.activeCodeFilters.length)
     },
     matchedTaskIds() {
       // Isolation takes precedence over the text/status/code filters: the trace IS the view.
@@ -671,6 +705,16 @@ export default {
       for (const a of this.data.activities) {
         if (q && !(a.task_code.toLowerCase().includes(q) || a.task_name.toLowerCase().includes(q) || (a.wbs_path && a.wbs_path.toLowerCase().includes(q)))) continue
         if (this.filterStatus && a.status !== this.filterStatus) continue
+        if (this.filterFrom || this.filterTo) {
+          // Window-intersection on the display dates (actual once started, else early):
+          // an activity is shown if any part of it touches [from, to]. ISO date-prefix
+          // string comparison is deliberate — no timezone surprises.
+          const aStart = (displayStart(a) || '').slice(0, 10)
+          const aEnd = (displayEnd(a) || aStart || '').slice(0, 10)
+          if (!aStart) continue
+          if (this.filterFrom && aEnd < this.filterFrom) continue
+          if (this.filterTo && aStart > this.filterTo) continue
+        }
         if (this.filterCriticalOnly && !this.isBasisCritical(a)) continue
         if (this.activeCodeFilters.length) {
           const matchesAll = this.activeCodeFilters.every(([type, code]) =>
@@ -681,6 +725,12 @@ export default {
         ids.add(a.task_id)
       }
       return ids
+    },
+    baselineByCode() {
+      if (!this.baseline) return null
+      const m = new Map()
+      for (const a of this.baseline.activities) m.set(a.task_code, a)
+      return m
     },
     matchCount() {
       return this.matchedTaskIds ? this.matchedTaskIds.size : this.data.activities.length
@@ -705,7 +755,7 @@ export default {
             start: roll.start,
             finish: roll.finish,
           })
-          const expanded = filtering || this.expandedWbs.has(node.wbs_id)
+          const expanded = filtering ? !this.filterCollapsed.has(node.wbs_id) : this.expandedWbs.has(node.wbs_id)
           if (expanded) {
             walk(node.children || [], level + 1)
             for (const a of this.activitiesByWbs.get(node.wbs_id) || []) {
@@ -721,7 +771,7 @@ export default {
       const orphans = filtering ? orphansAll.filter(a => matched.has(a.task_id)) : orphansAll
       if (orphans.length) {
         rows.push({ type: 'wbs', key: 'w-unassigned', wbsId: '__unassigned', level: 0, name: '(Unassigned)', count: orphans.length })
-        if (filtering || this.expandedWbs.has('__unassigned')) {
+        if (filtering ? !this.filterCollapsed.has('__unassigned') : this.expandedWbs.has('__unassigned')) {
           for (const a of orphans) rows.push(this.buildActivityRow(a, 1))
         }
       }
@@ -856,22 +906,54 @@ export default {
       const xEnd = this.dateToX(row.finish.toISOString())
       return { left: x + 'px', width: Math.max(xEnd - x, 3) + 'px' }
     },
+    ghostFor(a) {
+      if (!this.showBaseline || !this.baselineByCode) return null
+      const b = this.baselineByCode.get(a.task_code)
+      if (!b) return null
+      const s = displayStart(b)
+      const e = displayEnd(b)
+      if (!s) return null
+      const x = this.dateToX(s)
+      const xEnd = e ? this.dateToX(e) : x
+      return {
+        x,
+        w: Math.max(xEnd - x, 3),
+        label: `${formatDateShort(s)}${e && e !== s ? ' → ' + formatDateShort(e) : ''}`,
+      }
+    },
     toggleWbs(wbsId) {
+      if (this.isFilterActive) {
+        if (this.filterCollapsed.has(wbsId)) this.filterCollapsed.delete(wbsId)
+        else this.filterCollapsed.add(wbsId)
+        // Force reactivity: Set mutations aren't tracked by Vue 3 unless reassigned.
+        this.filterCollapsed = new Set(this.filterCollapsed)
+        return
+      }
       if (this.expandedWbs.has(wbsId)) this.expandedWbs.delete(wbsId)
       else this.expandedWbs.add(wbsId)
-      // Force reactivity: Set mutations aren't tracked by Vue 3 unless reassigned.
       this.expandedWbs = new Set(this.expandedWbs)
     },
-    expandAll() {
+    allWbsIdSet() {
       const all = new Set()
       const walk = (nodes) => {
         for (const n of nodes) { all.add(n.wbs_id); walk(n.children || []) }
       }
       walk(this.data.wbs_tree || [])
       all.add('__unassigned')
-      this.expandedWbs = all
+      return all
+    },
+    expandAll() {
+      if (this.isFilterActive) {
+        this.filterCollapsed = new Set()
+        return
+      }
+      this.expandedWbs = this.allWbsIdSet()
     },
     collapseAll() {
+      if (this.isFilterActive) {
+        this.filterCollapsed = this.allWbsIdSet()
+        return
+      }
       this.expandedWbs = new Set()
     },
     selectActivity(a) {
@@ -932,11 +1014,39 @@ export default {
       this.$nextTick(() => this.scrollToActivity(next.task_id))
     },
     clearFilters() {
+      this.filterCollapsed = new Set()
       this.filterText = ''
       this.filterStatus = ''
       this.filterCriticalOnly = false
+      this.filterFrom = ''
+      this.filterTo = ''
       this.filterCodes = {}
       this.isolatedIds = null
+    },
+    // Look-ahead: the window every site meeting asks for — data date + N days.
+    lookAheadWindow(days) {
+      const dd = this.data.project.data_date
+      if (!dd) return null
+      const from = dd.slice(0, 10)
+      const end = new Date(from + 'T12:00:00')
+      end.setDate(end.getDate() + days)
+      const to = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`
+      return { from, to }
+    },
+    lookAheadActive(days) {
+      const w = this.lookAheadWindow(days)
+      return !!w && this.filterFrom === w.from && this.filterTo === w.to
+    },
+    setLookAhead(days) {
+      const w = this.lookAheadWindow(days)
+      if (!w) return
+      if (this.lookAheadActive(days)) {
+        this.filterFrom = ''
+        this.filterTo = ''
+      } else {
+        this.filterFrom = w.from
+        this.filterTo = w.to
+      }
     },
     isolateSelected() {
       if (this.selectedTaskId == null) return
@@ -1191,6 +1301,10 @@ export default {
 
 .filter-bar { display: flex; align-items: center; gap: 10px; padding: 10px var(--space-4); background: var(--white); border-bottom: 1px solid var(--gray-300); flex-wrap: wrap; }
 .filter-input { padding: 6px 12px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); width: 240px; }
+.date-range-filter { display: inline-flex; align-items: center; gap: 4px; }
+.filter-date { border: 1px solid var(--gray-300); border-radius: var(--radius-sm); padding: 4px 6px; background: var(--white); font-family: var(--font-mono); font-size: 12px; color: var(--ink); }
+.date-range-sep { color: var(--gray-500); }
+.la-btn.active { background: var(--active-soft); border-color: var(--active); color: var(--active); font-weight: 700; }
 .filter-select { padding: 6px 8px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); }
 .filter-check { font: var(--text-small); color: var(--gray-700); display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .filter-count { font: var(--text-small); color: var(--gray-500); margin-left: auto; }
@@ -1272,6 +1386,9 @@ export default {
 .g-timeline-row { position: relative; height: 20px; border-bottom: 1px solid var(--gray-150); z-index: 2; }
 .g-timeline-row.stripe { background: var(--gray-100); }
 
+.g-bar-ghost { position: absolute; top: 15px; height: 4px; border-radius: 2px; background: transparent; border: 1.5px solid var(--gray-500); box-sizing: border-box; pointer-events: auto; }
+.g-milestone-ghost { position: absolute; top: 12px; width: 7px; height: 7px; transform: translateX(-4px) rotate(45deg); border: 1.5px solid var(--gray-500); background: transparent; box-sizing: border-box; }
+.lg-ghost { background: transparent !important; border-color: var(--gray-500) !important; height: 5px !important; }
 .g-bar { position: absolute; top: 5px; height: 10px; border-radius: var(--radius-sm); overflow: hidden; background: var(--accent-soft); border: 1.5px solid var(--accent); box-sizing: border-box; box-shadow: 0 1px 2px rgba(28,25,23,0.15); }
 .g-bar.critical { background: var(--crit-tint); border-color: var(--crit); }
 .g-bar.near { background: var(--near-tint); border-color: var(--near); }
