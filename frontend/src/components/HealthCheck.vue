@@ -454,7 +454,7 @@ export default {
     data: { type: Object, required: true },
     annotations: { type: Object, default: () => ({}) },
   },
-  emits: ['jump', 'annotate', 'unannotate'],
+  emits: ['jump', 'annotate', 'unannotate', 'score'],
   data() {
     return {
       expanded: {
@@ -481,6 +481,9 @@ export default {
     }
   },
   watch: {
+    // The sidebar shows the score on the Health check nav item, so the state is
+    // visible from any view without opening this one.
+    weightedScore: { immediate: true, handler(v) { this.$emit('score', v) } },
     cfg: {
       deep: true,
       handler(v) {

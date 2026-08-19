@@ -57,7 +57,89 @@
     </div>
 
     <!-- Dashboard -->
-    <div v-else class="dashboard" :class="{ 'header-collapsed': headerCollapsed }">
+    <div v-else class="app-shell">
+      <!-- Sidebar: grouped navigation. Replaces a flat row of nine tabs, which gave the
+           programme views, the analysis views and the file-audit views equal billing. -->
+      <aside class="sidebar" :class="{ open: navOpen }" id="app-sidebar">
+        <div class="sb-brand">
+          <a class="sb-logo" href="https://github.com/joaompfp/xerlock" target="_blank" rel="noopener" title="XERlock on GitHub">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.8">
+              <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 3v18" /><path d="M7 12l2 2 4-4" />
+            </svg>
+            <span>XERlock</span>
+          </a>
+          <span class="sb-readonly" title="XERlock never modifies or stores your file">read only</span>
+        </div>
+
+        <div class="sb-project">
+          <div class="sb-proj-name" :title="data.project.proj_short_name">{{ data.project.proj_short_name }}</div>
+          <div class="sb-proj-meta">{{ data.project.total_activities }} activities &middot; {{ data.project.total_wbs }} WBS</div>
+          <div v-if="data.project.data_date" class="sb-datadate">
+            <i></i><span>DATA DATE</span><b>{{ formatDate(data.project.data_date) }}</b>
+          </div>
+        </div>
+
+        <nav class="sb-nav">
+          <template v-for="g in navGroups" :key="g.label">
+            <div class="sb-group">{{ g.label }}</div>
+            <button
+              v-for="it in g.items"
+              :key="it.id"
+              class="sb-item"
+              :class="{ active: tab === it.id }"
+              @click="selectTab(it.id); navOpen = false"
+            >
+              <span class="sb-item-label">{{ it.label }}</span>
+              <span v-if="it.id === 'health' && healthScore !== null" class="sb-score" :class="healthScoreClass">{{ healthScore }}%</span>
+              <span v-else-if="it.id === 'compare' && compareData" class="sb-dot" title="A baseline is loaded"></span>
+            </button>
+          </template>
+        </nav>
+
+        <div class="sb-footer">
+          <div class="sb-theme" role="group" aria-label="Colour theme">
+            <button v-for="(label, key) in themeOptions" :key="key" :class="{ active: theme === key }" @click="theme = key">{{ label }}</button>
+          </div>
+          <button class="sb-load" @click="data = null">Load another .xer</button>
+        </div>
+      </aside>
+      <div v-if="navOpen" class="sb-backdrop" @click="navOpen = false"></div>
+
+      <div class="main">
+        <header class="topbar">
+          <button class="nav-toggle" @click="navOpen = !navOpen" aria-controls="app-sidebar" :aria-expanded="String(navOpen)" aria-label="Navigation">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+          </button>
+          <h1 class="topbar-title">{{ tabLabels[tab] }}</h1>
+
+          <!-- The six-cell metrics strip, inline: nothing needs hiding any more, so the
+               collapse/expand summary toggle is gone. -->
+          <div class="topbar-metrics">
+            <div class="tb-metric"><b :class="data.project.total_critical > 0 ? 'is-crit' : 'is-ok'">{{ data.project.total_critical }}</b><span>Critical</span></div>
+            <div class="tb-metric" v-if="data.project.total_negative_float > 0"><b class="is-crit">{{ data.project.total_negative_float }}</b><span>Neg. float</span></div>
+            <div class="tb-metric"><b>{{ data.project.total_longest_path }}</b><span>Longest path</span></div>
+            <div class="tb-metric"><b>{{ data.project.total_milestones }}</b><span>Milestones</span></div>
+            <div class="tb-metric tb-metric-pct">
+              <b>{{ data.project.pct_complete }}%</b><span>Complete</span>
+              <i class="tb-bar"><u :style="{ width: data.project.pct_complete + '%' }"></u></i>
+            </div>
+          </div>
+
+          <div class="topbar-actions">
+            <button v-if="annotationCount > 0" class="btn-tiny-light tb-notes" :disabled="exporting" @click="doExport(() => exportReviewReport(data, annotations))" title="Download the annotated Review Report (.xlsx)">
+              {{ exportLabel('Review notes (' + annotationCount + ')') }}
+            </button>
+            <div class="tb-export">
+              <button class="btn-tiny-light" :disabled="exporting" @click="exportMenuOpen = !exportMenuOpen" :aria-expanded="String(exportMenuOpen)">{{ exportLabel('Export') }} &#9662;</button>
+              <div v-if="exportMenuOpen" class="tb-menu">
+                <button @click="exportMenuOpen = false; doExport(() => exportWorkbook(data))">Schedule workbook (.xlsx)</button>
+                <button :disabled="annotationCount === 0" @click="exportMenuOpen = false; doExport(() => exportReviewReport(data, annotations))">Review report (.xlsx)</button>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div class="views">
       <!-- Parse warnings (multi-project file, suspect encoding, …) — a reviewer must never
            discover these by accident, so they persist until explicitly dismissed. -->
       <div v-if="visibleWarnings.length" class="parse-warnings">
@@ -66,90 +148,12 @@
           <button class="warning-dismiss" @click="dismissWarning(w)" title="Dismiss">&times;</button>
         </div>
       </div>
-      <template v-if="!headerCollapsed">
-        <!-- Header -->
-        <header class="header">
-          <div class="header-left">
-            <h1>{{ data.project.proj_short_name }}</h1>
-            <span class="header-meta">{{ data.project.total_activities }} activities &middot; {{ data.project.total_wbs }} WBS nodes &middot; {{ data.project.earliest_start ? formatDate(data.project.earliest_start) : '—' }} &rarr; {{ data.project.latest_end ? formatDate(data.project.latest_end) : '—' }}</span>
-          </div>
-          <div class="header-right">
-            <button class="btn-outline" v-if="annotationCount > 0" @click="doExport(() => exportReviewReport(data, annotations))">
-              {{ exportLabel('Export Review Report (' + annotationCount + ')') }}
-            </button>
-            <button class="btn-outline" @click="doExport(() => exportWorkbook(data))">
-              {{ exportLabel('Export to Excel (.xlsx)') }}
-            </button>
-            <button class="btn-outline" @click="data = null">Load another</button>
-          </div>
-        </header>
-
-        <!-- Key metrics strip -->
-        <div class="metrics-strip">
-          <div class="metric">
-            <strong>{{ data.project.total_activities }}</strong>
-            <span>Activities</span>
-          </div>
-          <div class="metric">
-            <strong :class="data.project.total_critical > 0 ? 'is-crit' : 'is-ok'">{{ data.project.total_critical }}</strong>
-            <span>Critical (TF&le;0)</span>
-          </div>
-          <div class="metric" v-if="data.project.total_negative_float > 0">
-            <strong class="is-crit">{{ data.project.total_negative_float }}</strong>
-            <span>Negative Float</span>
-          </div>
-          <div class="metric">
-            <strong :class="data.project.total_longest_path > 0 ? 'is-crit' : 'is-ok'">{{ data.project.total_longest_path }}</strong>
-            <span>Longest Path</span>
-          </div>
-          <div class="metric">
-            <strong>{{ data.project.total_milestones }}</strong>
-            <span>Milestones</span>
-          </div>
-          <div class="metric">
-            <strong>{{ data.project.pct_complete }}%</strong>
-            <span>Complete</span>
-          </div>
-        </div>
-      </template>
-
-      <!-- Tab navigation -->
-      <nav class="tabs">
-        <a class="brand" href="https://github.com/joaompfp/xerlock" target="_blank" rel="noopener" title="XERlock on GitHub">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" class="brand-icon" stroke-width="1.8">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <path d="M3 9h18" />
-            <path d="M9 3v18" />
-            <path d="M7 12l2 2 4-4" />
-          </svg>
-          <span class="brand-name">XERlock</span>
-        </a>
-        <button :class="{ active: tab === 'gantt' }" @click="selectTab('gantt')">Gantt Chart</button>
-        <button :class="{ active: tab === 'story' }" @click="selectTab('story')">Critical Path</button>
-        <button :class="{ active: tab === 'table' }" @click="selectTab('table')">Activity Table</button>
-        <button :class="{ active: tab === 'wbs' }" @click="selectTab('wbs')">WBS Tree</button>
-        <button :class="{ active: tab === 'progress' }" @click="selectTab('progress')">Progress</button>
-        <button :class="{ active: tab === 'health' }" @click="selectTab('health')">Health Check</button>
-        <button :class="{ active: tab === 'calendars' }" @click="selectTab('calendars')">Calendars</button>
-        <button :class="{ active: tab === 'tables' }" @click="selectTab('tables')">Tables</button>
-        <button :class="{ active: tab === 'compare' }" @click="selectTab('compare')">Compare</button>
-        <button v-if="annotationCount > 0" class="tab-report-btn" :disabled="exporting" @click="doExport(() => exportReviewReport(data, annotations))" title="Download the annotated Review Report (.xlsx)">
-          {{ exportLabel('⤓ Report (' + annotationCount + ')') }}
-        </button>
-        <select class="theme-select" v-model="theme" title="Color theme">
-          <option v-for="(label, key) in themeOptions" :key="key" :value="key">{{ label }}</option>
-        </select>
-        <button class="btn-collapse" @click="headerCollapsed = !headerCollapsed" :title="headerCollapsed ? 'Show the project summary and export buttons' : 'Hide the project summary for more room'">
-          {{ headerCollapsed ? '⌄ Project summary' : '⌃ Hide summary' }}
-        </button>
-      </nav>
 
       <!-- Gantt Chart (primary view) -->
       <div v-show="tab === 'gantt'" class="section section-full">
         <GanttChart
           :data="data"
           :baseline="compareData"
-          :extra-room="headerCollapsed"
           :jump-to="pendingJump"
           :annotations="annotations"
           :return-tab="jumpOrigin ? (tabLabels[jumpOrigin] || '') : ''"
@@ -164,7 +168,6 @@
       <div v-show="tab === 'story'" class="section section-full">
         <CriticalPathGraph
           :activities="data.activities"
-          :extra-room="headerCollapsed"
           :visible="tab === 'story'"
           :annotations="annotations"
           :project-name="data.project.proj_short_name"
@@ -327,6 +330,7 @@
         <HealthCheck
           :data="data"
           :annotations="annotations"
+          @score="healthScore = $event"
           @jump="jumpToActivity"
           @annotate="setAnnotation"
           @unannotate="removeAnnotationFor"
@@ -416,6 +420,8 @@
           </div>
         </div>
       </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -466,7 +472,6 @@ export default {
       loading: false,
       dragOver: false,
       tab: 'gantt',
-      headerCollapsed: true,
       search: '',
       statusFilter: '',
       showCriticalOnly: false,
@@ -489,12 +494,51 @@ export default {
       uploadError: null,
       parsingStage: 0,
       jumpOrigin: null,
-      tabLabels: { gantt: 'Gantt Chart', story: 'Critical Path', table: 'Activity Table', wbs: 'WBS Tree', progress: 'Progress', health: 'Health Check', compare: 'Compare' },
+      tabLabels: { gantt: 'Gantt chart', story: 'Critical path', table: 'Activity table', wbs: 'WBS tree', progress: 'Progress', health: 'Health check', calendars: 'Calendars', tables: 'Raw tables', compare: 'Compare' },
+      // Three jobs, not one row of nine: the programme, the analysis of it, and the
+      // audit of the file it came from.
+      navGroups: [
+        { label: 'Programme', items: [
+          { id: 'gantt', label: 'Gantt chart' },
+          { id: 'story', label: 'Critical path' },
+          { id: 'progress', label: 'Progress' },
+        ] },
+        { label: 'Analysis', items: [
+          { id: 'health', label: 'Health check' },
+          { id: 'compare', label: 'Compare' },
+        ] },
+        { label: 'Audit', items: [
+          { id: 'table', label: 'Activity table' },
+          { id: 'wbs', label: 'WBS tree' },
+          { id: 'calendars', label: 'Calendars' },
+          { id: 'tables', label: 'Raw tables' },
+        ] },
+      ],
+      navOpen: false,
+      exportMenuOpen: false,
+      // Reported up by HealthCheck so the score is visible from any view.
+      healthScore: null,
       exportState: '',
       themeOptions: { light: 'Light', dark: 'Dark' },
       compareLoading: false,
       compareDragOver: false,
     }
+  },
+  mounted() {
+    this._onShellDocClick = e => {
+      if (this.exportMenuOpen && !e.target.closest('.tb-export')) this.exportMenuOpen = false
+    }
+    this._onShellKey = e => {
+      if (e.key !== 'Escape') return
+      if (this.exportMenuOpen) this.exportMenuOpen = false
+      else if (this.navOpen) this.navOpen = false
+    }
+    document.addEventListener('mousedown', this._onShellDocClick)
+    window.addEventListener('keydown', this._onShellKey)
+  },
+  beforeUnmount() {
+    document.removeEventListener('mousedown', this._onShellDocClick)
+    window.removeEventListener('keydown', this._onShellKey)
   },
   created() {
     applyTheme(this.theme)
@@ -506,6 +550,10 @@ export default {
     },
   },
   computed: {
+    healthScoreClass() {
+      if (this.healthScore === null) return ''
+      return this.healthScore >= 80 ? 'is-ok' : this.healthScore >= 60 ? 'is-near' : 'is-crit'
+    },
     filteredActivities() {
       let acts = [...this.data.activities]
       if (this.search) {
@@ -1201,6 +1249,99 @@ th.num { text-align: right !important; }
   .data-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 }
 
+
+/* ── App shell ────────────────────────────────────────────────────────────────
+   A fixed graphite sidebar plus a 56px top bar, replacing the flat tab row, the
+   project header and the six-cell metrics strip. Nothing needs hiding any more,
+   so the collapse/expand summary toggle and its two-state layout maths are gone. */
+.app-shell { min-height: 100vh; }
+.main { margin-left: var(--sb-w); min-width: 0; }
+:root { --sb-w: 236px; --topbar-h: 56px; }
+
+.sidebar {
+  position: fixed; inset: 0 auto 0 0; width: var(--sb-w); z-index: 30;
+  background: var(--nav); color: var(--nav-ink);
+  display: flex; flex-direction: column; overflow-y: auto;
+}
+.sb-brand { display: flex; align-items: center; gap: var(--space-2); padding: 18px var(--space-4) var(--space-3); }
+.sb-logo { display: flex; align-items: center; gap: var(--space-2); color: var(--nav-ink); text-decoration: none; font-size: 16px; font-weight: 700; }
+.sb-logo svg { color: var(--accent); flex: none; }
+.sb-readonly { margin-left: auto; font-family: var(--font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--nav-ink-3); border: 1px solid var(--nav-line); border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
+
+.sb-project { padding: 0 var(--space-4) var(--space-3); border-bottom: 1px solid var(--nav-line); }
+.sb-proj-name { font-size: 13px; font-weight: 600; color: var(--nav-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-proj-meta { font-family: var(--font-mono); font-size: 11px; color: var(--nav-ink-2); margin-top: 2px; }
+.sb-datadate { display: flex; align-items: center; gap: 6px; margin-top: var(--space-2); background: var(--nav-2); border-radius: var(--radius-sm); padding: 5px 8px; }
+.sb-datadate i { width: 6px; height: 6px; border-radius: 50%; background: var(--ms); flex: none; }
+.sb-datadate span { font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em; color: var(--nav-ink-3); }
+.sb-datadate b { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--nav-ink); font-weight: 500; }
+
+.sb-nav { flex: 1; padding: var(--space-3) var(--space-2); }
+.sb-group { font-family: var(--font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--nav-ink-3); padding: var(--space-3) var(--space-2) 5px; }
+.sb-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; text-align: left; background: none; border: none; border-radius: var(--radius-sm); padding: 7px 8px; cursor: pointer; font-size: 13px; color: var(--nav-ink-2); }
+.sb-item:hover { background: var(--nav-2); color: var(--nav-ink); }
+/* Active state is background + weight, not a left rail — one highlight convention. */
+.sb-item.active { background: var(--nav-2); color: var(--nav-ink); font-weight: 600; }
+.sb-item-label { flex: 1; }
+.sb-score { font-family: var(--font-mono); font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 5px; }
+/* The chip sits on the graphite sidebar, so it takes a graphite ground and the
+   on-graphite semantic variants — the light *-soft surfaces belong on --panel. */
+.sb-score { background: var(--nav-2); }
+.sb-score.is-ok { color: var(--ok-bright); }
+.sb-score.is-near { color: var(--near-bright); }
+.sb-score.is-crit { color: var(--crit-bright); }
+.sb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
+
+.sb-footer { padding: var(--space-3) var(--space-3) var(--space-4); border-top: 1px solid var(--nav-line); }
+.sb-theme { display: flex; background: var(--nav-2); border-radius: var(--radius-sm); padding: 2px; margin-bottom: var(--space-2); }
+.sb-theme button { flex: 1; border: none; background: none; border-radius: 4px; padding: 5px; cursor: pointer; font: var(--text-small); color: var(--nav-ink-2); }
+.sb-theme button.active { background: var(--accent); color: var(--on-solid); font-weight: 600; }
+.sb-load { width: 100%; background: none; border: 1px solid var(--nav-line); border-radius: var(--radius-sm); color: var(--nav-ink-2); padding: 7px; cursor: pointer; font: var(--text-small); }
+.sb-load:hover { border-color: var(--nav-ink-3); color: var(--nav-ink); }
+.sb-backdrop { position: fixed; inset: 0; background: rgba(8,11,14,0.55); z-index: 25; }
+
+/* ── Top bar ─────────────────────────────────────────────────────────────── */
+.topbar { position: sticky; top: 0; z-index: 20; height: var(--topbar-h); display: flex; align-items: center; gap: var(--space-4); padding: 0 var(--space-4); background: var(--panel); border-bottom: 1px solid var(--line); }
+.topbar-title { font: 600 17px/1.3 var(--font-ui); color: var(--ink); margin: 0; white-space: nowrap; }
+.nav-toggle { display: none; align-items: center; justify-content: center; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); color: var(--ink-2); cursor: pointer; flex: none; }
+.topbar-metrics { display: flex; align-items: center; gap: var(--space-5); min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.topbar-metrics::-webkit-scrollbar { display: none; }
+.tb-metric { display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+.tb-metric b { font-family: var(--font-mono); font-size: 15px; font-weight: 600; color: var(--ink); }
+.tb-metric span { font: var(--text-micro); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
+.tb-metric b.is-crit { color: var(--crit); }
+.tb-metric b.is-ok { color: var(--ok); }
+.tb-bar { display: inline-block; width: 54px; height: 4px; border-radius: 2px; background: var(--chip); overflow: hidden; }
+.tb-bar u { display: block; height: 100%; background: var(--accent); }
+.topbar-actions { margin-left: auto; display: flex; align-items: center; gap: var(--space-2); flex: none; }
+.tb-export { position: relative; }
+.tb-menu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 210px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: 0 8px 24px -10px rgba(0,0,0,0.35); padding: 4px; z-index: 30; }
+.tb-menu button { display: block; width: 100%; text-align: left; background: none; border: none; border-radius: 4px; padding: 7px 10px; cursor: pointer; font: var(--text-small); color: var(--ink-2); }
+.tb-menu button:hover:not(:disabled) { background: var(--chip); color: var(--ink); }
+.tb-menu button:disabled { opacity: 0.45; cursor: default; }
+
+.views { padding: var(--space-4); }
+.views .section-full { width: auto; position: static; left: auto; right: auto; margin-left: 0; margin-right: 0; padding: 0; }
+
+/* ── Below 1100px the sidebar slides over instead of holding a column ────── */
+@media (max-width: 1100px) {
+  .main { margin-left: 0; }
+  .sidebar { transform: translateX(-100%); transition: transform 0.18s ease; box-shadow: none; }
+  .sidebar.open { transform: translateX(0); box-shadow: 8px 0 28px -12px rgba(0,0,0,0.6); }
+  .nav-toggle { display: inline-flex; }
+}
+@media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
+@media (max-width: 760px) {
+  .views { padding: var(--space-2); }
+  .topbar { gap: var(--space-3); padding: 0 var(--space-3); }
+  .topbar-title { font-size: 15px; }
+  .tb-metric span { display: none; }
+  .topbar-metrics { gap: var(--space-3); }
+}
+@media (max-width: 520px) {
+  .topbar-metrics { display: none; }
+}
+
 /* ── Shared small buttons ─────────────────────────────────────────────────────
    These three class names are used across five components but each was defined
    in a single component's *scoped* block, so everywhere else they rendered as
@@ -1218,7 +1359,7 @@ th.num { text-align: right !important; }
 .ctrl-btn-accent:hover:not(:disabled) { background: var(--accent-soft); }
 
 /* ── Shared detail drawer (Gantt + Critical Path) ─────────────────────────── */
-.detail-drawer { position: fixed; top: 0; right: 0; bottom: 0; height: 100vh; width: 420px; max-width: 92vw; background: var(--white); border-left: 1px solid var(--gray-300); box-shadow: -8px 0 24px rgba(28,25,23,0.14); z-index: 15; overflow-y: auto; box-sizing: border-box; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-5); }
+.detail-drawer { position: fixed; top: var(--topbar-h); right: 0; bottom: 0; height: calc(100vh - var(--topbar-h)); width: 420px; max-width: 92vw; background: var(--white); border-left: 1px solid var(--gray-300); box-shadow: -8px 0 24px rgba(28,25,23,0.14); z-index: 15; overflow-y: auto; box-sizing: border-box; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-5); }
 .detail-slide-enter-active, .detail-slide-leave-active { transition: transform 0.2s ease, opacity 0.2s ease; }
 .detail-slide-enter-from, .detail-slide-leave-to { transform: translateX(24px); opacity: 0; }
 
