@@ -117,6 +117,13 @@
       @wheel="onWheel"
       @mousedown="onPanStart"
     >
+      <!-- Filters can exclude everything; without this the chart is a blank
+           rectangle and the user cannot tell it apart from a failure. -->
+      <div v-if="rows.length === 0" class="g-empty">
+        <p class="g-empty-title">No activities match the current filters.</p>
+        <p class="g-empty-sub">{{ emptyFilterHint }}</p>
+        <button class="btn-tiny-light" @click="clearFilters">Clear filters</button>
+      </div>
       <div
         class="gantt-grid"
         :style="{ gridTemplateColumns: labelColWidth + 'px ' + totalWidth + 'px', width: (labelColWidth + totalWidth) + 'px', height: (HEADER_HEIGHT + bodyHeight) + 'px' }"
@@ -699,6 +706,17 @@ export default {
       const m = new Map()
       for (const a of this.baseline.activities) m.set(a.task_code, a)
       return m
+    },
+    emptyFilterHint() {
+      const bits = []
+      if (this.filterText.trim()) bits.push(`text “${this.filterText.trim()}”`)
+      if (this.filterStatus) bits.push('a status')
+      if (this.filterCriticalOnly) bits.push('critical only')
+      if (this.filterFrom || this.filterTo) bits.push('a date window')
+      if (this.activeCodeFilters.length) bits.push('an activity code')
+      return bits.length
+        ? `Filtering by ${bits.join(', ')}.`
+        : 'This schedule has no activities to show.'
     },
     matchCount() {
       return this.matchedTaskIds ? this.matchedTaskIds.size : this.data.activities.length
@@ -1399,6 +1417,9 @@ export default {
 .g-timeline-row { position: relative; height: 20px; border-bottom: 1px solid var(--gray-150); z-index: 2; }
 .g-timeline-row.stripe { background: var(--gray-100); }
 
+.g-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); z-index: 6; background: var(--white); }
+.g-empty-title { font: var(--text-h3); color: var(--ink); margin: 0; }
+.g-empty-sub { font: var(--text-small); color: var(--gray-700); margin: 0; }
 .g-bar-ghost { position: absolute; top: 15px; height: 4px; border-radius: 2px; background: transparent; border: 1.5px solid var(--gray-500); box-sizing: border-box; pointer-events: auto; }
 .g-milestone-ghost { position: absolute; top: 12px; width: 7px; height: 7px; transform: translateX(-4px) rotate(45deg); border: 1.5px solid var(--gray-500); background: transparent; box-sizing: border-box; }
 .lg-ghost { background: transparent !important; border-color: var(--gray-500) !important; height: 5px !important; }

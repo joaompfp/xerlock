@@ -245,6 +245,11 @@
               </tr>
             </thead>
             <tbody>
+              <tr v-if="filteredActivities.length === 0" class="table-empty-row">
+                <td :colspan="8">
+                  <span class="table-empty">No activities match the current filters.</span>
+                </td>
+              </tr>
               <tr
                 v-for="act in filteredActivities"
                 :key="act.task_id"
@@ -416,6 +421,7 @@ import { loadLastFile, saveLastFile, clearLastFile } from './utils/lastFile'
 import { loadAnnotations, saveAnnotation, removeAnnotation } from './utils/annotations'
 import { listSnapshots, saveSnapshot, getSnapshotData, deleteSnapshot } from './utils/snapshots'
 import { displayStart, displayEnd } from './utils/p6'
+import { compareBy } from './utils/sort'
 
 const PARSE_STAGES = [
   'Reading XER tables…',
@@ -501,21 +507,12 @@ export default {
           activeCodeFilters.every(([type, code]) => a.activity_codes.some(c => c.type === type && c.code === code))
         )
       }
-      // Sort
-      acts.sort((a, b) => {
-        const get = x =>
-          this.sortField === 'early_start' ? displayStart(x) :
-          this.sortField === 'early_end' ? displayEnd(x) : x[this.sortField]
-        let va = get(a)
-        let vb = get(b)
-        if (typeof va === 'string') va = (va || '').toLowerCase()
-        if (typeof vb === 'string') vb = (vb || '').toLowerCase()
-        if (va == null) va = ''
-        if (vb == null) vb = ''
-        if (va < vb) return this.sortDir === 'asc' ? -1 : 1
-        if (va > vb) return this.sortDir === 'asc' ? 1 : -1
-        return 0
-      })
+      // Sort. Unknown values (P6 leaves total float blank on completed work) sort
+      // last rather than being treated as zero — see utils/sort.js.
+      acts.sort(compareBy(x =>
+        this.sortField === 'early_start' ? displayStart(x) :
+        this.sortField === 'early_end' ? displayEnd(x) : x[this.sortField],
+      this.sortDir))
       return acts
     },
     nearCritical() {
@@ -912,6 +909,8 @@ body { font-family: var(--font-ui); background: var(--white); color: var(--ink);
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
+.table-empty-row td { text-align: center; padding: var(--space-6) var(--space-3); }
+.table-empty { font: var(--text-small); color: var(--gray-700); }
 .num-cell { text-align: right; }
 th.num { text-align: right !important; }
 
