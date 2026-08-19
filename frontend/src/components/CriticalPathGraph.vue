@@ -29,7 +29,10 @@
           Chain trace &middot; {{ isolatedIds.size }} {{ isolatedIds.size === 1 ? 'activity' : 'activities' }}
           <button class="isolation-exit" @click="exitIsolation">Show all</button>
         </span>
-        <button v-else class="btn-tiny" :disabled="expandedExtra.size === 0" @click="resetGraph">Reset to critical path</button>
+        <div v-else class="scope-group">
+          <button v-for="sc in scopes" :key="sc.id" :class="{ active: scope === sc.id }" @click="setScope(sc.id)" :title="sc.hint">{{ sc.label }}</button>
+        </div>
+        <button class="tb-chip" :class="{ on: showEdgeLabels }" @click="showEdgeLabels = !showEdgeLabels"><i></i>Link type &amp; lag</button>
         <div class="zoom-adjust">
           <button class="zbtn" @click="zoomBy(1 / 1.3)">−</button>
           <button class="zbtn" @click="resetView">Fit</button>
@@ -77,6 +80,13 @@
             <title>{{ relTypeLabel(e.type) }}{{ e.lagHrs ? ` ${formatLag(e.lagHrs)} lag` : '' }}</title>
           </path>
 
+          <g v-if="showEdgeLabels" class="edge-labels">
+            <g v-for="e in edges" :key="'el' + e.id" :class="edgeClass(e)">
+              <rect :x="e.mx - e.label.length * 3 - 4" :y="e.my - 8" :width="e.label.length * 6 + 8" height="15" rx="3" class="edge-label-bg" />
+              <text :x="e.mx" :y="e.my + 3.5" text-anchor="middle" class="edge-label">{{ e.label }}</text>
+            </g>
+          </g>
+
           <g
             v-for="n in nodes"
             :key="n.id"
@@ -87,31 +97,27 @@
           >
             <title>{{ n.code }} — {{ n.name }}
 {{ n.fullRangeLabel }} ({{ n.durationLabel }})</title>
-            <rect :width="n.width" :height="n.height" rx="2" class="node-rect" />
-            <rect v-if="n.negativeFloat" :width="n.width" height="4" class="node-neg-flag" />
-            <circle v-if="annotations[n.id]" :cx="n.width - 8" cy="29" r="3.5" class="node-annotation-flag" :class="'sev-' + annotations[n.id].severity">
+            <rect :width="n.width" :height="n.height" rx="8" class="node-rect" />
+            <rect v-if="n.negativeFloat" :width="n.width" height="4" rx="2" class="node-neg-flag" />
+            <circle v-if="annotations[n.id]" :cx="n.width - 9" cy="12" r="3.5" class="node-annotation-flag" :class="'sev-' + annotations[n.id].severity">
               <title>{{ annotations[n.id].note }}</title>
             </circle>
-            <!-- Top row: code + duration, divided from the name/footer below -->
-            <rect v-if="n.milestone" x="7" y="6" width="8" height="8" class="node-mile-icon" transform="rotate(45 11 10)" />
-            <text class="node-code" :x="n.milestone ? 22 : 9" y="15">{{ n.code }}</text>
-            <text class="node-duration" :x="n.width - 9" y="15" text-anchor="end">{{ n.durationLabel }}</text>
-            <line x1="0" :x2="n.width" y1="20" y2="20" class="node-rule" />
-            <!-- Name -->
-            <text class="node-name" x="9" y="38">{{ truncate(n.name, 30) }}</text>
-            <!-- Bottom strip: Start | Float -->
-            <line x1="0" :x2="n.width" :y1="n.height - 18" :y2="n.height - 18" class="node-rule" />
-            <line :x1="n.width / 2" :x2="n.width / 2" :y1="n.height - 18" :y2="n.height" class="node-rule" />
-            <text class="node-meta" x="9" :y="n.height - 5">{{ n.dateRangeLabel }}</text>
-            <text class="node-meta" :x="n.width - 9" :y="n.height - 5" text-anchor="end" :class="{ 'node-meta-neg': n.negativeFloat }">{{ n.floatDaysLabel }}</text>
+            <!-- Name-led: the thing a reviewer scans for, with float beside it. -->
+            <rect v-if="n.milestone" x="14" y="15" width="9" height="9" class="node-mile-icon" transform="rotate(45 18.5 19.5)" />
+            <text class="node-name" :x="n.milestone ? 30 : 12" y="23">{{ truncate(n.name, n.milestone ? 20 : 23) }}</text>
+            <text class="node-float" :x="n.width - 12" y="23" text-anchor="end" :class="{ 'node-meta-neg': n.negativeFloat }">{{ n.floatDaysLabel }}</text>
+            <text class="node-meta" x="12" y="42">
+              <tspan v-if="n.rank" class="node-rank">{{ n.rank }}</tspan><tspan v-if="n.rank" class="node-sep"> · </tspan><tspan class="node-code">{{ n.code }}</tspan>
+            </text>
+            <text class="node-meta" :x="n.width - 12" y="42" text-anchor="end">{{ n.durationLabel }} · {{ n.dateRangeLabel }}</text>
             <g
               v-if="n.hiddenCount > 0"
               class="expand-btn"
-              :transform="`translate(${n.width - 24}, ${n.height - 24})`"
+              :transform="`translate(${n.width - 46}, ${n.height - 9})`"
               @click.stop="expandNode(n.id)"
             >
-              <circle r="12" />
-              <text x="0" y="4" text-anchor="middle">+{{ n.hiddenCount }}</text>
+              <rect x="0" y="0" width="46" height="18" rx="9" />
+              <text x="23" y="12.5" text-anchor="middle">+{{ n.hiddenCount }} more</text>
             </g>
           </g>
         </g>
@@ -151,8 +157,8 @@ import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
 import { PAPER_SIZES, usableWidthPx, usableHeightPx } from '../utils/paper'
 
 const NEAR_CRITICAL_THRESHOLD_HRS = 80 // 10 working days
-const NODE_WIDTH = 210
-const NODE_HEIGHT = 64
+const NODE_WIDTH = 236
+const NODE_HEIGHT = 56
 const DAGRE_RANKSEP = 70 // spacing dagre uses internally, only needed to recover rank index from its output
 const RANK_GAP_X = 50 // column gap in our own wrapped grid
 const STACK_GAP_Y = 14 // gap between same-rank siblings stacked in one column
@@ -179,7 +185,16 @@ export default {
   components: { ActivityDetailDrawer },
   data() {
     return {
-      expandedExtra: new Set(), // task_ids manually revealed beyond critical+near-critical
+      expandedExtra: new Set(), // task_ids manually revealed beyond the current scope
+      // Replaces a "Reset to critical path" button that only made sense after you had
+      // already expanded something.
+      scope: 'near',
+      scopes: [
+        { id: 'chain', label: 'Critical chain', hint: 'Only the activities driving the finish date' },
+        { id: 'near', label: '+ near-critical', hint: 'Adds activities with 10 days of float or less that touch the chain' },
+        { id: 'full', label: 'Full network', hint: 'Every activity in the file' },
+      ],
+      showEdgeLabels: true,
       isolatedIds: null, // when set, the diagram shows ONLY this traced chain
       selectedId: null,
       scale: 1,
@@ -252,8 +267,20 @@ export default {
     criticalIds() {
       return new Set(this.activities.filter(a => a.is_critical).map(a => a.task_id))
     },
+    // Position along the driving chain, so the diagram reads as an ordered
+    // sequence rather than a bag of boxes.
+    rankById() {
+      const m = new Map()
+      const chain = this.activities
+        .filter(a => this.criticalIds.has(a.task_id))
+        .sort((a, b) => (displayStart(a) || '').localeCompare(displayStart(b) || ''))
+      chain.forEach((a, i) => m.set(a.task_id, i + 1))
+      return m
+    },
     baseVisibleIds() {
       const crit = this.criticalIds
+      if (this.scope === 'chain') return new Set(crit)
+      if (this.scope === 'full') return new Set(this.activities.map(a => a.task_id))
       const ids = new Set(crit)
       for (const a of this.activities) {
         if (crit.has(a.task_id)) continue
@@ -395,6 +422,7 @@ export default {
           // activities); a naive "> 0 ? ... : '0d float'" ternary would also silently
           // show negative float as "0d", hiding exactly the activities that most need
           // flagging — so every case (positive, zero, negative, null) is handled explicitly.
+          rank: this.rankById.get(r.id) || null,
           floatDaysLabel: a.total_float_hrs == null ? '— float' : `${Math.round(a.total_float_hrs / (a.calendar_hrs_per_day || 8))}d float`,
           dateRangeLabel: formatDateRange(displayStart(a), displayEnd(a)),
           fullRangeLabel: `${formatDate(displayStart(a))} → ${formatDate(displayEnd(a))}`,
@@ -420,7 +448,12 @@ export default {
         const c1x = start.x + (a.dir === 1 ? dx : -dx)
         const c2x = end.x + (b.dir === 1 ? -dx : dx)
         const path = `M ${start.x} ${start.y} C ${c1x} ${start.y}, ${c2x} ${end.y}, ${end.x} ${end.y}`
-        return { ...em, path, criticalEdge: crit.has(em.from) && crit.has(em.to) }
+        // Point at t=0.5 on the cubic: (P0 + 3·P1 + 3·P2 + P3) / 8
+        const mx = (start.x + 3 * c1x + 3 * c2x + end.x) / 8
+        const my = (start.y + end.y) / 2
+        const lagLabel = em.lagHrs ? ` ${formatLag(em.lagHrs)}` : ''
+        return { ...em, path, mx, my, label: relTypeLabel(em.type) + lagLabel,
+                 criticalEdge: crit.has(em.from) && crit.has(em.to) }
       })
 
       return { nodes, edges, width: maxX + CANVAS_PADDING, height: maxY + CANVAS_PADDING }
@@ -517,6 +550,11 @@ export default {
       // selection outside the critical+near-critical default view.
       if (keep != null) this.revealAndSelect(keep)
       else this.$nextTick(this.resetView)
+    },
+    setScope(id) {
+      this.scope = id
+      this.expandedExtra = new Set()
+      this.$nextTick(this.resetView)
     },
     resetGraph() {
       this.expandedExtra = new Set()
@@ -748,16 +786,28 @@ export default {
 .node:hover .node-rect { filter: drop-shadow(0 2px 6px rgba(28,25,23,0.14)); }
 
 .node-mile-icon { fill: var(--milestone); }
-.node-rule { stroke: var(--gray-300); stroke-width: 1; }
-.node-code { font-family: var(--font-mono); font-size: 12px; font-weight: 700; fill: var(--ink); letter-spacing: 0.02em; }
-.node-duration { font-family: var(--font-mono); font-size: 11px; font-weight: 600; fill: var(--gray-700); }
 .node-name { font-family: var(--font-ui); font-size: 13px; font-weight: 600; fill: var(--ink); }
-.node-meta { font-family: var(--font-mono); font-size: 11px; fill: var(--gray-700); }
-.node-meta.node-meta-neg { fill: var(--crit); font-weight: 700; }
+.node-float { font-family: var(--font-mono); font-size: 11px; font-weight: 700; fill: var(--crit); }
+.node-float.node-meta-neg { fill: var(--crit); }
+.node-meta { font-family: var(--font-mono); font-size: 10px; fill: var(--ink-2); }
+.node-code { font-family: var(--font-mono); font-size: 10px; font-weight: 700; fill: var(--crit); }
+.node-rank { font-family: var(--font-mono); font-size: 10px; font-weight: 700; fill: var(--crit); }
+.node-sep { fill: var(--ink-3); }
+.other .node-float, .other .node-code, .other .node-rank { fill: var(--ink-2); }
+.near-critical .node-float, .near-critical .node-code, .near-critical .node-rank { fill: var(--near); }
 
-.expand-btn circle { fill: var(--accent); opacity: 0.92; }
-.expand-btn text { fill: var(--white); font-size: 12px; font-weight: 700; }
-.expand-btn:hover circle { fill: var(--ink-soft); }
+/* Link type and lag stated on the edge, so the logic reads without hovering. */
+.edge-label-bg { fill: var(--panel); stroke: var(--line); stroke-width: 1; }
+.edge-label { font-family: var(--font-mono); font-size: 9px; font-weight: 600; fill: var(--ink-2); }
+.edge-labels .dimmed { opacity: 0.25; }
+
+.scope-group { display: inline-flex; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 2px; }
+.scope-group button { border: none; background: none; border-radius: 4px; padding: 3px 10px; cursor: pointer; font: var(--text-small); color: var(--ink-2); white-space: nowrap; }
+.scope-group button.active { background: var(--panel); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.10); }
+
+.expand-btn rect { fill: var(--accent); }
+.expand-btn text { fill: var(--on-solid); font-family: var(--font-mono); font-size: 10px; font-weight: 700; }
+.expand-btn:hover rect { fill: var(--ink); }
 
 /* Wraps the canvas so the detail drawer anchors to exactly its bounds. */
 .graph-body { position: relative; display: flex; align-items: stretch; }
