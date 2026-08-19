@@ -24,24 +24,35 @@ tracing rebuilds an activity's driving path link by link.*
 
 ## Features
 
+**The shell** - a sidebar grouping the nine views as *Programme* / *Analysis* / *Audit*, with
+the project, its data date and the Health Check score always in view. Light and dark themes,
+both real, with the semantic state colours re-lit per theme so criticality never changes
+meaning. Works down to a phone, where the sidebar slides over from a hamburger.
+
 **Gantt Chart** - the primary view
-- WBS-hierarchical activity grid with duration, start, and finish columns
+- WBS-hierarchical activity grid with duration, start, finish and **float** columns, float
+  colour-coded by the same severity bands as the bars
 - Continuous zoom (presets + Ctrl/scroll), drag-pan, fit-to-width, resizable activity column
 - Critical-path link overlay drawn *above* bars so logic never hides behind unrelated activities
 - Two critical-basis modes: TF ≤ 0 or Longest Path (driving-chain trace from the finish)
 - Progress line, today + data-date markers, weekend shading, filter bar (text/status/critical/
   activity codes/date window with 4- and 8-week look-ahead presets from the data date)
+- Float tails: a dashed line off each bar end, proportional to total float, so slack is visible
+  in the chart rather than a number to look up
 - Baseline ghost bars: with a Compare baseline loaded, every activity draws a hollow bar at its
   baseline position - slips read as horizontal offsets, right in the Gantt
-- Right-side detail drawer: stat tiles for duration/float/dates/status, predecessor and successor
-  lists with dates, durations, and lags - click any related activity to jump to it
+- Docked detail panel (it does not cover the chart): stat tiles, and a **driving chain** showing
+  the driving predecessor, this activity, and the driving successor with the link type and lag
+  per hop - click a node to walk the chain. What is not driving sits in collapsed lists
 - Print-friendly export
 
 **Critical Path** - activity-on-node network diagram
 ![Critical path network](docs/screenshots/critical-path.png)
 - Dagre-based DAG layout folded into a "snake" so long chains stay readable
-- Shows the critical + near-critical set by default; expand hidden neighbors on demand
-- Pan/zoom canvas, full-width, with the same detail panel and jump navigation
+- Scope control: critical chain / + near-critical / full network; expand hidden neighbours on demand
+- Nodes are name-led and ranked by position along the driving chain, so the diagram reads as a
+  sequence; link type and lag are labelled on each edge (`FS`, `SS +5d`)
+- Pan/zoom canvas with the same docked detail panel and jump navigation
 
 **Health Check** - configurable DCMA-14-inspired logic & quality scorecard
 ![Health check](docs/screenshots/health-check.png)
@@ -183,8 +194,11 @@ request. Both suites run on every push (`.github/workflows/test.yml`).
 ## Development notes
 
 - All colors/typography/spacing are CSS custom properties defined once in `App.vue` (`:root`
-  block). Semantic status colors (`--crit`, `--near`, `--ok`, `--milestone`) mean the same thing
-  in every view - don't introduce new colors for criticality states.
+  block). Semantic status colors (`--crit`, `--near`, `--ok`, `--ms`) mean the same thing in
+  every view, in both themes - don't introduce new colors for criticality states.
+- A class used by more than one component belongs in `App.vue`'s global block. Left in a
+  component's `scoped` block it silently renders unstyled everywhere else, with nothing in the
+  console - this has bitten `.btn-tiny-light`, `.btn-tiny`, `.ctrl-btn` and `.tb-chip`.
 - The Gantt deliberately avoids `position: sticky` for its frozen header/label column
   (Chromium mis-renders sticky grid items near scroll boundaries); positions are tracked
   manually from the scroll handler. See comments in `GanttChart.vue`.
