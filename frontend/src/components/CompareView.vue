@@ -479,8 +479,8 @@ export default {
 .num-cell { font-family: var(--font-mono); text-align: right; white-space: nowrap; }
 /* Verdict banner */
 .cmp-verdict { padding: var(--space-4); border-bottom: 1px solid var(--gray-300); }
-.cmp-verdict.v-slip { background: var(--crit-tint, rgba(165,41,29,0.08)); }
-.cmp-verdict.v-gain { background: var(--ok-tint, rgba(63,115,85,0.10)); }
+.cmp-verdict.v-slip { background: var(--crit-tint); }
+.cmp-verdict.v-gain { background: var(--ok-tint); }
 .cmp-verdict.v-hold { background: var(--gray-100); }
 .verdict-main { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
 .verdict-label { font: var(--text-micro); text-transform: uppercase; letter-spacing: 0.05em; color: var(--gray-700); }

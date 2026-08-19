@@ -815,6 +815,11 @@ export default {
   --active: #2951C4;
   --active-soft: #E4EAFB;
   --crit-deep: #6E150D;
+  /* On-dark variants: the section strips sit on --ink, where the standard
+     semantic colors above fail contrast. Pinned across themes like the rest. */
+  --crit-bright: #F08A7E;
+  --near-bright: #E3B341;
+  --ok-bright: #7FC49A;
 
   /* Neutrals (warm stone scale — paper/graphite, not blue-gray) */
   --gray-900: #1F1B17;
@@ -830,6 +835,7 @@ export default {
   --font-mono: "IBM Plex Mono", "SF Mono", "Fira Code", ui-monospace, monospace;
   --text-h1: 700 23px/1.3 var(--font-ui);
   --text-h2: 700 17px/1.3 var(--font-ui);
+  --text-h3: 700 15px/1.35 var(--font-ui);
   --text-body: 400 14px/1.5 var(--font-ui);
   --text-small: 500 13px/1.4 var(--font-ui);
   --text-micro: 600 11px/1.3 var(--font-ui);

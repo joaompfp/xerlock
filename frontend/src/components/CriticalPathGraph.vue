@@ -788,7 +788,10 @@ export default {
   .graph-strip, .graph-toolbar { display: none; }
   .graph-wrap, .graph-wrap.is-fullscreen { border: none; box-shadow: none; height: auto; overflow: visible; display: block; }
   .graph-body { height: auto; }
-  /* Sized to the selected paper's usable area (a --print-w/-h CSS var set from the
+  /* --print-w / --print-h are NOT design tokens: they are set per-render as an inline
+     style on the wrapper (see :style in the template) from the chosen paper size, so
+     they deliberately have no :root definition.
+     Sized to the selected paper's usable area (a --print-w/-h CSS var set from the
      component) rather than the on-screen min(75vh,900px) — printGraph() already fit
      the diagram's scale/pan to those exact dimensions before calling window.print(). */
   /* Matches .graph-wrap.extra-room .graph-canvas's specificity — extraRoom is the

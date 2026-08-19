@@ -766,9 +766,9 @@ export default {
 .strip-sub { font: var(--text-small); color: var(--gray-300); }
 .strip-score { display: flex; align-items: center; gap: var(--space-3); }
 .score-num { font-family: var(--font-mono); font-size: 27px; font-weight: 800; }
-.score-good { color: #7FC49A; }
-.score-mid { color: #E3B341; }
-.score-bad { color: #F08A7E; }
+.score-good { color: var(--ok-bright); }
+.score-mid { color: var(--near-bright); }
+.score-bad { color: var(--crit-bright); }
 .score-detail { font: var(--text-micro); color: var(--gray-300); max-width: 120px; }
 .cfg-btn { font: var(--text-small); background: transparent; color: var(--gray-300); border: 1px solid var(--gray-500); border-radius: var(--radius-sm); padding: 4px 10px; cursor: pointer; }
 .cfg-btn:hover, .cfg-btn.active { color: var(--white); border-color: var(--white); }

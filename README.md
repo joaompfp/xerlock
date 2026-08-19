@@ -170,7 +170,10 @@ The container serves the whole app on port 8000. Put your reverse proxy of choic
   (Chromium mis-renders sticky grid items near scroll boundaries); positions are tracked
   manually from the scroll handler. See comments in `GanttChart.vue`.
 - Numeric text (codes, dates, durations, floats) renders in tabular monospace app-wide.
-- `docs/DESIGN_SPEC.md` records the design-review that produced the current visual system.
+- `docs/DESIGN_TOKENS.md` is the authoritative reference for the design system as implemented
+  (generated from `App.vue`: every token, its value, which themes override it, and which
+  components consume it). `docs/DESIGN_SPEC.md` records the original design-review that
+  produced the visual system and is kept as a historical document.
 
 ## License
 
