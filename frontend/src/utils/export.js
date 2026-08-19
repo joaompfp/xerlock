@@ -106,7 +106,9 @@ function addActivitiesSheet(wb, activities, wbsLevelsMap, maxDepth, sheetName) {
     { header: 'Activity Name', key: 'task_name', width: 44 },
     ...wbsLevelColumns(maxDepth),
     { header: 'Status', key: 'status_label', width: 12 },
-    { header: '% Complete', key: 'pct_complete', width: 10 },
+    // Value is already 0-100 (not a 0-1 fraction), so a literal "%" suffix reads
+    // correctly at a glance without Excel's percent format re-scaling it.
+    { header: '% Complete', key: 'pct_complete', width: 10, style: { numFmt: '0"%"' } },
     { header: 'Orig. Duration (d)', key: 'duration_d', width: 10 },
     { header: 'Start', key: 'early_start', width: 12, style: { numFmt: 'dd-mmm-yy' } },
     { header: 'Finish', key: 'early_end', width: 12, style: { numFmt: 'dd-mmm-yy' } },
@@ -233,7 +235,9 @@ export async function exportReviewReport(data, annotations) {
     { header: 'Start', key: 'early_start', width: 12, style: { numFmt: 'dd-mmm-yy' } },
     { header: 'Finish', key: 'early_end', width: 12, style: { numFmt: 'dd-mmm-yy' } },
     { header: 'Float (d)', key: 'float_d', width: 9 },
-    { header: 'Note', key: 'note', width: 60 },
+    // wrapText so a long note breaks across lines instead of clipping against the
+    // adjacent "Last updated" column, which always has content next to it.
+    { header: 'Note', key: 'note', width: 60, style: { alignment: { wrapText: true, vertical: 'top' } } },
     { header: 'Last updated', key: 'updated', width: 16, style: { numFmt: 'dd-mmm-yy hh:mm' } },
   ]
 
