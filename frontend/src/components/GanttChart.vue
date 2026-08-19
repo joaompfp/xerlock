@@ -1400,13 +1400,6 @@ export default {
 .tb-more { font-size: 15px; line-height: 1; padding: 4px 9px; }
 .ctrl-btn.has-filters { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 
-/* Chip: solid border and a dot when on, dashed when off. */
-.tb-chip { display: inline-flex; align-items: center; gap: 5px; border: 1px dashed var(--line); border-radius: 14px; background: var(--panel); color: var(--ink-3); padding: 4px 9px; cursor: pointer; font: var(--text-small); }
-.tb-chip i { width: 6px; height: 6px; border-radius: 50%; background: transparent; border: 1px solid var(--ink-3); }
-.tb-chip:hover { border-color: var(--ink-3); color: var(--ink-2); }
-.tb-chip.on { border-style: solid; border-color: var(--accent); color: var(--accent); font-weight: 600; }
-.tb-chip.on i { background: var(--accent); border-color: var(--accent); }
-
 /* Popovers: filters and overflow */
 .tb-pop { position: relative; }
 .tb-panel { position: absolute; right: 0; top: calc(100% + 5px); min-width: 250px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: 0 10px 30px -12px rgba(0,0,0,0.35); padding: var(--space-3); z-index: 12; display: flex; flex-direction: column; gap: 7px; }

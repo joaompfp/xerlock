@@ -70,20 +70,25 @@
         <p class="section-note">"Planned" uses this file's current target dates, not a locked baseline — re-upload an earlier snapshot and compare visually if you need a true baseline trend.</p>
         <div v-if="sCurve.months.length < 2" class="empty-state warn">Not enough date data to draw a trend.</div>
         <svg v-else :viewBox="`0 0 ${chartW} ${chartH}`" class="scurve-svg">
-          <line v-for="g in 5" :key="'g'+g" :x1="padL" :x2="chartW - padR" :y1="yFor(g * 20)" :y2="yFor(g * 20)" class="grid-line" />
-          <text v-for="g in 5" :key="'gl'+g" :x="padL - 6" :y="yFor(g * 20) + 3" class="axis-label" text-anchor="end">{{ g * 20 }}%</text>
+          <!-- Two gridlines, not six: 0% and 100% are the only ones that carry meaning.
+               Everything else was chart furniture competing with the data. -->
+          <line v-for="g in [0, 100]" :key="'g'+g" :x1="padL" :x2="chartW - padR" :y1="yFor(g)" :y2="yFor(g)" class="grid-line" />
+          <text v-for="g in [0, 100]" :key="'gl'+g" :x="padL - 6" :y="yFor(g) + 3" class="axis-label" text-anchor="end">{{ g }}%</text>
           <template v-for="(m, i) in sCurve.months" :key="'ml'+i">
             <text v-if="i % monthLabelStep === 0" :x="xFor(i)" :y="chartH - 6" class="axis-label" text-anchor="middle">{{ monthLabel(m) }}</text>
           </template>
-          <line v-if="dataDateX != null" :x1="dataDateX" :x2="dataDateX" :y1="padT" :y2="chartH - padB" class="data-date-line" />
-          <text v-if="dataDateX != null" :x="dataDateX" :y="padT - 2" class="axis-label data-date-label" text-anchor="middle">Data date</text>
+          <!-- The shortfall is the shape between the lines, so it reads without
+               subtracting two numbers. -->
+          <path v-if="gapPath" :d="gapPath" class="curve-gap" />
           <path :d="pathFor(sCurve.planned)" class="curve-planned" />
           <path :d="pathFor(sCurve.actual)" class="curve-actual" />
+          <line v-if="dataDateX != null" :x1="dataDateX" :x2="dataDateX" :y1="padT" :y2="chartH - padB" class="data-date-line" />
+          <text v-if="dataDateX != null" :x="dataDateX" :y="padT - 4" class="axis-label data-date-label" text-anchor="middle">{{ dataDateCallout }}</text>
+          <!-- Series named at the end of their own line, in their own colour: no legend
+               to look away to and match up. -->
+          <text v-if="endLabels" :x="endLabels.x" :y="endLabels.plannedY" class="series-label series-planned">Planned {{ endLabels.plannedPct }}%</text>
+          <text v-if="endLabels" :x="endLabels.x" :y="endLabels.actualY" class="series-label series-actual">Actual {{ endLabels.actualPct }}%</text>
         </svg>
-        <div class="scurve-legend">
-          <span class="legend-item"><i class="swatch swatch-planned"></i>Planned</span>
-          <span class="legend-item"><i class="swatch swatch-actual"></i>Actual</span>
-        </div>
       </div>
     </section>
   </div>
@@ -191,6 +196,43 @@ export default {
       const n = this.sCurve.months.length
       return n > 18 ? 3 : n > 9 ? 2 : 1
     },
+    // Shortfall band: the area between planned and actual up to the data date.
+    gapPath() {
+      const pl = this.sCurve.planned, ac = this.sCurve.actual
+      if (!pl || pl.length < 2) return null
+      const up = pl.map((v, i) => `${this.xFor(i)},${this.yFor(v)}`)
+      const down = ac.map((v, i) => `${this.xFor(i)},${this.yFor(v)}`).reverse()
+      return `M ${up.join(' L ')} L ${down.join(' L ')} Z`
+    },
+    endLabels() {
+      const pl = this.sCurve.planned, ac = this.sCurve.actual
+      if (!pl || pl.length < 2) return null
+      const i = pl.length - 1
+      const plannedY = this.yFor(pl[i]), actualY = this.yFor(ac[i])
+      return {
+        x: this.xFor(i) + 6,
+        // nudge apart when the two lines land on top of each other
+        plannedY: Math.abs(plannedY - actualY) < 12 ? plannedY - 6 : plannedY + 3,
+        actualY: Math.abs(plannedY - actualY) < 12 ? actualY + 12 : actualY + 3,
+        plannedPct: Math.round(pl[i]),
+        actualPct: Math.round(ac[i]),
+      }
+    },
+    // Stated where the line is, not left for the reader to compute.
+    dataDateCallout() {
+      const i = this.dataDateIndex
+      if (i == null) return 'data date'
+      const pl = Math.round(this.sCurve.planned[i]), ac = Math.round(this.sCurve.actual[i])
+      return `data date · ${ac}% actual vs ${pl}% planned`
+    },
+    dataDateIndex() {
+      const dd = this.dataDateObj
+      const ms = this.sCurve.months
+      if (!dd || !ms || ms.length < 2) return null
+      let best = 0
+      for (let i = 0; i < ms.length; i++) if (new Date(ms[i]) <= dd) best = i
+      return best
+    },
     dataDateX() {
       const { minD, maxD } = this.sCurve
       const dd = this.dataDateObj
@@ -273,8 +315,12 @@ export default {
 .axis-label { font: var(--text-micro); fill: var(--gray-700); font-family: var(--font-mono); }
 .data-date-line { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 4 3; }
 .data-date-label { fill: var(--ink); font-weight: 600; }
-.curve-planned { fill: none; stroke: var(--active); stroke-width: 2.5; }
-.curve-actual { fill: none; stroke: var(--ok); stroke-width: 2.5; }
+.curve-planned { fill: none; stroke: var(--ink-3); stroke-width: 2; }
+.curve-actual { fill: none; stroke: var(--crit); stroke-width: 3; }
+.curve-gap { fill: var(--crit-soft); stroke: none; }
+.series-label { font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
+.series-planned { fill: var(--ink-3); }
+.series-actual { fill: var(--crit); }
 .scurve-legend { display: flex; gap: var(--space-5); margin-top: var(--space-2); }
 .legend-item { display: flex; align-items: center; gap: 5px; font: var(--text-small); color: var(--gray-700); }
 .swatch { width: 14px; height: 3px; display: inline-block; }

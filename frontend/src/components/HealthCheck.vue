@@ -11,7 +11,7 @@
       </div>
     </div>
 
-    <!-- Check configuration -->
+    <!-- Check configuration — below the results, not above them -->
     <div v-if="showConfig" class="cfg-panel">
       <table class="cfg-table">
         <thead>
@@ -50,19 +50,45 @@
       </div>
     </div>
 
-    <div class="scorecard">
-      <div
-        v-for="item in scorecard"
-        :key="item.key"
-        class="score-item"
-        :class="[item.state, { clickable: item.section }]"
-        @click="item.section && openSection(item.section)"
-        :title="item.tip"
-      >
-        <div class="score-count">{{ item.display }}</div>
-        <div class="score-label">{{ item.label }}</div>
-        <div class="score-target">{{ item.targetText }}</div>
+    <!-- Unequal weight for unequal news: the failures are cards in the state colour,
+         the passes collapse to a quiet strip, and what can't be checked is a footnote.
+         Colour covers a small fraction of the view, so failures are pre-attentive. -->
+    <div class="hc-results">
+      <template v-if="failingChecks.length">
+        <div class="hc-group-label">Failing ({{ failingChecks.length }})</div>
+        <div class="hc-fail-grid">
+          <button
+            v-for="item in failingChecks"
+            :key="item.key"
+            class="hc-fail-card"
+            :class="{ clickable: item.section }"
+            @click="item.section && openSection(item.section)"
+            :title="item.tip"
+          >
+            <div class="hc-fail-value">{{ item.display }}</div>
+            <div class="hc-fail-name">{{ item.label }}</div>
+            <div class="hc-fail-target">target {{ item.targetText }}</div>
+          </button>
+        </div>
+      </template>
+
+      <div v-if="passingChecks.length" class="hc-pass-row">
+        <span class="hc-group-label">Passing</span>
+        <button
+          v-for="item in passingChecks"
+          :key="item.key"
+          class="hc-pass-pill"
+          :class="{ clickable: item.section }"
+          @click="item.section && openSection(item.section)"
+          :title="item.tip"
+        >
+          <b>{{ item.display }}</b>{{ item.label }}
+        </button>
       </div>
+
+      <p v-if="excludedChecks.length" class="hc-footnote">
+        {{ excludedChecks.map(c => c.label).join(', ') }} — not checkable in this file
+      </p>
     </div>
 
     <!-- Open Ends -->
@@ -696,6 +722,15 @@ export default {
     scoreClass() {
       return this.weightedScore >= 80 ? 'score-good' : this.weightedScore >= 60 ? 'score-mid' : 'score-bad'
     },
+    failingChecks() {
+      return this.scorecard.filter(c => c.state === 'fail')
+    },
+    passingChecks() {
+      return this.scorecard.filter(c => c.state === 'pass')
+    },
+    excludedChecks() {
+      return CHECK_DEFS.filter(d => !this.availability[d.key])
+    },
     scorecard() {
       return CHECK_DEFS.filter(d => this.availability[d.key]).map(d => {
         const r = this.checkResults[d.key]
@@ -784,6 +819,20 @@ export default {
 .cfg-reset { font: var(--text-micro); border: 1px solid var(--gray-300); background: var(--white); padding: 4px 10px; border-radius: var(--radius-sm); cursor: pointer; color: var(--gray-700); }
 .cfg-reset:hover { background: var(--gray-150); }
 
+.hc-results { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); }
+.hc-group-label { font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: var(--space-2); }
+.hc-fail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-2); margin-bottom: var(--space-4); }
+.hc-fail-card { text-align: left; border: 1px solid var(--crit); background: var(--crit-soft); border-radius: var(--radius-md); padding: var(--space-3); cursor: pointer; }
+.hc-fail-card:hover { background: var(--panel); }
+.hc-fail-value { font-family: var(--font-mono); font-size: 26px; font-weight: 700; color: var(--crit); line-height: 1.1; }
+.hc-fail-name { font: var(--text-small); font-weight: 600; color: var(--ink); margin-top: 2px; }
+.hc-fail-target { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); margin-top: 2px; }
+.hc-pass-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.hc-pass-row .hc-group-label { margin-bottom: 0; margin-right: 2px; }
+.hc-pass-pill { display: inline-flex; align-items: baseline; gap: 5px; border: 1px solid var(--line); background: var(--panel); border-radius: 14px; padding: 2px 10px; cursor: pointer; font-size: 11px; color: var(--ink-3); }
+.hc-pass-pill:hover { border-color: var(--ok); color: var(--ink-2); }
+.hc-pass-pill b { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--ok); }
+.hc-footnote { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); margin-top: var(--space-3); }
 .scorecard { display: flex; flex-wrap: wrap; gap: 1px; background: var(--gray-300); border-bottom: 1px solid var(--gray-300); }
 .score-item { flex: 1; min-width: 110px; background: var(--white); padding: var(--space-3); text-align: center; }
 .score-item.clickable { cursor: pointer; }
