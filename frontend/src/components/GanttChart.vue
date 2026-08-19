@@ -1045,7 +1045,34 @@ export default {
       this.isFullscreen = !!document.fullscreenElement
     },
     printGantt() {
-      window.print()
+      // Auto-fit width: rather than visually shrinking the rendered canvas (tried and
+      // reverted — CSS transform doesn't reliably interact with this app's absolutely-
+      // positioned rows/links under print pagination, see the print CSS comment below),
+      // temporarily switch to the coarsest zoom preset whose NATURAL width still fits a
+      // landscape page. This reuses the exact same rendering path every other zoom level
+      // already uses correctly — no new coordinate system, no new pagination risk.
+      const days = Math.max(1, (this.rangeEnd - this.rangeStart) / 86400000)
+      const target = 970 - this.labelColWidth
+      let fitZoom = this.zoomLevels[this.zoomLevels.length - 1] // fallback: coarsest available
+      for (const z of this.zoomLevels) {
+        if (days * ZOOM_DAY_WIDTH[z] <= target) { fitZoom = z; break }
+      }
+      if (fitZoom === this.zoom && this.dayWidthOverride == null) {
+        window.print()
+        return
+      }
+      const prevZoom = this.zoom
+      const prevOverride = this.dayWidthOverride
+      this.zoom = fitZoom
+      this.dayWidthOverride = null
+      const restore = () => {
+        this.zoom = prevZoom
+        this.dayWidthOverride = prevOverride
+      }
+      window.addEventListener('afterprint', restore, { once: true })
+      // Wait for Vue to re-render at the new zoom (and the browser to lay it out)
+      // before the print dialog captures the page.
+      this.$nextTick(() => requestAnimationFrame(() => window.print()))
     },
     persistView() {
       saveView({
