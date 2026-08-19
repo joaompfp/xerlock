@@ -1,10 +1,19 @@
 <template>
-  <div class="graph-wrap" :class="{ 'is-fullscreen': isFullscreen, 'extra-room': extraRoom }" ref="wrapEl">
+  <div
+    class="graph-wrap"
+    :class="{ 'is-fullscreen': isFullscreen, 'extra-room': extraRoom }"
+    :style="{ '--print-w': printTargetSize.w + 'px', '--print-h': printTargetSize.h + 'px' }"
+    ref="wrapEl"
+  >
     <div class="graph-strip">
       <div class="strip-title">
         <h2>Critical Path</h2>
         <span class="strip-sub">{{ activities.length }} activities &middot; {{ visibleIds.size }} shown</span>
       </div>
+      <select v-model="printPaperSize" class="btn-tiny paper-size-select" title="Paper size to fit the printout to">
+        <option v-for="(p, key) in paperSizes" :key="key" :value="key">{{ p.label }}</option>
+      </select>
+      <button class="btn-tiny" @click="printGraph">Print</button>
       <button class="ctrl-btn ctrl-btn-accent" @click="toggleFullscreen">{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</button>
     </div>
 
@@ -148,6 +157,18 @@ const RANK_GAP_X = 50 // column gap in our own wrapped grid
 const STACK_GAP_Y = 14 // gap between same-rank siblings stacked in one column
 const ROW_GAP_Y = 46 // gap between wrapped rows
 const CANVAS_PADDING = 30
+// Usable print area per paper size, landscape: (dimension - 2x10mm margin) at 96 CSS
+// px/inch, minus a ~15px safety buffer. Unlike the Gantt (a long row list needing real
+// pagination), this diagram is a 2D layout — it just needs to fit on ONE page, so both
+// width and height matter, not only width.
+const PAPER_SIZES = {
+  a4: { label: 'A4', pageCss: 'A4', wMm: 297, hMm: 210 },
+  a3: { label: 'A3', pageCss: 'A3', wMm: 420, hMm: 297 },
+  letter: { label: 'Letter', pageCss: 'letter', wMm: 279.4, hMm: 215.9 },
+}
+function mmToUsablePx(mm) {
+  return Math.round((mm - 20) * (96 / 25.4)) - 20
+}
 
 export default {
   name: 'CriticalPathGraph',
@@ -173,6 +194,8 @@ export default {
       animating: false,
       canvasWidth: 900,
       isFullscreen: false,
+      printPaperSize: 'a4',
+      paperSizes: PAPER_SIZES,
     }
   },
   mounted() {
@@ -254,6 +277,10 @@ export default {
       const ids = new Set(this.baseVisibleIds)
       for (const id of this.expandedExtra) ids.add(id)
       return ids
+    },
+    printTargetSize() {
+      const p = this.paperSizes[this.printPaperSize] || this.paperSizes.a4
+      return { w: mmToUsablePx(p.wMm), h: mmToUsablePx(p.hMm) }
     },
     isolationActive() {
       return this.isolatedIds !== null
@@ -501,6 +528,34 @@ export default {
       this.isolatedIds = null
       this.selectedId = null
     },
+    printGraph() {
+      // Unlike the Gantt (a long row list needing real multi-page pagination), this is a
+      // 2D diagram — it just needs to fit on ONE physical page, so there's no pagination
+      // risk to work around: fit-scale it to the selected paper (never scale up), inject
+      // the matching @page size, print, then restore the on-screen pan/zoom.
+      const gw = this.layout.width
+      const gh = this.layout.height
+      if (!gw || !gh) { window.print(); return }
+      const { w: targetW, h: targetH } = this.printTargetSize
+      const fitScale = Math.min(1, targetW / gw, targetH / gh)
+      const prev = { scale: this.scale, tx: this.tx, ty: this.ty }
+      this.scale = fitScale
+      this.tx = (targetW - gw * fitScale) / 2
+      this.ty = (targetH - gh * fitScale) / 2
+
+      const pageCss = (this.paperSizes[this.printPaperSize] || this.paperSizes.a4).pageCss
+      const styleTag = document.createElement('style')
+      styleTag.textContent = `@page { size: ${pageCss} landscape; margin: 10mm; }`
+      document.head.appendChild(styleTag)
+      const restore = () => {
+        this.scale = prev.scale
+        this.tx = prev.tx
+        this.ty = prev.ty
+        styleTag.remove()
+      }
+      window.addEventListener('afterprint', restore, { once: true })
+      this.$nextTick(() => requestAnimationFrame(() => window.print()))
+    },
     triggerAnimation() {
       this.animating = true
       clearTimeout(this._animTimer)
@@ -671,6 +726,7 @@ export default {
 .btn-tiny { padding: 4px 10px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); background: var(--white); cursor: pointer; font: var(--text-small); color: var(--gray-700); }
 .btn-tiny:hover:not(:disabled) { background: var(--gray-150); }
 .btn-tiny:disabled { opacity: 0.4; cursor: default; }
+.paper-size-select { min-width: 0; }
 .gesture-hint { font: var(--text-micro); color: var(--gray-500); white-space: nowrap; margin-left: var(--space-2); }
 .zoom-adjust { display: flex; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); overflow: hidden; }
 .zbtn { padding: 4px 10px; border: none; border-right: 1px solid var(--gray-300); background: var(--white); cursor: pointer; font: var(--text-small); font-weight: 700; color: var(--gray-700); }
@@ -727,8 +783,19 @@ export default {
 /* Wraps the canvas so the detail drawer anchors to exactly its bounds. */
 .graph-body { position: relative; }
 
-
-
-
+@media print {
+  @page { size: landscape; margin: 10mm; }
+  .graph-strip, .graph-toolbar { display: none; }
+  .graph-wrap, .graph-wrap.is-fullscreen { border: none; box-shadow: none; height: auto; overflow: visible; display: block; }
+  .graph-body { height: auto; }
+  /* Sized to the selected paper's usable area (a --print-w/-h CSS var set from the
+     component) rather than the on-screen min(75vh,900px) — printGraph() already fit
+     the diagram's scale/pan to those exact dimensions before calling window.print(). */
+  /* Matches .graph-wrap.extra-room .graph-canvas's specificity — extraRoom is the
+     app's default (header collapsed), and that on-screen rule would otherwise win
+     over a plain .graph-canvas override here regardless of the media query. */
+  .graph-canvas, .graph-wrap.extra-room .graph-canvas { width: var(--print-w); height: var(--print-h); overflow: visible; background: none; }
+  .expand-btn { display: none; }
+}
 
 </style>

@@ -172,7 +172,7 @@
           @unannotate="removeAnnotationFor"
         />
       </div>
-      <div v-show="tab === 'story'" class="section">
+      <div v-show="tab === 'story'" class="section cp-below-section">
         <!-- Near-critical watchlist -->
         <div class="insight-card" v-if="nearCritical.length > 0">
           <h3>Near-critical watchlist</h3>
@@ -1156,8 +1156,8 @@ th.num { text-align: right !important; }
      report — without hiding it, it sits in normal document flow at the top of page 1
      while the Gantt's own fixed, repeating column header (position: fixed, so it can
      repeat on every page) paints on top of it, since fixed elements ignore flow. */
-  .detail-drawer, .tabs, .header, .metrics-strip, .parse-warnings { display: none; }
-  .dashboard { padding: 0; }
+  .detail-drawer, .tabs, .header, .metrics-strip, .parse-warnings, .cp-below-section { display: none; }
+  .dashboard, .dashboard.header-collapsed { padding: 0; }
 }
 
 @media (max-width: 540px) {
