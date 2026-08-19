@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   ZOOM_DAY_WIDTH, MIN_DAY_WIDTH, MAX_DAY_WIDTH,
   timelineRange, dayWidthFor, clampDayWidth, totalWidth,
-  dateToX, yearTicks, monthTicks, weekTicks, dayTicks, weekendRects,
+  dateToX, yearTicks, monthTicks, weekTicks, dayTicks, weekendRects, unionRange,
 } from './ganttGeometry'
 
 // A fixed two-month window so every expectation is an exact pixel, not a range.
@@ -146,5 +146,34 @@ describe('weekendRects', () => {
 
   it('is empty when no ticks are weekends', () => {
     expect(weekendRects([{ x: 0, weekend: false }], 10)).toEqual([])
+  })
+})
+
+describe('unionRange (baseline overhang)', () => {
+  it('extends the end when the baseline finishes later', () => {
+    // Regression: baseline ghosts drawn past rangeEnd landed outside the grid —
+    // no header ticks, gridlines or background behind them.
+    const { start, end } = unionRange('2026-01-01', '2027-10-13', '2026-02-01', '2027-10-21')
+    expect(start).toBe('2026-01-01')
+    expect(end).toBe('2027-10-21')
+  })
+
+  it('extends the start when the baseline begins earlier', () => {
+    const { start, end } = unionRange('2026-03-01', '2026-12-01', '2026-01-15', '2026-11-01')
+    expect(start).toBe('2026-01-15')
+    expect(end).toBe('2026-12-01')
+  })
+
+  it('is a no-op when the baseline sits inside the current range', () => {
+    const { start, end } = unionRange('2026-01-01', '2026-12-31', '2026-03-01', '2026-06-01')
+    expect(start).toBe('2026-01-01')
+    expect(end).toBe('2026-12-31')
+  })
+
+  it('tolerates a missing side', () => {
+    expect(unionRange('2026-01-01', '2026-12-31', null, null))
+      .toEqual({ start: '2026-01-01', end: '2026-12-31' })
+    expect(unionRange(null, null, '2026-02-01', '2026-05-01'))
+      .toEqual({ start: '2026-02-01', end: '2026-05-01' })
   })
 })

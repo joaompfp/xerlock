@@ -11,7 +11,7 @@ your own infrastructure.
 The name is the promise: XERlock is **locked read-only**. It never modifies, never re-saves, and
 never stores your `.xer` - files are parsed in memory and discarded.
 
-**[▶ Try it live](https://schedule.joao.date)** - one click loads a sample data-centre fit-out, or
+**Try it locally** - one click loads a sample data-centre fit-out, or
 upload your own `.xer` (parsed in memory, never stored).
 
 Built for project controls professionals: the checks, terminology, and defaults follow how

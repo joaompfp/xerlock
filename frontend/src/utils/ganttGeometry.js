@@ -19,6 +19,16 @@ export function timelineRange(earliestStart, latestEnd, padDays = 5) {
   return { rangeStart: start, rangeEnd: end }
 }
 
+/** Widest span covering both schedules. When a baseline is loaded its activities are
+ *  drawn as ghost bars, and a baseline that finishes later than the current programme
+ *  would otherwise be positioned past the end of the grid — outside the drawn canvas,
+ *  with no header, gridlines or background behind it. */
+export function unionRange(aStart, aEnd, bStart, bEnd) {
+  const min = (x, y) => (!x ? y : !y ? x : (x < y ? x : y))
+  const max = (x, y) => (!x ? y : !y ? x : (x > y ? x : y))
+  return { start: min(aStart, bStart), end: max(aEnd, bEnd) }
+}
+
 export function dayWidthFor(zoom, override = null) {
   return override ?? ZOOM_DAY_WIDTH[zoom]
 }
