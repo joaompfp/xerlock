@@ -58,6 +58,9 @@
       <button class="ctrl-btn" @click="collapseAll">Collapse all</button>
       <button class="ctrl-btn" :disabled="todayX === null" @click="scrollToToday">Today</button>
       <button class="ctrl-btn ctrl-btn-accent" @click="toggleFullscreen">{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</button>
+      <select v-model="printPaperSize" class="filter-select paper-size-select" title="Paper size to fit the printout to">
+        <option v-for="(p, key) in paperSizes" :key="key" :value="key">{{ p.label }}</option>
+      </select>
       <button class="ctrl-btn" @click="printGantt">Print</button>
       <span class="gesture-hint">Ctrl+scroll to zoom &middot; drag to pan &middot; Esc closes</span>
     </div>
@@ -343,6 +346,18 @@ const HEADER_HEIGHT = 52
 const ROW_HEIGHT = 20
 const ZOOM_DAY_WIDTH = { day: 32, week: 9, month: 3, quarter: 1.1 }
 const MIN_DAY_WIDTH = 0.4
+// Usable print width per paper size: (width - 2x10mm margin) at 96 CSS px/inch, minus a
+// ~15px safety buffer (font antialiasing/rounding). @page `size` needs these exact CSS
+// keywords — Chromium doesn't support custom page dimensions via var() there.
+const PAPER_SIZES = {
+  a4: { label: 'A4', pageCss: 'A4', widthMm: 297 },
+  a3: { label: 'A3', pageCss: 'A3', widthMm: 420 },
+  letter: { label: 'Letter', pageCss: 'letter', widthMm: 279.4 },
+}
+function paperUsableWidthPx(key) {
+  const mm = (PAPER_SIZES[key] || PAPER_SIZES.a4).widthMm - 20
+  return Math.round(mm * (96 / 25.4)) - 15
+}
 const MAX_DAY_WIDTH = 60
 const VIEW_STORAGE_KEY = 'schedule-app:gantt-view'
 
@@ -397,6 +412,8 @@ export default {
       ROW_HEIGHT,
       zoom: saved.zoom || autoZoom,
       zoomLevels: ['day', 'week', 'month', 'quarter'],
+      printPaperSize: saved.printPaperSize || 'a4',
+      paperSizes: PAPER_SIZES,
       dayWidthOverride: saved.dayWidthOverride ?? null,
       labelColWidth: Math.min(saved.labelColWidth || LABEL_COL_WIDTH_DEFAULT, Math.max(220, Math.floor(window.innerWidth * 0.55))),
       criticalBasis: saved.criticalBasis || 'tf0',
@@ -1048,29 +1065,25 @@ export default {
       // Auto-fit width: rather than visually shrinking the rendered canvas (tried and
       // reverted — CSS transform doesn't reliably interact with this app's absolutely-
       // positioned rows/links under print pagination, see the print CSS comment below),
-      // temporarily switch to the coarsest zoom preset whose NATURAL width still fits a
-      // landscape page. This reuses the exact same rendering path every other zoom level
-      // already uses correctly — no new coordinate system, no new pagination risk.
+      // temporarily set an EXACT continuous day-width (the same dayWidthOverride
+      // mechanism ctrl+scroll zoom already uses) so the timeline fills the selected
+      // paper's usable width precisely — no clipping, no wasted margin, no new
+      // rendering path to distrust.
       const days = Math.max(1, (this.rangeEnd - this.rangeStart) / 86400000)
-      const target = 970 - this.labelColWidth
-      let fitZoom = this.zoomLevels[this.zoomLevels.length - 1] // fallback: coarsest available
-      for (const z of this.zoomLevels) {
-        if (days * ZOOM_DAY_WIDTH[z] <= target) { fitZoom = z; break }
-      }
-      if (fitZoom === this.zoom && this.dayWidthOverride == null) {
-        window.print()
-        return
-      }
-      const prevZoom = this.zoom
+      const target = paperUsableWidthPx(this.printPaperSize) - this.labelColWidth
+      const fitDayWidth = Math.min(MAX_DAY_WIDTH, Math.max(MIN_DAY_WIDTH, target / days))
       const prevOverride = this.dayWidthOverride
-      this.zoom = fitZoom
-      this.dayWidthOverride = null
+      this.dayWidthOverride = fitDayWidth
+      const pageCss = (this.paperSizes[this.printPaperSize] || this.paperSizes.a4).pageCss
+      const styleTag = document.createElement('style')
+      styleTag.textContent = `@page { size: ${pageCss} landscape; margin: 10mm; }`
+      document.head.appendChild(styleTag)
       const restore = () => {
-        this.zoom = prevZoom
         this.dayWidthOverride = prevOverride
+        styleTag.remove()
       }
       window.addEventListener('afterprint', restore, { once: true })
-      // Wait for Vue to re-render at the new zoom (and the browser to lay it out)
+      // Wait for Vue to re-render at the fitted width (and the browser to lay it out)
       // before the print dialog captures the page.
       this.$nextTick(() => requestAnimationFrame(() => window.print()))
     },
@@ -1083,6 +1096,7 @@ export default {
         showProgressLine: this.showProgressLine,
         labelColWidth: this.labelColWidth,
         dayWidthOverride: this.dayWidthOverride,
+        printPaperSize: this.printPaperSize,
       })
     },
     zoomLabel(z) {
