@@ -1422,6 +1422,20 @@ th.num { text-align: right !important; }
   .dashboard, .dashboard.header-collapsed { padding: 0; }
 }
 
+/* Docked, not overlaying: the links and bars behind the panel stay visible while
+   you read it. Only inside a chart body — the Health Check keeps the overlay,
+   where there is no canvas to obscure. Below 900px it reverts to the overlay,
+   since there is no width to give away. */
+@media (min-width: 901px) {
+  .gantt-body > .detail-drawer, .graph-body > .detail-drawer {
+    position: static; width: 372px; max-width: 372px; flex: none; height: auto;
+    box-shadow: none; z-index: auto;
+  }
+  /* A scrolling flex column squeezes children that have overflow:hidden instead
+     of scrolling, which clips their content. */
+  .gantt-body > .detail-drawer > *, .graph-body > .detail-drawer > * { flex-shrink: 0; }
+}
+
 @media (max-width: 540px) {
   .detail-drawer { width: 100vw; max-width: 100vw; border-left: none; }
   .theme-select { display: none; }

@@ -53,26 +53,70 @@
         </template>
       </div>
 
-      <div class="detail-rels">
-        <div v-for="side in relSides" :key="side.label" class="rel-section">
-          <h4>{{ side.label }} <em>{{ side.items.length }}</em></h4>
-          <div v-if="side.items.length === 0" class="rel-empty">None</div>
-          <button v-for="p in side.items" :key="p.task_id" class="rel-item-btn" @click="$emit('select', p.task_id)">
-            <div class="rel-item-row">
-              <span class="rel-code">{{ p.activity ? p.activity.task_code : '?' + p.task_id }}</span>
-              <span class="rel-item-name">{{ p.activity ? p.activity.task_name : '' }}</span>
-              <span v-if="p.driving" class="rel-driving" title="This link controls the dates — P6's 'driving' relationship flag">Driving</span>
+      <!-- The driving chain, not two flat lists: what actually controls this
+           activity's dates, in sequence, with the link type and lag per hop. -->
+      <div class="detail-logic">
+        <h4 class="logic-head">Driving chain</h4>
+        <div class="chain">
+          <template v-for="p in drivingPreds" :key="'dp' + p.task_id">
+            <button class="chain-node" @click="$emit('select', p.task_id)">
+              <span class="chain-code">{{ p.activity ? p.activity.task_code : '?' + p.task_id }}</span>
+              <span class="chain-name">{{ p.activity ? p.activity.task_name : '' }}</span>
+              <span v-if="p.activity" class="chain-float" :class="floatCellClass(p.activity)">{{ formatFloat(p.activity.total_float_hrs, p.activity.calendar_hrs_per_day) }}</span>
               <span v-if="visibleIds && !visibleIds.has(p.task_id)" class="rel-hidden">not shown</span>
+            </button>
+            <div class="chain-hop">
+              <span class="hop-type">{{ relTypeLabel(p.type) }}</span>
+              <span v-if="p.lag_hrs" class="hop-lag">{{ formatLag(p.lag_hrs, activity.calendar_hrs_per_day) }} lag</span>
             </div>
-            <div class="rel-item-row rel-item-sub">
-              <span class="rel-type">{{ relTypeLabel(p.type) }}</span>
-              <template v-if="p.activity">
-                <span class="rel-dates">{{ formatDate(displayStart(p.activity)) }} → {{ formatDate(displayEnd(p.activity)) }}</span>
-                <span class="rel-dur">{{ formatHours(p.activity.duration_hrs, p.activity.calendar_hrs_per_day) }}</span>
-              </template>
-              <span v-if="p.lag_hrs" class="rel-lag">{{ formatLag(p.lag_hrs, activity.calendar_hrs_per_day) }} lag</span>
+          </template>
+
+          <div class="chain-node chain-current">
+            <span class="chain-code">{{ activity.task_code }}</span>
+            <span class="chain-name">{{ activity.task_name }}</span>
+            <span class="chain-float" :class="floatCellClass(activity)">{{ formatFloat(activity.total_float_hrs, activity.calendar_hrs_per_day) }}</span>
+          </div>
+
+          <template v-for="sx in drivingSuccs" :key="'ds' + sx.task_id">
+            <div class="chain-hop">
+              <span class="hop-type">{{ relTypeLabel(sx.type) }}</span>
+              <span v-if="sx.lag_hrs" class="hop-lag">{{ formatLag(sx.lag_hrs, activity.calendar_hrs_per_day) }} lag</span>
             </div>
+            <button class="chain-node" @click="$emit('select', sx.task_id)">
+              <span class="chain-code">{{ sx.activity ? sx.activity.task_code : '?' + sx.task_id }}</span>
+              <span class="chain-name">{{ sx.activity ? sx.activity.task_name : '' }}</span>
+              <span v-if="sx.activity" class="chain-float" :class="floatCellClass(sx.activity)">{{ formatFloat(sx.activity.total_float_hrs, sx.activity.calendar_hrs_per_day) }}</span>
+              <span v-if="visibleIds && !visibleIds.has(sx.task_id)" class="rel-hidden">not shown</span>
+            </button>
+          </template>
+        </div>
+        <p v-if="!drivingPreds.length && !drivingSuccs.length" class="chain-none">
+          No relationship explains this activity's dates. Progress recorded out of sequence
+          leaves nothing driving it.
+        </p>
+
+        <div v-for="side in otherSides" :key="side.label" class="rel-section">
+          <button class="rel-more" @click="open[side.key] = !open[side.key]" :aria-expanded="String(open[side.key])">
+            <span class="chev" :class="{ open: open[side.key] }">&rsaquo;</span>
+            {{ side.label }} <em>{{ side.items.length }}</em>
           </button>
+          <template v-if="open[side.key]">
+            <div v-if="side.items.length === 0" class="rel-empty">None</div>
+            <button v-for="p in side.items" :key="side.key + p.task_id" class="rel-item-btn" @click="$emit('select', p.task_id)">
+              <div class="rel-item-row">
+                <span class="rel-code">{{ p.activity ? p.activity.task_code : '?' + p.task_id }}</span>
+                <span class="rel-item-name">{{ p.activity ? p.activity.task_name : '' }}</span>
+                <span v-if="visibleIds && !visibleIds.has(p.task_id)" class="rel-hidden">not shown</span>
+              </div>
+              <div class="rel-item-row rel-item-sub">
+                <span class="rel-type">{{ relTypeLabel(p.type) }}</span>
+                <template v-if="p.activity">
+                  <span class="rel-dates">{{ formatDate(displayStart(p.activity)) }} → {{ formatDate(displayEnd(p.activity)) }}</span>
+                </template>
+                <span v-if="p.lag_hrs" class="rel-lag">{{ formatLag(p.lag_hrs, activity.calendar_hrs_per_day) }} lag</span>
+              </div>
+            </button>
+          </template>
         </div>
       </div>
 
@@ -107,14 +151,27 @@ export default {
     projectName: { type: String, default: '' },
   },
   emits: ['close', 'select', 'jump', 'annotate', 'unannotate'],
+  data() {
+    return { open: { preds: false, succs: false } }
+  },
   computed: {
-    relSides() {
-      const enrich = list => list.map(p => ({ ...p, activity: this.lookup.get(p.task_id) }))
+    enrichedPreds() {
+      return (this.activity?.predecessors || []).map(p => ({ ...p, activity: this.lookup.get(p.task_id) }))
+    },
+    enrichedSuccs() {
+      return (this.activity?.successors || []).map(p => ({ ...p, activity: this.lookup.get(p.task_id) }))
+    },
+    drivingPreds() { return this.enrichedPreds.filter(p => p.driving) },
+    drivingSuccs() { return this.enrichedSuccs.filter(p => p.driving) },
+    otherSides() {
       return [
-        { label: 'Predecessors', items: enrich(this.activity?.predecessors || []) },
-        { label: 'Successors', items: enrich(this.activity?.successors || []) },
+        { key: 'preds', label: 'Other predecessors', items: this.enrichedPreds.filter(p => !p.driving) },
+        { key: 'succs', label: 'Other successors', items: this.enrichedSuccs.filter(p => !p.driving) },
       ]
     },
+  },
+  watch: {
+    activity() { this.open = { preds: false, succs: false } },
   },
   methods: {
     formatDate,
@@ -127,6 +184,12 @@ export default {
     displayStart,
     displayEnd,
     // Same severity bands used everywhere else in the app.
+    floatCellClass(a) {
+      if (a.total_float_hrs == null) return ''
+      if (a.total_float_hrs <= 0) return 'fl-crit'
+      if (a.total_float_hrs <= 80) return 'fl-near'
+      return ''
+    },
     floatTileClass(a) {
       if (a.is_negative_float) return 'stat-tile-neg'
       if (a.total_float_hrs === 0) return 'stat-tile-crit'
@@ -138,6 +201,32 @@ export default {
 </script>
 
 <style scoped>
-.rel-hidden { color: var(--gray-500); font: var(--text-micro); font-style: italic; }
+.rel-hidden { color: var(--ink-3); font: var(--text-micro); font-style: italic; }
 .drawer-gantt { margin-top: var(--space-2); }
+
+.logic-head { font: var(--text-micro); text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); margin: 0 0 var(--space-2); }
+.chain { display: flex; flex-direction: column; }
+.chain-node { display: flex; align-items: baseline; gap: 7px; width: 100%; text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 6px 9px; cursor: pointer; }
+.chain-node:hover { border-color: var(--accent); background: var(--accent-soft); }
+/* The activity you are looking at, in place in its own chain. */
+.chain-current { border-color: var(--crit); background: var(--crit-soft); cursor: default; }
+.chain-current:hover { border-color: var(--crit); background: var(--crit-soft); }
+.chain-code { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--accent); flex: none; }
+.chain-current .chain-code { color: var(--crit); }
+.chain-name { flex: 1; font-size: 12px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chain-current .chain-name { color: var(--ink); font-weight: 600; }
+.chain-float { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); flex: none; }
+.chain-float.fl-crit { color: var(--crit); font-weight: 700; }
+.chain-float.fl-near { color: var(--near); font-weight: 600; }
+/* The hop carries the link type and lag, so the chain reads as a sequence. */
+.chain-hop { display: flex; align-items: center; gap: 6px; padding: 2px 0 2px 14px; position: relative; min-height: 20px; }
+.chain-hop::before { content: ''; position: absolute; left: 6px; top: 0; bottom: 0; border-left: 1px solid var(--line); }
+.hop-type { font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--ink-3); }
+.hop-lag { font-family: var(--font-mono); font-size: 10px; color: var(--near); background: var(--near-soft); border-radius: 3px; padding: 0 5px; }
+.chain-none { font: var(--text-small); color: var(--ink-3); margin: var(--space-2) 0 0; }
+
+.rel-more { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; background: none; border: none; padding: 7px 0; cursor: pointer; font: var(--text-small); font-weight: 600; color: var(--ink-2); }
+.rel-more em { font-style: normal; font-family: var(--font-mono); color: var(--ink-3); }
+.rel-more .chev { transition: transform 0.15s; color: var(--ink-3); }
+.rel-more .chev.open { transform: rotate(90deg); }
 </style>

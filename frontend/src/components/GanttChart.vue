@@ -1433,7 +1433,7 @@ export default {
 
 /* Wraps just the scroll viewport so the detail drawer can anchor to its exact bounds
    (top/bottom) regardless of how tall the strip/controls/filter-bar above it are. */
-.gantt-body { position: relative; }
+.gantt-body { position: relative; display: flex; align-items: stretch; }
 
 /* Thin ink strip: title + the one highest-value toggle. Everything else lives in the
    light control row below, so there's no large dark panel to justify visually. */
@@ -1483,7 +1483,7 @@ export default {
 /* Fixed height, not max-height: with a collapsed WBS the viewport used to shrink to
    the handful of visible rows, leaving a cramped partial canvas. A constant-height
    viewport keeps the full working area available no matter how much is expanded. */
-.gantt-scroll { overflow: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; height: calc(100dvh - 288px); min-height: 320px; position: relative; cursor: grab; }
+.gantt-scroll { flex: 1; min-width: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; height: calc(100dvh - 288px); min-height: 320px; position: relative; cursor: grab; }
 .gantt-scroll.panning { cursor: grabbing; }
 /* Controls + filter bar wrap taller on narrow screens — leave more room above the grid */
 @media (max-width: 900px) {

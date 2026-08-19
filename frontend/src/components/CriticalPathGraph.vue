@@ -713,7 +713,7 @@ export default {
 .zbtn:last-child { border-right: none; }
 .zbtn:hover { background: var(--gray-150); }
 
-.graph-canvas { position: relative; overflow: hidden; touch-action: none; height: calc(100dvh - 212px); min-height: 320px; background: radial-gradient(var(--gray-150) 1.5px, transparent 1.5px) 0 0 / 18px 18px, var(--white); cursor: grab; }
+.graph-canvas { flex: 1; min-width: 0; position: relative; overflow: hidden; touch-action: none; height: calc(100dvh - 212px); min-height: 320px; background: radial-gradient(var(--gray-150) 1.5px, transparent 1.5px) 0 0 / 18px 18px, var(--white); cursor: grab; }
 /* Toolbar rows stack taller on narrow screens — leave more room above the canvas */
 @media (max-width: 900px) {
   .graph-canvas { height: calc(100dvh - 250px); min-height: 320px; }
@@ -760,7 +760,7 @@ export default {
 .expand-btn:hover circle { fill: var(--ink-soft); }
 
 /* Wraps the canvas so the detail drawer anchors to exactly its bounds. */
-.graph-body { position: relative; }
+.graph-body { position: relative; display: flex; align-items: stretch; }
 
 @media print {
   @page { size: landscape; margin: 10mm; }
