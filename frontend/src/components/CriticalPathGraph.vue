@@ -5,9 +5,8 @@
     :style="{ '--print-w': printTargetSize.w + 'px', '--print-h': printTargetSize.h + 'px' }"
     ref="wrapEl"
   >
-    <div class="graph-strip">
+    <div class="view-bar">
       <div class="strip-title">
-        <h2>Critical Path</h2>
         <span class="strip-sub">{{ activities.length }} activities &middot; {{ visibleIds.size }} shown</span>
       </div>
       <select v-model="printPaperSize" class="btn-tiny paper-size-select" title="Paper size to fit the printout to">
@@ -688,12 +687,6 @@ export default {
 .graph-wrap.is-fullscreen .graph-body { flex: 1; min-height: 0; display: flex; }
 .graph-wrap.is-fullscreen .graph-canvas { flex: 1; height: auto; }
 
-.graph-strip { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-4); background: var(--nav); gap: var(--space-3); }
-.strip-title { display: flex; align-items: baseline; gap: var(--space-2); }
-.strip-title h2 { font: var(--text-h2); color: var(--nav-ink); }
-.strip-sub { font: var(--text-micro); color: var(--nav-ink-2); text-transform: uppercase; letter-spacing: 0.04em; }
-.ctrl-btn-accent { padding: 4px 10px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: none; cursor: pointer; font: var(--text-small); color: var(--accent-soft); }
-.ctrl-btn-accent:hover { background: var(--ink-soft); }
 
 .graph-toolbar { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--gray-300); background: var(--gray-100); flex-wrap: wrap; gap: var(--space-2); }
 .graph-toolbar.drawer-open { padding-right: 440px; }

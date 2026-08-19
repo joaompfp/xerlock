@@ -1,8 +1,7 @@
 <template>
   <div class="ti-wrap">
-    <div class="ti-strip">
+    <div class="view-bar">
       <div class="strip-title">
-        <h2>Raw Tables</h2>
         <span class="strip-sub">
           Every table in the .xer, verbatim — audit what the file actually contains, not this app's interpretation.
           <template v-if="ermhdr.version"> P6 {{ ermhdr.version }} &middot; exported {{ ermhdr.export_date }}</template>
@@ -212,10 +211,6 @@ export default {
 
 <style scoped>
 .ti-wrap { display: flex; flex-direction: column; background: var(--white); border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; }
-.ti-strip { background: var(--nav); color: var(--nav-ink); padding: var(--space-3) var(--space-4); }
-.strip-title { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
-.strip-title h2 { font: var(--text-h2); margin: 0; }
-.strip-sub { font: var(--text-small); color: var(--nav-ink-2); }
 .empty-state { font: var(--text-small); color: var(--gray-700); padding: var(--space-4); }
 
 .ti-body { display: grid; grid-template-columns: 220px 1fr; }

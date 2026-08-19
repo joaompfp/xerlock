@@ -339,7 +339,7 @@
 
       <!-- Calendars -->
       <div v-show="tab === 'calendars'" class="section section-full">
-        <CalendarView :data="data" />
+        <CalendarView :data="data" @jump="jumpToActivity" />
       </div>
 
       <!-- Raw table inspector -->
@@ -883,7 +883,7 @@ export default {
   /* Text */
   --ink: #14181D;
   --ink-2: #454E58;
-  --ink-3: #79838E;
+  --ink-3: #616B76;
 
   /* Interactive */
   --accent: #2456E6;
@@ -908,7 +908,7 @@ export default {
   --nav-line: #2B333D;
   --nav-ink: #FFFFFF;
   --nav-ink-2: #AAB4C0;
-  --nav-ink-3: #78838F;
+  --nav-ink-3: #8C96A2;
 
   /* Semantic variants for use on the graphite ground, where the standard
      light-theme semantics fail contrast. */
@@ -978,7 +978,7 @@ export default {
 
   --ink: #E9EDF2;
   --ink-2: #AEB8C4;
-  --ink-3: #7A8590;
+  --ink-3: #8B96A2;
 
   --accent: #7BA2FF;
   --accent-soft: #1A2740;
@@ -999,7 +999,7 @@ export default {
   --nav-line: #1E252D;
   --nav-ink: #E9EDF2;
   --nav-ink-2: #A6B0BC;
-  --nav-ink-3: #6F7A85;
+  --nav-ink-3: #8A939E;
 
   /* already luminous — the graphite ground needs no separate variant */
   --crit-bright: #FF8272;
@@ -1341,6 +1341,12 @@ th.num { text-align: right !important; }
 @media (max-width: 520px) {
   .topbar-metrics { display: none; }
 }
+
+/* Per-view context bar. Carries the sub-line and any view-level controls; the
+   view's name lives in the top bar, so it is not repeated here. */
+.view-bar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-2) var(--space-4); background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.view-bar .strip-title { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; min-width: 0; }
+.view-bar .strip-sub { font: var(--text-small); color: var(--ink-3); }
 
 /* ── Shared small buttons ─────────────────────────────────────────────────────
    These three class names are used across five components but each was defined
