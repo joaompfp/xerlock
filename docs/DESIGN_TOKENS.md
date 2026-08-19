@@ -1,7 +1,6 @@
 # XERlock — Design Tokens (current state)
 
-Generated from `frontend/src/App.vue`. Authoritative reference for the design system
-**as implemented**; `DESIGN_SPEC.md` is the original design review and has drifted.
+Generated from `frontend/src/App.vue` — the single reference for the design system.
 
 Two themes: **Light** (bare `:root`) and **Dark** (`[data-theme="dark"]` on `<html>`),
 persisted to `localStorage['schedule-app:theme']`. Structural colours re-theme;

@@ -193,10 +193,8 @@ request. Both suites run on every push (`.github/workflows/test.yml`).
   both pure and unit-tested; `mixins/fullscreen.js` carries the fullscreen lifecycle shared
   by the two charts. The charts' pan implementations are deliberately *not* shared — the
   Gantt pans a scroll container, the network diagram pans an SVG transform.
-- `docs/DESIGN_TOKENS.md` is the authoritative reference for the design system as implemented
-  (generated from `App.vue`: every token, its value, which themes override it, and which
-  components consume it). `docs/DESIGN_SPEC.md` records the original design-review that
-  produced the visual system and is kept as a historical document.
+- `docs/DESIGN_TOKENS.md` is the reference for the design system (generated from `App.vue`:
+  every token, its value, which themes override it, and which components consume it).
 
 ## License
 
