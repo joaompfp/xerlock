@@ -4,14 +4,7 @@
       <div class="strip-title">
         <span class="strip-sub">{{ data.project.total_activities }} activities</span>
       </div>
-      <div class="basis-group">
-        <span class="basis-label">Critical basis</span>
-        <button :class="{ active: criticalBasis === 'tf0' }" @click="criticalBasis = 'tf0'">TF &le; 0</button>
-        <button :class="{ active: criticalBasis === 'longest' }" @click="criticalBasis = 'longest'">Longest Path</button>
-      </div>
-    </div>
-
-    <div class="gantt-controls">
+      <!-- The bar encoding is stated once, here, rather than in the toolbar. -->
       <div class="legend">
         <template v-if="criticalBasis === 'tf0'">
           <span class="legend-item"><i class="lg-bar lg-critical"></i>Critical (TF&le;0)</span>
@@ -22,22 +15,16 @@
           <span class="legend-item"><i class="lg-bar lg-critical"></i>On longest path</span>
           <span class="legend-item"><i class="lg-bar lg-normal"></i>Normal</span>
         </template>
-        <span class="legend-item"><i class="lg-bar lg-negative"></i>Negative float (late)</span>
+        <span class="legend-item"><i class="lg-bar lg-negative"></i>Negative float</span>
         <span class="legend-item"><i class="diamond"></i>Milestone</span>
         <span class="legend-item"><i class="bar-wbs"></i>WBS rollup</span>
         <span class="legend-item" v-if="baseline && showBaseline"><i class="lg-bar lg-ghost"></i>Baseline</span>
-        <span class="legend-item" v-if="showProgressLine"><i class="progress-swatch"></i>Progress line</span>
       </div>
+    </div>
 
-      <div class="control-divider"></div>
-
-      <label class="ctrl-toggle"><input type="checkbox" v-model="showLinks" /> Links</label>
-      <select v-if="showLinks" v-model="linksScope" class="filter-select linkscope-select" title="Which relationships to draw">
-        <option value="critical">Critical only</option>
-        <option value="all">All logic</option>
-      </select>
-      <label class="ctrl-toggle"><input type="checkbox" v-model="showProgressLine" /> Progress line</label>
-      <label v-if="baseline" class="ctrl-toggle" title="Ghost bars at each activity's position in the compared snapshot"><input type="checkbox" v-model="showBaseline" /> Baseline</label>
+    <!-- One toolbar row, ordered by frequency of use. What is used once per session
+         (Today, Fullscreen, Print, paper size) lives behind the overflow. -->
+    <div class="gantt-toolbar">
       <div class="zoom-group">
         <button
           v-for="z in zoomLevels"
@@ -51,60 +38,107 @@
         <button class="zbtn" title="Fit to available width" @click="fitToWidth">Fit</button>
         <button class="zbtn" title="Zoom in" @click="zoomIn">+</button>
       </div>
-      <button class="ctrl-btn" @click="expandAll">Expand all</button>
-      <button class="ctrl-btn" title="Expand one more WBS level" @click="expandOneLevel">+1 lvl</button>
-      <button class="ctrl-btn" title="Collapse the deepest expanded WBS level" @click="collapseOneLevel">−1 lvl</button>
-      <button class="ctrl-btn" @click="collapseAll">Collapse all</button>
-      <button class="ctrl-btn" :disabled="todayX === null" @click="scrollToToday">Today</button>
-      <button class="ctrl-btn ctrl-btn-accent" @click="toggleFullscreen">{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</button>
-      <select v-model="printPaperSize" class="filter-select paper-size-select" title="Paper size to fit the printout to">
-        <option v-for="(p, key) in paperSizes" :key="key" :value="key">{{ p.label }}</option>
+
+      <span class="tb-div"></span>
+
+      <div class="tb-group">
+        <span class="tb-group-label">WBS</span>
+        <button class="ctrl-btn" @click="expandAll">Expand</button>
+        <button class="ctrl-btn" title="Expand one more WBS level" @click="expandOneLevel">+1</button>
+        <button class="ctrl-btn" title="Collapse the deepest expanded WBS level" @click="collapseOneLevel">−1</button>
+        <button class="ctrl-btn" @click="collapseAll">Collapse</button>
+      </div>
+
+      <span class="tb-div"></span>
+
+      <div class="tb-group basis-group">
+        <span class="tb-group-label">Basis</span>
+        <button :class="{ active: criticalBasis === 'tf0' }" @click="criticalBasis = 'tf0'">TF &le; 0</button>
+        <button :class="{ active: criticalBasis === 'longest' }" @click="criticalBasis = 'longest'">Longest path</button>
+      </div>
+
+      <span class="tb-div"></span>
+
+      <!-- Overlay chips: solid border with a dot when on, dashed when off. -->
+      <button class="tb-chip" :class="{ on: showLinks }" @click="showLinks = !showLinks"><i></i>Links</button>
+      <select v-if="showLinks" v-model="linksScope" class="filter-select linkscope-select" title="Which relationships to draw">
+        <option value="critical">Critical only</option>
+        <option value="all">All logic</option>
       </select>
-      <button class="ctrl-btn" @click="printGantt">Print</button>
-      <span class="gesture-hint">Ctrl+scroll to zoom &middot; drag to pan &middot; Esc closes</span>
+      <button class="tb-chip" :class="{ on: showProgressLine }" @click="showProgressLine = !showProgressLine"><i></i>Progress line</button>
+      <button v-if="baseline" class="tb-chip" :class="{ on: showBaseline }" @click="showBaseline = !showBaseline" title="Ghost bars at each activity's position in the compared snapshot"><i></i>Baseline</button>
+
+      <div class="tb-right">
+        <input type="text" v-model="filterText" class="filter-input" placeholder="Search code, name, or WBS…" />
+        <div class="tb-pop">
+          <button class="ctrl-btn" :class="{ 'has-filters': activeFilterChips.length > 0 }" @click="filtersOpen = !filtersOpen; overflowOpen = false" :aria-expanded="String(filtersOpen)">
+            Filters<template v-if="activeFilterChips.length"> ({{ activeFilterChips.length }})</template>
+          </button>
+          <div v-if="filtersOpen" class="tb-panel">
+            <label class="fp-row">
+              <span>Status</span>
+              <select v-model="filterStatus" class="filter-select">
+                <option value="">All statuses</option>
+                <option value="TK_NotStart">Not started</option>
+                <option value="TK_Active">Active</option>
+                <option value="TK_Complete">Complete</option>
+              </select>
+            </label>
+            <label class="fp-check"><input type="checkbox" v-model="filterCriticalOnly" /> Critical only</label>
+            <div class="fp-sep"></div>
+            <label class="fp-row"><span>From</span><input type="date" v-model="filterFrom" class="filter-date" /></label>
+            <label class="fp-row"><span>To</span><input type="date" v-model="filterTo" class="filter-date" /></label>
+            <div v-if="data.project.data_date" class="fp-row">
+              <span>Look-ahead</span>
+              <span class="fp-la">
+                <button class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(28) }" @click="setLookAhead(28)">4 wk</button>
+                <button class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(56) }" @click="setLookAhead(56)">8 wk</button>
+              </span>
+            </div>
+            <template v-if="codeTypesAvailable.length">
+              <div class="fp-sep"></div>
+              <label v-for="t in codeTypesAvailable" :key="t" class="fp-row">
+                <span :title="`P6 activity code category read verbatim from this file's ACTVTYPE table`">{{ t }}</span>
+                <select v-model="filterCodes[t]" class="filter-select">
+                  <option value="">All {{ t }}</option>
+                  <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
+                </select>
+              </label>
+            </template>
+          </div>
+        </div>
+        <div class="tb-pop">
+          <button class="ctrl-btn tb-more" @click="overflowOpen = !overflowOpen; filtersOpen = false" :aria-expanded="String(overflowOpen)" title="More actions" aria-label="More actions">⋯</button>
+          <div v-if="overflowOpen" class="tb-panel tb-panel-menu">
+            <button :disabled="todayX === null" @click="overflowOpen = false; scrollToToday()">Scroll to today</button>
+            <button @click="overflowOpen = false; toggleFullscreen()">{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</button>
+            <div class="fp-sep"></div>
+            <label class="fp-row"><span>Paper</span>
+              <select v-model="printPaperSize" class="filter-select">
+                <option v-for="(p, key) in paperSizes" :key="key" :value="key">{{ p.label }}</option>
+              </select>
+            </label>
+            <button @click="overflowOpen = false; printGantt()">Print</button>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <!-- Filter bar: narrows which rows are shown (not just dimmed), the way P6's activity filter works.
-         The same search box doubles as "find" — clicking a filtered result scrolls/centers on it. -->
-    <div class="filter-bar">
-      <input type="text" v-model="filterText" class="filter-input" placeholder="Search code, name, or WBS…" />
-      <select v-model="filterStatus" class="filter-select">
-        <option value="">All statuses</option>
-        <option value="TK_NotStart">Not started</option>
-        <option value="TK_Active">Active</option>
-        <option value="TK_Complete">Complete</option>
-      </select>
-      <label class="filter-check"><input type="checkbox" v-model="filterCriticalOnly" /> Critical only</label>
-      <span class="date-range-filter" title="Show only activities whose dates touch this window">
-        <span class="code-filter-group">
-          <span class="code-filter-src" aria-hidden="true">From</span>
-          <input type="date" v-model="filterFrom" class="filter-date" title="Window start — activities finishing before this are hidden" />
-        </span>
-        <span class="date-range-sep">&ndash;</span>
-        <span class="code-filter-group">
-          <span class="code-filter-src" aria-hidden="true">To</span>
-          <input type="date" v-model="filterTo" class="filter-date" title="Window end — activities starting after this are hidden" />
-        </span>
-        <span v-if="data.project.data_date" class="code-filter-group la-group">
-          <span class="code-filter-src" aria-hidden="true">Look-ahead</span>
-          <button class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(28) }" @click="setLookAhead(28)" title="4-week look-ahead from the data date">4 wk</button>
-          <button class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(56) }" @click="setLookAhead(56)" title="8-week look-ahead from the data date">8 wk</button>
-        </span>
-      </span>
-      <span v-for="t in codeTypesAvailable" :key="t" class="code-filter-group">
-        <span class="code-filter-src" aria-hidden="true">{{ t }}</span>
-        <select v-model="filterCodes[t]" class="filter-select" :title="`P6 activity code category '${t}' — name and values read verbatim from this file's ACTVTYPE/ACTVCODE tables`">
-          <option value="">All {{ t }}</option>
-          <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
-        </select>
-      </span>
+    <!-- A filtered view must never be mistaken for the whole programme. -->
+    <div class="filter-strip">
+      <template v-if="activeFilterChips.length">
+        <span class="fs-label">ACTIVE FILTERS</span>
+        <button v-for="c in activeFilterChips" :key="c.id" class="fs-chip" @click="clearFilter(c.id)" :title="`Remove: ${c.label}`">
+          {{ c.label }}<span class="fs-x">&times;</span>
+        </button>
+        <button class="btn-tiny-light" @click="clearFilters">Clear all</button>
+      </template>
       <button v-if="returnTab" class="return-chip" @click="$emit('return-to-origin')">&larr; Back to {{ returnTab }}</button>
       <span v-if="isolationActive" class="isolation-chip">
         Chain trace &middot; {{ isolatedIds.size }} {{ isolatedIds.size === 1 ? 'activity' : 'activities' }}
         <button class="isolation-exit" @click="exitIsolation">Show all</button>
       </span>
       <span class="filter-count">{{ matchCount }} of {{ data.activities.length }} activities</span>
-      <button class="btn-tiny-light" v-if="isFilterActive && !isolationActive" @click="clearFilters">Clear filters</button>
     </div>
 
     <div class="gantt-body">
@@ -397,6 +431,8 @@
 
 <script>
 import { formatDate, formatDateShort, formatHours, isMilestone, formatFloat, formatLag, statusLabel } from '../utils/format'
+
+const STATUS_LABELS = { TK_NotStart: 'Not started', TK_Active: 'Active', TK_Complete: 'Complete' }
 import fullscreenMixin from '../mixins/fullscreen'
 import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
 import { PAPER_SIZES, paperOrDefault, usableWidthPx } from '../utils/paper'
@@ -491,6 +527,8 @@ export default {
       filterCriticalOnly: false,
       filterFrom: '',
       filterTo: '',
+      filtersOpen: false,
+      overflowOpen: false,
       filterCodes: Object.fromEntries((this.data.project.activity_code_types || []).map(t => [t, ''])),
       // Chain tracing: null = off; a Set of task_ids = show ONLY these activities.
       // Grown one activity at a time by clicking predecessors/successors in the drawer,
@@ -508,6 +546,10 @@ export default {
     // (tab bar, summary toggle, another tab's controls) dismisses it instead of the
     // overlay swallowing the interaction context.
     this._onDocMousedown = e => {
+      if ((this.filtersOpen || this.overflowOpen) && !e.target.closest('.tb-pop')) {
+        this.filtersOpen = false
+        this.overflowOpen = false
+      }
       if (this.selectedTaskId && this.$el.offsetParent !== null && !this.$el.contains(e.target)) {
         this.selectedTaskId = null
       }
@@ -715,6 +757,23 @@ export default {
       const m = new Map()
       for (const a of this.baseline.activities) m.set(a.task_code, a)
       return m
+    },
+    // One removable chip per active filter — the strip states exactly what is
+    // narrowing the view, so a filtered chart can't be read as the whole programme.
+    activeFilterChips() {
+      const out = []
+      const q = this.filterText.trim()
+      if (q) out.push({ id: 'text', label: `Search: ${q}` })
+      if (this.filterStatus) out.push({ id: 'status', label: `Status: ${STATUS_LABELS[this.filterStatus] || this.filterStatus}` })
+      if (this.filterCriticalOnly) out.push({ id: 'crit', label: 'Critical only' })
+      if (this.filterFrom || this.filterTo) {
+        const la = [28, 56].find(d => this.lookAheadActive(d))
+        out.push({ id: 'dates', label: la
+          ? `${la / 7}-week look-ahead`
+          : `Window: ${this.filterFrom ? formatDateShort(this.filterFrom) : '…'} – ${this.filterTo ? formatDateShort(this.filterTo) : '…'}` })
+      }
+      for (const [type, code] of this.activeCodeFilters) out.push({ id: 'code:' + type, label: `${type}: ${code}` })
+      return out
     },
     emptyFilterHint() {
       const bits = []
@@ -1043,6 +1102,13 @@ export default {
       this.selectedTaskId = next.task_id
       this.$nextTick(() => this.scrollToActivity(next.task_id))
     },
+    clearFilter(id) {
+      if (id === 'text') this.filterText = ''
+      else if (id === 'status') this.filterStatus = ''
+      else if (id === 'crit') this.filterCriticalOnly = false
+      else if (id === 'dates') { this.filterFrom = ''; this.filterTo = '' }
+      else if (id.startsWith('code:')) this.filterCodes[id.slice(5)] = ''
+    },
     clearFilters() {
       this.filterCollapsed = new Set()
       this.filterText = ''
@@ -1287,6 +1353,45 @@ export default {
 .gantt-wrap { border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; background: var(--white); margin-bottom: var(--space-6); box-shadow: 0 1px 3px rgba(28,25,23,0.06); font-family: var(--font-ui); }
 .gantt-wrap.is-fullscreen { border-radius: 0; display: flex; flex-direction: column; height: 100vh; }
 .gantt-wrap.is-fullscreen .gantt-body { flex: 1; min-height: 0; display: flex; }
+/* ── Toolbar: one row ─────────────────────────────────────────────────────── */
+.gantt-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 7px var(--space-4); background: var(--panel); border-bottom: 1px solid var(--line); }
+.tb-div { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }
+.tb-group { display: flex; align-items: center; gap: 4px; }
+.tb-group-label { font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-right: 2px; }
+.tb-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.tb-right .filter-input { width: 172px; }
+.tb-more { font-size: 15px; line-height: 1; padding: 4px 9px; }
+.ctrl-btn.has-filters { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+/* Chip: solid border and a dot when on, dashed when off. */
+.tb-chip { display: inline-flex; align-items: center; gap: 5px; border: 1px dashed var(--line); border-radius: 14px; background: var(--panel); color: var(--ink-3); padding: 4px 9px; cursor: pointer; font: var(--text-small); }
+.tb-chip i { width: 6px; height: 6px; border-radius: 50%; background: transparent; border: 1px solid var(--ink-3); }
+.tb-chip:hover { border-color: var(--ink-3); color: var(--ink-2); }
+.tb-chip.on { border-style: solid; border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.tb-chip.on i { background: var(--accent); border-color: var(--accent); }
+
+/* Popovers: filters and overflow */
+.tb-pop { position: relative; }
+.tb-panel { position: absolute; right: 0; top: calc(100% + 5px); min-width: 250px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: 0 10px 30px -12px rgba(0,0,0,0.35); padding: var(--space-3); z-index: 12; display: flex; flex-direction: column; gap: 7px; }
+.fp-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); font: var(--text-small); color: var(--ink-2); }
+.fp-row > span { white-space: nowrap; }
+.fp-row .filter-select, .fp-row .filter-date { min-width: 132px; }
+.fp-check { display: flex; align-items: center; gap: 6px; font: var(--text-small); color: var(--ink-2); cursor: pointer; }
+.fp-sep { height: 1px; background: var(--line); margin: 2px 0; }
+.fp-la { display: flex; gap: 4px; }
+.tb-panel-menu button { text-align: left; background: none; border: none; border-radius: var(--radius-sm); padding: 6px 8px; cursor: pointer; font: var(--text-small); color: var(--ink-2); }
+.tb-panel-menu button:hover:not(:disabled) { background: var(--chip); color: var(--ink); }
+.tb-panel-menu button:disabled { opacity: 0.45; cursor: default; }
+
+/* ── Active-filter strip ──────────────────────────────────────────────────── */
+.filter-strip { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; min-height: 34px; padding: 5px var(--space-4); background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.fs-label { font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em; color: var(--ink-3); }
+.fs-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); border-radius: 14px; padding: 2px 5px 2px 10px; cursor: pointer; font: var(--text-small); font-weight: 600; }
+.fs-chip:hover { background: var(--panel); }
+.fs-x { font-size: 14px; line-height: 1; opacity: 0.75; }
+.filter-strip .filter-count { margin-left: auto; font: var(--text-small); color: var(--ink-3); font-family: var(--font-mono); }
+
+
 .gantt-wrap.is-fullscreen .gantt-scroll { flex: 1; height: auto; max-height: none; }
 
 /* Wraps just the scroll viewport so the detail drawer can anchor to its exact bounds
@@ -1297,15 +1402,12 @@ export default {
    light control row below, so there's no large dark panel to justify visually. */
 
 .basis-group { display: flex; align-items: center; gap: 6px; border: 1px solid var(--ink-soft); border-radius: var(--radius-sm); padding: 2px; flex-shrink: 0; }
-.basis-label { font: var(--text-micro); color: var(--gray-500); padding-left: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
 .basis-group button { padding: 4px 10px; border: none; border-radius: 3px; background: none; cursor: pointer; font: var(--text-small); color: var(--ink-2); }
 .basis-group button.active { background: var(--crit); color: var(--on-solid); font-weight: 700; }
 .basis-group button:hover:not(.active) { background: var(--ink-soft); }
 
 /* Light control row: legend + every interactive control, directly adjoining the light
    timeline header below — no light/dark/light seam. */
-.gantt-controls { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-2) var(--space-4); background: var(--gray-100); border-bottom: 1px solid var(--gray-300); }
-.control-divider { width: 1px; align-self: stretch; background: var(--gray-300); margin: 2px 0; }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
 .legend-item { display: flex; align-items: center; gap: 5px; font: var(--text-small); color: var(--gray-700); }
 /* Legend swatches ARE miniature bars — same fills and borders as the chart itself, so
@@ -1319,7 +1421,6 @@ export default {
 .bar-wbs { width: 16px; height: 7px; border-radius: 3px; background: var(--gray-700); display: inline-block; }
 .progress-swatch { width: 14px; height: 2px; background: var(--milestone); display: inline-block; }
 
-.ctrl-toggle { font: var(--text-small); color: var(--gray-700); display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .zoom-group { display: flex; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); overflow: hidden; }
 .zoom-group button { padding: 4px 10px; border: none; border-right: 1px solid var(--gray-300); background: var(--white); cursor: pointer; font: var(--text-small); color: var(--gray-700); }
 .zoom-group button:last-child { border-right: none; }
@@ -1330,18 +1431,14 @@ export default {
 .zbtn:last-child { border-right: none; }
 .zbtn:hover { background: var(--gray-150); }
 
-.filter-bar { display: flex; align-items: center; gap: 10px; padding: 10px var(--space-4); background: var(--white); border-bottom: 1px solid var(--gray-300); flex-wrap: wrap; }
 .filter-input { padding: 6px 12px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); width: 240px; }
-.date-range-filter { display: inline-flex; align-items: center; gap: 4px; }
 .filter-date { border: 1px solid var(--gray-300); border-radius: var(--radius-sm); padding: 4px 6px; background: var(--white); font-family: var(--font-mono); font-size: 12px; color: var(--ink); }
-.date-range-sep { color: var(--gray-500); }
 .la-btn.active { background: var(--active-soft); border-color: var(--active); color: var(--active); font-weight: 700; }
 .filter-select { padding: 6px 8px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); }
 .filter-check { font: var(--text-small); color: var(--gray-700); display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .filter-count { font: var(--text-small); color: var(--gray-500); margin-left: auto; }
 .return-chip { display: inline-flex; align-items: center; background: var(--nav); color: var(--nav-ink); border: none; border-radius: 12px; padding: 3px 12px; font: var(--text-small); font-weight: 600; cursor: pointer; }
 .return-chip:hover { opacity: 0.9; }
-.gesture-hint { margin-left: auto; font: var(--text-micro); color: var(--gray-500); white-space: nowrap; }
 .isolation-chip { display: inline-flex; align-items: center; gap: 8px; background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); border-radius: 12px; padding: 2px 4px 2px 10px; font: var(--text-small); font-weight: 600; }
 .isolation-exit { border: none; background: var(--accent); color: var(--on-solid); border-radius: 9px; padding: 2px 9px; font: var(--text-small); font-weight: 600; cursor: pointer; }
 .isolation-exit:hover { opacity: 0.9; }
