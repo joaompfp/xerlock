@@ -46,7 +46,10 @@
           ⚠ This table has {{ table.row_count.toLocaleString() }} rows; only the first {{ table.rows.length.toLocaleString() }} were kept.
         </div>
 
-        <div class="ti-scroll">
+        <div v-if="filteredRows.length === 0" class="empty-state">
+          No rows in {{ selectedName }} match “{{ filter }}”.
+        </div>
+        <div v-else class="ti-scroll">
           <table class="ti-table">
             <thead>
               <tr>
