@@ -8,7 +8,7 @@
       <button class="ctrl-btn ctrl-btn-accent" @click="toggleFullscreen">{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</button>
     </div>
 
-    <div class="graph-toolbar">
+    <div class="graph-toolbar" :class="{ 'drawer-open': selected }">
       <div class="legend">
         <span class="legend-item"><i class="dot dot-critical"></i>Critical (TF&le;0)</span>
         <span class="legend-item"><i class="dot dot-near"></i>Near-critical (&le;10d float)</span>
@@ -17,7 +17,11 @@
         <span class="legend-item"><i class="diamond"></i>Milestone</span>
       </div>
       <div class="toolbar-actions">
-        <button class="btn-tiny" :disabled="expandedExtra.size === 0" @click="resetGraph">Reset to critical path</button>
+        <span v-if="isolationActive" class="isolation-chip">
+          Chain trace &middot; {{ isolatedIds.size }} {{ isolatedIds.size === 1 ? 'activity' : 'activities' }}
+          <button class="isolation-exit" @click="exitIsolation">Show all</button>
+        </span>
+        <button v-else class="btn-tiny" :disabled="expandedExtra.size === 0" @click="resetGraph">Reset to critical path</button>
         <div class="zoom-adjust">
           <button class="zbtn" @click="zoomBy(1 / 1.3)">−</button>
           <button class="zbtn" @click="resetView">Fit</button>
@@ -116,7 +120,16 @@
       @select="revealAndSelect"
       @annotate="(id, patch) => $emit('annotate', id, patch)"
       @unannotate="id => $emit('unannotate', id)"
-    />
+    >
+      <template #actions>
+        <div class="detail-actions">
+          <button v-if="!isolationActive" class="btn-tiny-light btn-isolate" @click="isolateSelected" title="Clear the diagram down to just this activity, then click predecessors/successors below to rebuild its chain link by link">
+            Isolate &amp; trace chain
+          </button>
+          <span v-else class="trace-hint">Tracing — click a predecessor or successor below to add it and walk the chain.</span>
+        </div>
+      </template>
+    </ActivityDetailDrawer>
     </div>
   </div>
 </template>
@@ -150,6 +163,7 @@ export default {
   data() {
     return {
       expandedExtra: new Set(), // task_ids manually revealed beyond critical+near-critical
+      isolatedIds: null, // when set, the diagram shows ONLY this traced chain
       selectedId: null,
       scale: 1,
       tx: 40,
@@ -163,9 +177,9 @@ export default {
   },
   mounted() {
     window.addEventListener('keydown', this._onKeydown = (e) => {
-      if (e.key === 'Escape' && this.selectedId != null && this.$el && this.$el.offsetParent !== null) {
-        this.selectedId = null
-      }
+      if (e.key !== 'Escape' || !this.$el || this.$el.offsetParent === null) return
+      if (this.selectedId != null) { this.selectedId = null; return }
+      if (this.isolationActive) this.exitIsolation()
     })
     // Clicks on app chrome outside this component dismiss the fixed drawer overlay.
     document.addEventListener('mousedown', this._onDocMousedown = (e) => {
@@ -236,9 +250,13 @@ export default {
       return ids
     },
     visibleIds() {
+      if (this.isolatedIds) return this.isolatedIds
       const ids = new Set(this.baseVisibleIds)
       for (const id of this.expandedExtra) ids.add(id)
       return ids
+    },
+    isolationActive() {
+      return this.isolatedIds !== null
     },
     selected() {
       return this.selectedId != null ? this.actLookup.get(this.selectedId) : null
@@ -448,6 +466,16 @@ export default {
       this.$nextTick(() => this.centerOnNode(id))
     },
     revealAndSelect(id) {
+      if (this.isolationActive) {
+        // Chain tracing: clicking a predecessor/successor ADDS it to the traced set and
+        // walks the selection onto it, growing the chain one link at a time.
+        const next = new Set(this.isolatedIds)
+        next.add(id)
+        this.isolatedIds = next
+        this.selectedId = id
+        this.$nextTick(() => this.centerOnNode(id))
+        return
+      }
       if (!this.visibleIds.has(id)) {
         this.expandedExtra.add(id)
         this.expandedExtra = new Set(this.expandedExtra)
@@ -455,8 +483,22 @@ export default {
       this.selectedId = id
       this.$nextTick(() => this.centerOnNode(id))
     },
+    isolateSelected() {
+      if (this.selectedId == null) return
+      this.isolatedIds = new Set([this.selectedId])
+      this.$nextTick(() => this.centerOnNode(this.selectedId))
+    },
+    exitIsolation() {
+      const keep = this.selectedId
+      this.isolatedIds = null
+      // Re-reveal the activity we were parked on so exiting doesn't strand the
+      // selection outside the critical+near-critical default view.
+      if (keep != null) this.revealAndSelect(keep)
+      else this.$nextTick(this.resetView)
+    },
     resetGraph() {
       this.expandedExtra = new Set()
+      this.isolatedIds = null
       this.selectedId = null
     },
     triggerAnimation() {
@@ -609,6 +651,7 @@ export default {
 .ctrl-btn-accent:hover { background: var(--ink-soft); }
 
 .graph-toolbar { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--gray-300); background: var(--gray-100); flex-wrap: wrap; gap: var(--space-2); }
+.graph-toolbar.drawer-open { padding-right: 440px; }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; }
 .legend-item { display: flex; align-items: center; gap: 5px; font: var(--text-small); color: var(--gray-700); }
 .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
@@ -618,6 +661,13 @@ export default {
 .lg-node-neg { width: 16px; height: 11px; display: inline-block; box-sizing: border-box; background: var(--crit-tint); border: 1px solid var(--crit); border-top: 4px solid var(--crit); border-radius: 2px; }
 .diamond { width: 8px; height: 8px; background: var(--milestone); display: inline-block; transform: rotate(45deg); }
 .toolbar-actions { display: flex; align-items: center; gap: var(--space-2); }
+.isolation-chip { display: inline-flex; align-items: center; gap: 8px; background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); border-radius: 12px; padding: 2px 4px 2px 10px; font: var(--text-small); font-weight: 600; }
+.isolation-exit { border: none; background: var(--accent); color: var(--white); border-radius: 9px; padding: 2px 9px; font: var(--text-small); font-weight: 600; cursor: pointer; }
+.isolation-exit:hover { opacity: 0.9; }
+.detail-actions { margin-top: 10px; }
+.btn-isolate { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+.btn-isolate:hover { background: var(--accent-soft); }
+.trace-hint { display: block; font-size: 13px; color: var(--accent); font-weight: 600; background: var(--accent-soft); border-radius: var(--radius-sm); padding: 6px 9px; }
 .btn-tiny { padding: 4px 10px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); background: var(--white); cursor: pointer; font: var(--text-small); color: var(--gray-700); }
 .btn-tiny:hover:not(:disabled) { background: var(--gray-150); }
 .btn-tiny:disabled { opacity: 0.4; cursor: default; }
