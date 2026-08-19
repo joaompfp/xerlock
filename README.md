@@ -45,10 +45,13 @@ tracing rebuilds an activity's driving path link by link.*
 
 **Health Check** - configurable DCMA-14-inspired logic & quality scorecard
 ![Health check](docs/screenshots/health-check.png)
-- 14 checks: open ends, leads, large lags, FS-relationship mix, hard constraints, negative float,
+- 15 checks: open ends, leads, large lags, FS-relationship mix, hard constraints,
+  **ALAP constraints** (flagging which of them sit on the critical path), negative float,
   high float, invalid dates vs the data date, missed tasks (BEI against the current plan),
   high-duration activities, out-of-sequence progress, LOE-on-critical-path anomalies,
   driving-path cross-check against P6's own flag, missing resource assignments
+- Failures are cards in the state colour, passes collapse into a quiet pill strip and
+  un-checkable items are a footnote, so what needs attention reads pre-attentively
 - **Configurable**: per-check include/exclude, thresholds, targets, and weights (contracts differ)
   roll up into a weighted overall score; your settings persist in the browser
 - Honest by design: checks that can't run on a given file are labeled as such and never
@@ -76,6 +79,10 @@ tracing rebuilds an activity's driving path link by link.*
   actually contains rather than trusting any tool's interpretation (including this one's)
 - Shows P6 version and export date from the file header; correct accented characters even for
   cp1252 exports
+
+**WBS Tree** - roll-up per node
+- Critical count, activity count, span and progress for every branch, aggregated from its
+  descendants, so a branch's shape reads without expanding it
 
 **Compare** - diff two `.xer` snapshots
 - Leads with the verdict: project finish baseline → current with the day delta, then milestone

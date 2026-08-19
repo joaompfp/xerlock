@@ -193,6 +193,39 @@
       </div>
     </section>
 
+    <!-- ALAP constraints -->
+    <section class="health-section" ref="sec-alap">
+      <button class="section-head" @click="toggle('alap')">
+        <span class="section-title">ALAP Constraints <em :class="{ pass: alapList.length === 0 }">({{ alapList.length }})</em></span>
+        <span class="section-hint">Scheduled As Late As Possible, against late dates — it consumes the activity's float, and on the critical path it may be the constraint driving criticality rather than the logic</span>
+        <span class="chevron" :class="{ open: expanded.alap }">&rsaquo;</span>
+      </button>
+      <div v-if="expanded.alap" class="section-body">
+        <div v-if="alapList.length === 0" class="empty-state">✓ No activity is scheduled As Late As Possible.</div>
+        <template v-else>
+          <p class="section-note">
+            {{ alapOnCriticalPath.length }} of {{ alapList.length }} sit on the critical path.
+          </p>
+          <table class="health-table">
+            <thead><tr><th>Code</th><th>Activity</th><th>On critical path</th><th class="num">Float</th><th class="num">Finish</th><th>WBS</th></tr></thead>
+            <tbody>
+              <tr v-for="a in alapList" :key="a.task_id" class="jump-row" title="Show in Gantt" @click="$emit('jump', a.task_id)">
+                <td class="code">{{ a.task_code }}</td>
+                <td class="name-cell">{{ a.task_name }}</td>
+                <td>
+                  <span v-if="a.onCriticalPath" class="issue-badge issue-severe">On critical path</span>
+                  <span v-else class="alap-off">—</span>
+                </td>
+                <td class="num-cell">{{ formatFloat(a.total_float_hrs, a.calendar_hrs_per_day) }}</td>
+                <td class="num-cell">{{ formatDate(displayEnd(a)) }}</td>
+                <td class="wbs-cell">{{ a.wbs_path }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
+      </div>
+    </section>
+
     <!-- Negative float -->
     <section class="health-section" ref="sec-negfloat">
       <button class="section-head" @click="toggle('negfloat')">
@@ -438,6 +471,7 @@ const CHECK_DEFS = [
   { key: 'lags', label: 'Large Lags', section: 'rel', unit: 'pct', cmp: 'lte', target: 5, weight: 1, param: 10, paramLabel: 'Lag over (days)' },
   { key: 'fs', label: 'FS Relationships', section: 'rel', unit: 'pct', cmp: 'gte', target: 90, weight: 1 },
   { key: 'hardcstr', label: 'Hard Constraints', section: 'constraints', unit: 'pct', cmp: 'lte', target: 5, weight: 1 },
+  { key: 'alap', label: 'ALAP Constraints', section: 'alap', unit: 'count', cmp: 'lte', target: 0, weight: 1 },
   { key: 'negfloat', label: 'Negative Float', section: 'negfloat', unit: 'count', cmp: 'lte', target: 0, weight: 2 },
   { key: 'highfloat', label: 'High Float', section: 'highfloat', unit: 'pct', cmp: 'lte', target: 5, weight: 1, param: 44, paramLabel: 'Float over (days)' },
   { key: 'invdates', label: 'Invalid Dates', section: 'invdates', unit: 'count', cmp: 'lte', target: 0, weight: 1 },
@@ -486,6 +520,7 @@ export default {
         openEnds: true,
         rel: true,
         constraints: false,
+        alap: true,
         negfloat: true,
         highfloat: false,
         invdates: true,
@@ -572,6 +607,18 @@ export default {
         }))
         .sort((a, b) => (b.hard === a.hard ? 0 : b.hard ? 1 : -1))
     },
+    // As Late As Possible schedules an activity against its late dates, consuming the
+    // float it would otherwise show. On the critical path that is worth challenging:
+    // the activity may be critical because of the constraint, not because of logic.
+    alapList() {
+      return this.data.activities
+        .filter(a => a.cstr_type === 'CS_ALAP' || a.cstr_type2 === 'CS_ALAP')
+        .map(a => ({ ...a, onCriticalPath: a.is_critical || a.is_longest_path }))
+        .sort((a, b) => (b.onCriticalPath ? 1 : 0) - (a.onCriticalPath ? 1 : 0))
+    },
+    alapOnCriticalPath() {
+      return this.alapList.filter(a => a.onCriticalPath)
+    },
     negativeFloatList() {
       return this.data.activities
         .filter(a => a.is_negative_float)
@@ -653,7 +700,7 @@ export default {
     },
     availability() {
       return {
-        openends: true, leads: true, lags: true, fs: true, hardcstr: true, negfloat: true,
+        openends: true, leads: true, lags: true, fs: true, hardcstr: true, alap: true, negfloat: true,
         highfloat: true, highdur: true, oos: true, loe: true,
         invdates: !!this.dataDateObj,
         missed: !!this.dataDateObj,
@@ -672,6 +719,7 @@ export default {
         lags: { count: this.relationshipStats.bigLags.length, denom: nRel },
         fs: { count: this.relationshipStats.pctFs, denom: 100, valueOverride: this.relationshipStats.pctFs, displayOverride: this.relationshipStats.pctFs + '%' },
         hardcstr: { count: this.constraintList.filter(c => c.hard).length, denom: nAct },
+        alap: { count: this.alapList.length, denom: nAct },
         negfloat: { count: this.negativeFloatList.length, denom: nAct },
         highfloat: { count: this.highFloatList.length, denom: nAct },
         invdates: { count: this.invalidDatesList.length, denom: nAct },
@@ -877,6 +925,7 @@ export default {
 .wbs-cell { color: var(--gray-700); font: var(--text-micro); font-family: var(--font-mono); }
 .num-cell { font-family: var(--font-mono); text-align: right; white-space: nowrap; }
 .section-note-cell { color: var(--near); font: var(--text-micro); font-style: italic; }
+.alap-off { color: var(--ink-3); }
 .lag-neg { color: var(--crit); font-weight: 700; }
 
 .tbl-name { display: block; color: var(--ink-soft); font: var(--text-micro); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }

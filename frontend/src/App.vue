@@ -310,12 +310,21 @@
       <!-- WBS Tree -->
       <div v-show="tab === 'wbs'" class="section">
         <div class="wbs-tree">
+          <div class="wbs-head">
+            <span class="wbs-head-name">WBS</span>
+            <span class="wbs-m">Critical</span>
+            <span class="wbs-m">Act.</span>
+            <span class="wbs-m wbs-date">Start</span>
+            <span class="wbs-m wbs-date">Finish</span>
+            <span class="wbs-prog-head">Progress</span>
+          </div>
           <WBSNode
             v-for="(node, i) in data.wbs_tree"
             :key="node.wbs_id"
             :node="node"
             :level="0"
             :index="i"
+            :rollups="wbsRollups"
           />
         </div>
       </div>
@@ -442,6 +451,7 @@ import { loadAnnotations, saveAnnotation, removeAnnotation } from './utils/annot
 import { listSnapshots, saveSnapshot, getSnapshotData, deleteSnapshot } from './utils/snapshots'
 import { displayStart, displayEnd } from './utils/p6'
 import { compareBy } from './utils/sort'
+import { buildWbsRollups } from './utils/wbs'
 
 const PARSE_STAGES = [
   'Reading XER tables…',
@@ -550,6 +560,9 @@ export default {
     },
   },
   computed: {
+    wbsRollups() {
+      return this.data ? buildWbsRollups(this.data.wbs_tree, this.data.activities) : null
+    },
     healthScoreClass() {
       if (this.healthScore === null) return ''
       return this.healthScore >= 80 ? 'is-ok' : this.healthScore >= 60 ? 'is-near' : 'is-crit'
@@ -1026,6 +1039,7 @@ body { font-family: var(--font-ui); background: var(--bg); color: var(--ink); fo
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
+.data-table thead th { position: sticky; top: 0; z-index: 3; }
 .table-empty-row td { text-align: center; padding: var(--space-6) var(--space-3); }
 .table-empty { font: var(--text-small); color: var(--gray-700); }
 .num-cell { text-align: right; }
@@ -1140,7 +1154,7 @@ th.num { text-align: right !important; }
 .btn-export-view { margin-left: auto; }
 
 /* Table */
-.table-wrap { overflow-x: auto; border: 1px solid var(--gray-300); border-radius: var(--radius-md); }
+.table-wrap { overflow-x: auto; border: 1px solid var(--gray-300); border-radius: var(--radius-md); max-height: calc(100dvh - 190px); }
 .data-table { width: 100%; border-collapse: collapse; font: var(--text-body); }
 .data-table th { text-align: left; padding: var(--space-2) var(--space-3); border-bottom: 2px solid var(--gray-300); font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); letter-spacing: 0.04em; white-space: nowrap; background: var(--gray-100); }
 .data-table th.sortable { cursor: pointer; user-select: none; }
@@ -1194,6 +1208,13 @@ th.num { text-align: right !important; }
 .rel-lag { color: var(--gray-500); font: var(--text-micro); }
 
 /* WBS tree */
+.wbs-head { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--panel-2); border-bottom: 2px solid var(--line); font: var(--text-micro); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
+.wbs-head-name { flex: 1; }
+.wbs-head .wbs-m { flex: none; text-align: right; }
+.wbs-head .wbs-m:nth-of-type(1) { width: 42px; }
+.wbs-head .wbs-m:nth-of-type(2) { width: 42px; }
+.wbs-head .wbs-date { width: 62px; }
+.wbs-prog-head { flex: none; width: 100px; text-align: right; }
 .wbs-tree { border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; }
 
 

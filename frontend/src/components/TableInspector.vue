@@ -52,14 +52,14 @@
           <table class="ti-table">
             <thead>
               <tr>
-                <th v-for="(f, i) in table.fields" :key="f" @click="sortBy(i)" :class="{ sorted: sortCol === i }" :title="'Sort by ' + f">
+                <th v-for="(f, i) in table.fields" :key="f" @click="sortBy(i)" :class="{ sorted: sortCol === i, 'ti-sticky': i === 0 }" :title="'Sort by ' + f">
                   {{ f }}
                 </th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="(row, ri) in pageRows" :key="ri" @click="detailRow = row" title="Show full record" class="ti-row">
-                <td v-for="(f, ci) in table.fields" :key="ci" :title="row[ci]">{{ row[ci] }}</td>
+                <td v-for="(f, ci) in table.fields" :key="ci" :title="row[ci]" :class="{ 'ti-sticky': ci === 0 }">{{ row[ci] || '—' }}</td>
               </tr>
             </tbody>
           </table>
@@ -235,6 +235,11 @@ export default {
 .ti-table th:hover { color: var(--ink); }
 .ti-table th.sorted { color: var(--active); }
 .ti-table td { font-family: var(--font-mono); padding: 4px 10px; border-bottom: 1px solid var(--gray-150); white-space: nowrap; max-width: 300px; overflow: hidden; text-overflow: ellipsis; color: var(--ink-soft); }
+/* The identifier column stays put while a 60-column table scrolls sideways —
+   without it you lose track of which record a cell belongs to. */
+.ti-sticky { position: sticky; left: 0; background: var(--panel); font-weight: 700; z-index: 1; box-shadow: 1px 0 0 var(--line); }
+th.ti-sticky { background: var(--panel-2); z-index: 4; }
+.ti-row:hover .ti-sticky { background: var(--accent-soft); }
 .ti-row { cursor: pointer; }
 .ti-row:hover td { background: var(--accent-soft); }
 
