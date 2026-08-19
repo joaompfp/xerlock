@@ -81,6 +81,22 @@ export function monthTicks(rangeStart, rangeEnd, dayWidth) {
   return ticks
 }
 
+/** Coarse header band above the tick row: 'MAR 26' per calendar month. Gives the
+ *  eye a unit it can hold, which a bare year row does not. */
+export function monthBandTicks(rangeStart, rangeEnd, dayWidth) {
+  const MON = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
+  const ticks = []
+  let cur = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), 1)
+  while (cur <= rangeEnd) {
+    ticks.push({
+      x: Math.round(((cur - rangeStart) / 86400000) * dayWidth),
+      label: `${MON[cur.getMonth()]} ${String(cur.getFullYear()).slice(2)}`,
+    })
+    cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
+  }
+  return ticks
+}
+
 export function weekTicks(rangeStart, rangeEnd, dayWidth) {
   const ticks = []
   let cur = new Date(rangeStart)
