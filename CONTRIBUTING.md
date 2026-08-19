@@ -3,6 +3,17 @@
 Thanks for your interest! This is a small, focused tool — contributions that keep it that way are
 the most welcome.
 
+
+## Before opening a PR
+
+```bash
+pytest                                  # backend
+cd frontend && npm run test:run && npm run build
+```
+
+Please add a test with any change to parsing, float/date arithmetic, or the health
+checks — those numbers end up in someone's review report.
+
 ## Ground rules
 
 - **Semantic colors are sacred.** `--crit`, `--near`, `--ok`, and `--milestone` are the only

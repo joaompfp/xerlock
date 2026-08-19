@@ -391,7 +391,14 @@
 
 <script>
 import { formatDate, formatDateShort, formatHours, isMilestone, formatFloat, formatLag, statusLabel } from '../utils/format'
+import fullscreenMixin from '../mixins/fullscreen'
 import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
+import { PAPER_SIZES, paperOrDefault, usableWidthPx } from '../utils/paper'
+import {
+  ZOOM_DAY_WIDTH, MIN_DAY_WIDTH, MAX_DAY_WIDTH,
+  timelineRange, dayWidthFor, clampDayWidth, totalWidth,
+  dateToX, yearTicks, monthTicks, weekTicks, dayTicks, weekendRects,
+} from '../utils/ganttGeometry'
 import IconChevron from './IconChevron.vue'
 import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
 
@@ -400,21 +407,11 @@ const LABEL_COL_MIN = 200
 const LABEL_COL_MAX = 700
 const HEADER_HEIGHT = 52
 const ROW_HEIGHT = 20
-const ZOOM_DAY_WIDTH = { day: 32, week: 9, month: 3, quarter: 1.1 }
-const MIN_DAY_WIDTH = 0.4
-// Usable print width per paper size: (width - 2x10mm margin) at 96 CSS px/inch, minus a
-// ~15px safety buffer (font antialiasing/rounding). @page `size` needs these exact CSS
-// keywords — Chromium doesn't support custom page dimensions via var() there.
-const PAPER_SIZES = {
-  a4: { label: 'A4', pageCss: 'A4', widthMm: 297 },
-  a3: { label: 'A3', pageCss: 'A3', widthMm: 420 },
-  letter: { label: 'Letter', pageCss: 'letter', widthMm: 279.4 },
-}
+// 15px safety buffer: tuned against this chart's printed output (see utils/paper.js).
+const PRINT_BUFFER_PX = 15
 function paperUsableWidthPx(key) {
-  const mm = (PAPER_SIZES[key] || PAPER_SIZES.a4).widthMm - 20
-  return Math.round(mm * (96 / 25.4)) - 15
+  return usableWidthPx(key, PRINT_BUFFER_PX)
 }
-const MAX_DAY_WIDTH = 60
 const VIEW_STORAGE_KEY = 'schedule-app:gantt-view'
 
 function loadSavedView() {
@@ -436,6 +433,7 @@ function saveView(view) {
 
 export default {
   name: 'GanttChart',
+  mixins: [fullscreenMixin],
   components: { IconChevron, ActivityDetailDrawer },
   props: {
     data: { type: Object, required: true },
@@ -483,7 +481,6 @@ export default {
       linksScope: saved.linksScope || 'critical',
       showProgressLine: saved.showProgressLine ?? false,
       selectedTaskId: null,
-      isFullscreen: false,
       filterText: '',
       filterStatus: '',
       filterCriticalOnly: false,
@@ -501,7 +498,6 @@ export default {
     }
   },
   mounted() {
-    document.addEventListener('fullscreenchange', this.onFullscreenChange)
     window.addEventListener('keydown', this.onKeydown)
     // The drawer is a fixed overlay; a click on app chrome outside this component
     // (tab bar, summary toggle, another tab's controls) dismisses it instead of the
@@ -514,7 +510,6 @@ export default {
     document.addEventListener('mousedown', this._onDocMousedown)
   },
   beforeUnmount() {
-    document.removeEventListener('fullscreenchange', this.onFullscreenChange)
     document.removeEventListener('mousedown', this._onDocMousedown)
     window.removeEventListener('keydown', this.onKeydown)
     window.removeEventListener('mousemove', this.onPanMove)
@@ -587,69 +582,31 @@ export default {
       return this.isFilterActive && this.rollupsFiltered ? this.rollupsFiltered : this.rollups
     },
     rangeStart() {
-      const d = this.data.project.earliest_start ? new Date(this.data.project.earliest_start) : new Date()
-      d.setDate(d.getDate() - 5)
-      return d
+      return timelineRange(this.data.project.earliest_start, this.data.project.latest_end).rangeStart
     },
     rangeEnd() {
-      const d = this.data.project.latest_end ? new Date(this.data.project.latest_end) : new Date()
-      d.setDate(d.getDate() + 5)
-      return d
+      return timelineRange(this.data.project.earliest_start, this.data.project.latest_end).rangeEnd
     },
     dayWidth() {
-      return this.dayWidthOverride ?? ZOOM_DAY_WIDTH[this.zoom]
+      return dayWidthFor(this.zoom, this.dayWidthOverride)
     },
     totalWidth() {
-      const days = Math.max(1, (this.rangeEnd - this.rangeStart) / 86400000)
-      return Math.round(days * this.dayWidth)
+      return totalWidth(this.rangeStart, this.rangeEnd, this.dayWidth)
     },
     bodyHeight() {
       return this.rows.length * ROW_HEIGHT
     },
     yearTicks() {
-      const ticks = []
-      const startY = this.rangeStart.getFullYear()
-      const endY = this.rangeEnd.getFullYear()
-      for (let y = startY; y <= endY; y++) {
-        const boundary = new Date(y, 0, 1)
-        const clamped = boundary < this.rangeStart ? this.rangeStart : boundary
-        if (clamped > this.rangeEnd) break
-        const x = Math.round(((clamped - this.rangeStart) / 86400000) * this.dayWidth)
-        ticks.push({ x, label: String(y) })
-      }
-      return ticks
+      return yearTicks(this.rangeStart, this.rangeEnd, this.dayWidth)
     },
     monthTicks() {
-      const ticks = []
-      let cur = new Date(this.rangeStart.getFullYear(), this.rangeStart.getMonth(), 1)
-      while (cur <= this.rangeEnd) {
-        const x = Math.round(((cur - this.rangeStart) / 86400000) * this.dayWidth)
-        ticks.push({ x, label: cur.toLocaleDateString('en-GB', { month: 'short' }) })
-        cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
-      }
-      return ticks
+      return monthTicks(this.rangeStart, this.rangeEnd, this.dayWidth)
     },
     weekTicks() {
-      const ticks = []
-      let cur = new Date(this.rangeStart)
-      while (cur <= this.rangeEnd) {
-        const x = Math.round(((cur - this.rangeStart) / 86400000) * this.dayWidth)
-        ticks.push({ x, label: cur.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) })
-        cur = new Date(cur.getTime() + 7 * 86400000)
-      }
-      return ticks
+      return weekTicks(this.rangeStart, this.rangeEnd, this.dayWidth)
     },
     dayTicks() {
-      const ticks = []
-      const cur = new Date(this.rangeStart)
-      cur.setHours(0, 0, 0, 0)
-      while (cur <= this.rangeEnd) {
-        const x = Math.round(((cur - this.rangeStart) / 86400000) * this.dayWidth)
-        const dow = cur.getDay()
-        ticks.push({ x, label: String(cur.getDate()), weekend: dow === 0 || dow === 6 })
-        cur.setDate(cur.getDate() + 1)
-      }
-      return ticks
+      return dayTicks(this.rangeStart, this.rangeEnd, this.dayWidth)
     },
     detailTicks() {
       if (this.zoom === 'month' || this.zoom === 'quarter') return this.monthTicks
@@ -661,7 +618,7 @@ export default {
     },
     weekendRects() {
       if (this.zoom !== 'day') return []
-      return this.dayTicks.filter(t => t.weekend).map(t => ({ x: t.x, w: this.dayWidth }))
+      return weekendRects(this.dayTicks, this.dayWidth)
     },
     todayX() {
       const today = new Date()
@@ -887,10 +844,7 @@ export default {
       return map
     },
     dateToX(dateStr) {
-      if (!dateStr) return null
-      const d = new Date(dateStr)
-      if (isNaN(d)) return null
-      return Math.round(((d - this.rangeStart) / 86400000) * this.dayWidth)
+      return dateToX(dateStr, this.rangeStart, this.dayWidth)
     },
     isBasisCritical(a) {
       return this.criticalBasis === 'longest' ? a.is_longest_path : a.is_critical
@@ -1115,16 +1069,6 @@ export default {
       const el = this.$refs.scrollEl
       this.deferredScrollTo(el, { left: Math.max(0, this.todayX - el.clientWidth / 2), behavior: 'smooth' })
     },
-    toggleFullscreen() {
-      if (document.fullscreenElement) {
-        document.exitFullscreen()
-      } else if (this.$refs.wrapEl.requestFullscreen) {
-        this.$refs.wrapEl.requestFullscreen()
-      }
-    },
-    onFullscreenChange() {
-      this.isFullscreen = !!document.fullscreenElement
-    },
     printGantt() {
       // Auto-fit width: rather than visually shrinking the rendered canvas (tried and
       // reverted — CSS transform doesn't reliably interact with this app's absolutely-
@@ -1135,7 +1079,7 @@ export default {
       // rendering path to distrust.
       const days = Math.max(1, (this.rangeEnd - this.rangeStart) / 86400000)
       const target = paperUsableWidthPx(this.printPaperSize) - this.labelColWidth
-      const fitDayWidth = Math.min(MAX_DAY_WIDTH, Math.max(MIN_DAY_WIDTH, target / days))
+      const fitDayWidth = clampDayWidth(target / days)
       const prevOverride = this.dayWidthOverride
       this.dayWidthOverride = fitDayWidth
       const pageCss = (this.paperSizes[this.printPaperSize] || this.paperSizes.a4).pageCss
@@ -1219,7 +1163,7 @@ export default {
       this.dayWidthOverride = null
     },
     setDayWidth(v) {
-      this.dayWidthOverride = Math.min(MAX_DAY_WIDTH, Math.max(MIN_DAY_WIDTH, v))
+      this.dayWidthOverride = clampDayWidth(v)
     },
     zoomIn() {
       this.setDayWidth(this.dayWidth * 1.3)
