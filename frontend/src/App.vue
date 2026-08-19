@@ -765,7 +765,18 @@ export default {
         setTimeout(() => { this.exportState = '' }, 2000)
       } catch (e) {
         this.exportState = ''
-        alert('Export failed: ' + e.message)
+        // The .xlsx export lazy-loads ExcelJS as a separate chunk; if the page has been
+        // open across a deploy, that chunk's content-hashed filename no longer exists on
+        // the server (the old build was replaced) and the dynamic import 404s. A plain
+        // "Export failed" message is misleading here — the fix is just reloading.
+        const stale = /dynamically imported module|error loading dynamically imported module/i.test(e.message || '')
+        if (stale) {
+          if (confirm('XERlock was updated since you opened this page. Reload to get the latest version? (Your file will need to be re-opened.)')) {
+            window.location.reload()
+          }
+        } else {
+          alert('Export failed: ' + e.message)
+        }
       } finally {
         this.exporting = false
       }
