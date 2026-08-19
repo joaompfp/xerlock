@@ -318,13 +318,22 @@ def parse_xer(filepath: str) -> ScheduleData:
     projects = list(reader.projects)
     if not projects:
         raise ValueError("No projects found in XER file")
-    project = projects[0]
+
+    # Pick the project owning the most activities, not the first one in the file.
+    # Exports routinely lead with near-empty shells (a baseline stub, a template, a
+    # closed phase); taking projects[0] on such a file showed an empty schedule while
+    # the real programme sat further down the list.
+    counts = [(p, len(list(p.activities))) for p in projects]
+    project, chosen_count = max(counts, key=lambda pc: pc[1])
     warnings = []
     if len(projects) > 1:
-        others = ", ".join(p.proj_short_name or "?" for p in projects[1:])
+        others = ", ".join(
+            f"{p.proj_short_name or '?'} ({n})" for p, n in counts if p is not project
+        )
         warnings.append(
             f"This file contains {len(projects)} projects — showing "
-            f"'{project.proj_short_name}' only (also present: {others})."
+            f"'{project.proj_short_name}', the largest with {chosen_count} activities "
+            f"(also present: {others})."
         )
 
     # Build WBS tree
@@ -406,12 +415,23 @@ def parse_xer(filepath: str) -> ScheduleData:
     # its RSRC name. Many contractor XER exports carry no resource data at all — degrade
     # to empty lists/flags rather than erroring.
     rsrc_names = {res.rsrc_id: res.rsrc_name for res in reader.resources if res.rsrc_id}
+    # Indexed once from raw TASKRSRC for the same reason as TASKPRED above.
+    task_rsrc = {}
+    rsrc_tbl = raw_tables.get("TASKRSRC")
+    if rsrc_tbl:
+        ri = {f: n for n, f in enumerate(rsrc_tbl["fields"])}
+        if "task_id" in ri and "rsrc_id" in ri:
+            for row in rsrc_tbl["rows"]:
+                try:
+                    tid = int(row[ri["task_id"]])
+                except (ValueError, IndexError):
+                    continue
+                name = rsrc_names.get(row[ri["rsrc_id"]])
+                if name:
+                    task_rsrc.setdefault(tid, set()).add(name)
+
     def resource_names_for(a):
-        try:
-            names = {rsrc_names.get(tr.rsrc_id) for tr in a.resources if tr.rsrc_id}
-        except Exception:
-            return []
-        return sorted(n for n in names if n)
+        return sorted(task_rsrc.get(a.task_id, ()))
 
     # Build predecessor/successor maps. succ_map is derived from pred_map in a
     # separate pass (rather than populated inline while building pred_map) because
@@ -420,18 +440,36 @@ def parse_xer(filepath: str) -> ScheduleData:
     # activity had already recorded itself as tid's successor, the earlier entry
     # would be silently wiped. Deriving succ_map by inverting the completed pred_map
     # afterward makes the result independent of iteration order.
-    pred_map = {}
-    succ_map = {tid: [] for tid in (a.task_id for a in project.activities)}
-    for a in project.activities:
-        tid = a.task_id
-        pred_map[tid] = []
-        if hasattr(a, "predecessors") and a.predecessors:
-            for p in a.predecessors:
-                pred_map[tid].append({
-                    "task_id": p.pred_task_id,
-                    "type": p.pred_type,
-                    "lag_hrs": float(p.lag_hr_cnt or 0),
-                })
+    # Built from the raw TASKPRED table in one pass rather than from PyP6XER's
+    # task.predecessors, which rescans every relationship row for every activity —
+    # O(activities x relationships). On a 4,217-activity export that was 96 million
+    # comparisons and about 25 of the 31 seconds spent parsing.
+    own_ids = {a.task_id for a in project.activities}
+    pred_map = {tid: [] for tid in own_ids}
+    succ_map = {tid: [] for tid in own_ids}
+    pred_tbl = raw_tables.get("TASKPRED")
+    if pred_tbl:
+        idx = {f: n for n, f in enumerate(pred_tbl["fields"])}
+        for row in pred_tbl["rows"]:
+            try:
+                succ_id = int(row[idx["task_id"]])
+                pred_id = int(row[idx["pred_task_id"]])
+            except (ValueError, KeyError, IndexError):
+                continue
+            # Cross-project relationships point outside this schedule; the graph
+            # would dangle, so they are left out (as they were before).
+            if succ_id not in own_ids or pred_id not in own_ids:
+                continue
+            lag_raw = row[idx["lag_hr_cnt"]] if "lag_hr_cnt" in idx else ""
+            try:
+                lag = float(lag_raw or 0)
+            except ValueError:
+                lag = 0.0
+            pred_map[succ_id].append({
+                "task_id": pred_id,
+                "type": row[idx["pred_type"]] if "pred_type" in idx else "",
+                "lag_hrs": lag,
+            })
     for tid, preds in pred_map.items():
         for p in preds:
             succ_map.setdefault(p["task_id"], []).append({
