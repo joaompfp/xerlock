@@ -1297,15 +1297,15 @@ export default {
 
 /* Thin ink strip: title + the one highest-value toggle. Everything else lives in the
    light control row below, so there's no large dark panel to justify visually. */
-.gantt-strip { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-4); background: var(--ink); gap: var(--space-3); }
+.gantt-strip { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-4); background: var(--nav); gap: var(--space-3); }
 .strip-title { display: flex; align-items: baseline; gap: var(--space-2); }
-.strip-title h2 { font: var(--text-h2); color: var(--white); }
-.strip-sub { font: var(--text-micro); color: var(--gray-300); text-transform: uppercase; letter-spacing: 0.04em; }
+.strip-title h2 { font: var(--text-h2); color: var(--nav-ink); }
+.strip-sub { font: var(--text-micro); color: var(--nav-ink-2); text-transform: uppercase; letter-spacing: 0.04em; }
 
 .basis-group { display: flex; align-items: center; gap: 6px; border: 1px solid var(--ink-soft); border-radius: var(--radius-sm); padding: 2px; flex-shrink: 0; }
 .basis-label { font: var(--text-micro); color: var(--gray-500); padding-left: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
-.basis-group button { padding: 4px 10px; border: none; border-radius: 3px; background: none; cursor: pointer; font: var(--text-small); color: var(--gray-300); }
-.basis-group button.active { background: var(--crit); color: var(--white); font-weight: 700; }
+.basis-group button { padding: 4px 10px; border: none; border-radius: 3px; background: none; cursor: pointer; font: var(--text-small); color: var(--nav-ink-2); }
+.basis-group button.active { background: var(--crit); color: var(--on-solid); font-weight: 700; }
 .basis-group button:hover:not(.active) { background: var(--ink-soft); }
 
 /* Light control row: legend + every interactive control, directly adjoining the light
@@ -1335,11 +1335,6 @@ export default {
 .zbtn { padding: 4px 10px; border: none; border-right: 1px solid var(--gray-300); background: var(--white); cursor: pointer; font: var(--text-small); color: var(--gray-700); font-weight: 700; }
 .zbtn:last-child { border-right: none; }
 .zbtn:hover { background: var(--gray-150); }
-.ctrl-btn { padding: 4px 10px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); background: var(--white); cursor: pointer; font: var(--text-small); color: var(--gray-700); }
-.ctrl-btn:hover:not(:disabled) { background: var(--gray-150); }
-.ctrl-btn:disabled { opacity: 0.4; cursor: default; }
-.ctrl-btn-accent { border-color: var(--accent); color: var(--accent); font-weight: 600; }
-.ctrl-btn-accent:hover { background: var(--accent-soft); }
 
 .filter-bar { display: flex; align-items: center; gap: 10px; padding: 10px var(--space-4); background: var(--white); border-bottom: 1px solid var(--gray-300); flex-wrap: wrap; }
 .filter-input { padding: 6px 12px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); width: 240px; }
@@ -1350,19 +1345,17 @@ export default {
 .filter-select { padding: 6px 8px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); }
 .filter-check { font: var(--text-small); color: var(--gray-700); display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .filter-count { font: var(--text-small); color: var(--gray-500); margin-left: auto; }
-.return-chip { display: inline-flex; align-items: center; background: var(--ink); color: var(--white); border: none; border-radius: 12px; padding: 3px 12px; font: var(--text-small); font-weight: 600; cursor: pointer; }
+.return-chip { display: inline-flex; align-items: center; background: var(--nav); color: var(--nav-ink); border: none; border-radius: 12px; padding: 3px 12px; font: var(--text-small); font-weight: 600; cursor: pointer; }
 .return-chip:hover { opacity: 0.9; }
 .gesture-hint { margin-left: auto; font: var(--text-micro); color: var(--gray-500); white-space: nowrap; }
 .isolation-chip { display: inline-flex; align-items: center; gap: 8px; background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); border-radius: 12px; padding: 2px 4px 2px 10px; font: var(--text-small); font-weight: 600; }
-.isolation-exit { border: none; background: var(--accent); color: var(--white); border-radius: 9px; padding: 2px 9px; font: var(--text-small); font-weight: 600; cursor: pointer; }
+.isolation-exit { border: none; background: var(--accent); color: var(--on-solid); border-radius: 9px; padding: 2px 9px; font: var(--text-small); font-weight: 600; cursor: pointer; }
 .isolation-exit:hover { opacity: 0.9; }
-.btn-tiny-light { padding: 4px 10px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); background: var(--white); cursor: pointer; font: var(--text-small); color: var(--gray-700); }
-.btn-tiny-light:hover { background: var(--gray-150); }
 
 /* Fixed height, not max-height: with a collapsed WBS the viewport used to shrink to
    the handful of visible rows, leaving a cramped partial canvas. A constant-height
    viewport keeps the full working area available no matter how much is expanded. */
-.gantt-scroll { overflow: auto; scrollbar-width: thin; scrollbar-color: var(--gray-300) transparent; height: min(75vh, 900px); position: relative; cursor: grab; }
+.gantt-scroll { overflow: auto; scrollbar-width: thin; scrollbar-color: var(--nav-ink-2) transparent; height: min(75vh, 900px); position: relative; cursor: grab; }
 .gantt-scroll.panning { cursor: grabbing; }
 .gantt-wrap.extra-room .gantt-scroll { height: calc(100dvh - 258px); min-height: 320px; }
 /* Controls + filter bar wrap taller on narrow screens — leave more room above the grid */
@@ -1397,7 +1390,7 @@ export default {
 
 .g-today-line { position: absolute; width: 2px; background: var(--accent); z-index: 4; pointer-events: none; }
 .g-dd-line { position: absolute; width: 0; border-left: 2px dashed var(--milestone); z-index: 4; pointer-events: none; }
-.g-dd-flag { position: absolute; top: 2px; left: 3px; font: var(--text-micro); font-weight: 700; color: var(--white); background: var(--milestone); padding: 0 5px; border-radius: var(--radius-sm); white-space: nowrap; }
+.g-dd-flag { position: absolute; top: 2px; left: 3px; font: var(--text-micro); font-weight: 700; color: var(--on-solid); background: var(--milestone); padding: 0 5px; border-radius: var(--radius-sm); white-space: nowrap; }
 .g-today-flag { position: absolute; top: -18px; left: 2px; font: var(--text-micro); font-weight: 700; color: var(--accent); white-space: nowrap; }
 
 .g-resize-handle { position: absolute; top: 0; width: 7px; margin-left: -3px; cursor: col-resize; z-index: 8; background: transparent; }
@@ -1484,7 +1477,7 @@ export default {
   .pt-stripe { background: var(--gray-100); }
   .pt-wbs-row { font-weight: 700; background: var(--gray-150); }
   .pt-tick { position: absolute; top: 6px; font: 700 10px var(--font-ui); color: var(--ink); white-space: nowrap; }
-  .pt-dd-tick { position: absolute; top: 6px; font: 700 9px var(--font-mono); color: var(--white); background: var(--milestone); padding: 1px 4px; border-radius: 2px; transform: translateX(-4px); white-space: nowrap; }
+  .pt-dd-tick { position: absolute; top: 6px; font: 700 9px var(--font-mono); color: var(--on-solid); background: var(--milestone); padding: 1px 4px; border-radius: 2px; transform: translateX(-4px); white-space: nowrap; }
   .print-table .g-bar, .print-table .g-milestone, .print-table .g-bar-wbs { position: absolute; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 }
