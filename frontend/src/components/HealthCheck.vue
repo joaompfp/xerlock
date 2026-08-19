@@ -384,6 +384,7 @@
       :activity="selectedActivity"
       :lookup="activitiesById"
       :annotations="annotations"
+      :project-name="data.project.proj_short_name"
       show-jump
       @close="selectedTaskId = null"
       @select="openDetail"

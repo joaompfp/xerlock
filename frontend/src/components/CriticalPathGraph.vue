@@ -111,6 +111,7 @@
       :lookup="actLookup"
       :annotations="annotations"
       :visible-ids="visibleIds"
+      :project-name="projectName"
       @close="selectedId = null"
       @select="revealAndSelect"
       @annotate="(id, patch) => $emit('annotate', id, patch)"
@@ -142,6 +143,7 @@ export default {
     extraRoom: { type: Boolean, default: false },
     annotations: { type: Object, default: () => ({}) },
     visible: { type: Boolean, default: true },
+    projectName: { type: String, default: '' },
   },
   emits: ['annotate', 'unannotate'],
   components: { ActivityDetailDrawer },
