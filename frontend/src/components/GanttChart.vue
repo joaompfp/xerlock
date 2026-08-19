@@ -1,10 +1,5 @@
 <template>
-  <div
-    class="gantt-wrap"
-    :class="{ 'is-fullscreen': isFullscreen, 'extra-room': extraRoom }"
-    :style="{ '--label-col-width': labelColWidth + 'px' }"
-    ref="wrapEl"
-  >
+  <div class="gantt-wrap" :class="{ 'is-fullscreen': isFullscreen, 'extra-room': extraRoom }" ref="wrapEl">
     <div class="gantt-strip">
       <div class="strip-title">
         <h2>Gantt Chart</h2>
@@ -1388,24 +1383,20 @@ export default {
 
 
 @media print {
-  /* Extra top margin reserves room for the repeating header (below) on every page —
-     without it, the fixed-position header would overlap the first line of content on
-     page 2 onward. 18mm covers the 52px header band plus a little breathing room. */
-  @page { size: landscape; margin: 18mm 10mm 10mm 10mm; }
+  /* A repeating position:fixed header was tried here and reverted: Chromium does not
+     reliably fragment position:absolute content (this chart's rows, links overlay,
+     today/data-date lines are all absolutely positioned) across printed page breaks —
+     the fixed header ended up painting over rows that were themselves misplaced by the
+     pagination, hiding real content rather than just looking imperfect. A correct
+     repeating header needs a genuine print-only <table><thead> rendering path (browsers
+     DO fragment real tables correctly); until that's built, the header prints once on
+     page 1, which is lossless even if less convenient on later pages. */
+  @page { size: landscape; margin: 10mm; }
   .gantt-strip, .gantt-controls, .filter-bar { display: none; }
   .gantt-wrap, .gantt-wrap.is-fullscreen { border: none; box-shadow: none; height: auto; display: block; }
   .gantt-scroll { height: auto !important; max-height: none !important; overflow: visible; cursor: default; }
-  .g-label { position: static; }
+  .g-corner, .g-timeline-header, .g-label { position: static; }
   .g-resize-handle { display: none; }
-  /* The header row (date scale + activity/dur/start/finish column labels) is normally
-     kept "pinned" on screen via manual scroll-offset tracking, not real CSS sticky —
-     `position: fixed` repeats it on every printed page instead, using the top-margin
-     band reserved above. Inline top/left (the on-screen scroll offsets) are overridden
-     with !important since Vue's :style binding otherwise wins the cascade. */
-  .gantt-grid { grid-template-rows: 0; }
-  .g-corner, .g-timeline-header { position: fixed !important; top: 0 !important; }
-  .g-corner { left: 0 !important; width: var(--label-col-width) !important; }
-  .g-timeline-header { left: var(--label-col-width) !important; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 }
 </style>
