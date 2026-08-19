@@ -403,7 +403,7 @@ import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
 import { PAPER_SIZES, paperOrDefault, usableWidthPx } from '../utils/paper'
 import {
   ZOOM_DAY_WIDTH, MIN_DAY_WIDTH, MAX_DAY_WIDTH,
-  timelineRange, dayWidthFor, clampDayWidth, totalWidth,
+  timelineRange, unionRange, dayWidthFor, clampDayWidth, totalWidth,
   dateToX, yearTicks, monthTicks, weekTicks, dayTicks, weekendRects,
 } from '../utils/ganttGeometry'
 import IconChevron from './IconChevron.vue'
@@ -588,11 +588,22 @@ export default {
     activeRollups() {
       return this.isFilterActive && this.rollupsFiltered ? this.rollupsFiltered : this.rollups
     },
+    // Spans both schedules when baseline ghosts are visible, so a baseline that runs
+    // past the current programme still lands inside the drawn grid.
+    timelineBounds() {
+      const p = this.data.project
+      let { start, end } = { start: p.earliest_start, end: p.latest_end }
+      if (this.baseline && this.showBaseline) {
+        const b = this.baseline.project
+        ;({ start, end } = unionRange(start, end, b.earliest_start, b.latest_end))
+      }
+      return timelineRange(start, end)
+    },
     rangeStart() {
-      return timelineRange(this.data.project.earliest_start, this.data.project.latest_end).rangeStart
+      return this.timelineBounds.rangeStart
     },
     rangeEnd() {
-      return timelineRange(this.data.project.earliest_start, this.data.project.latest_end).rangeEnd
+      return this.timelineBounds.rangeEnd
     },
     dayWidth() {
       return dayWidthFor(this.zoom, this.dayWidthOverride)

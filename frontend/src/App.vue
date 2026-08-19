@@ -353,10 +353,13 @@
           @jump="jumpToActivity"
           @reset="compareData = null"
         />
-        <div v-else class="compare-upload-card">
-          <h2>Compare against a previous snapshot</h2>
-          <p class="subtitle">Upload an earlier export of this same project (e.g. last month's contractor submission) to see what changed — slipped dates, duration edits, float erosion, logic changes, and critical path movement. Your current file stays loaded — the snapshot is only used for the diff.</p>
+        <div v-else class="compare-entry">
+          <header class="compare-entry__head">
+            <h2>Compare against a previous snapshot</h2>
+            <p class="subtitle">Diff this file against an earlier export of the same project — slipped dates, duration edits, float erosion, logic changes and critical-path movement. The current file stays loaded; the snapshot is only used for the diff.</p>
+          </header>
 
+          <div class="compare-entry__cols">
           <!-- Snapshot register: monthly-cycle reviews shouldn't require carrying old
                .xer files around — save this month's parse now, diff against it next month. -->
           <div class="snap-register">
@@ -368,22 +371,30 @@
             </div>
             <p v-if="snapshots.length === 0" class="snap-empty">Nothing saved yet. Snapshots live in this browser only (IndexedDB) — nothing is uploaded anywhere.</p>
             <table v-else class="snap-table">
+              <colgroup>
+                <col class="c-proj"><col class="c-file"><col class="c-date">
+                <col class="c-acts"><col class="c-saved"><col class="c-act">
+              </colgroup>
               <thead><tr><th>Project</th><th>File</th><th class="num">Data date</th><th class="num">Activities</th><th class="num">Saved</th><th></th></tr></thead>
               <tbody>
                 <tr v-for="snap in snapshots" :key="snap.id" :class="{ 'snap-other-proj': snap.proj !== data.project.proj_short_name }" :title="snap.proj !== data.project.proj_short_name ? 'Saved under a different internal project name — P6 short names often change per draft. Compare still works: activities are matched by code, not project name.' : ''">
                   <td class="code">{{ snap.proj }}</td>
-                  <td class="name-cell">{{ snap.filename }}</td>
+                  <td class="snap-file" :title="snap.filename">{{ snap.filename }}</td>
                   <td class="num-cell">{{ snap.dataDate ? formatDate(snap.dataDate) : '—' }}</td>
                   <td class="num-cell">{{ snap.activities }}</td>
                   <td class="num-cell">{{ timeAgo(snap.savedAt) }}</td>
-                  <td class="snap-actions">
-                    <button class="btn-outline" @click="compareAgainstSnapshot(snap)">Compare</button>
-                    <button class="btn-forget" title="Delete snapshot" @click="removeSnapshot(snap)">&times;</button>
+                  <td class="snap-actions-cell">
+                    <div class="snap-actions">
+                      <button class="btn-outline" @click="compareAgainstSnapshot(snap)">Compare</button>
+                      <button class="btn-forget" title="Delete snapshot" @click="removeSnapshot(snap)">&times;</button>
+                    </div>
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
+          <div class="compare-upload">
+          <h3 class="compare-upload__title">Or upload a file</h3>
           <div
             class="drop-zone"
             @dragover.prevent="compareDragOver = true"
@@ -399,6 +410,9 @@
               <span v-if="!compareLoading">Drop a .xer file here, or click to browse</span>
               <span v-else class="loading">Parsing schedule...</span>
             </label>
+          </div>
+          <p class="compare-upload__note">Nothing is uploaded anywhere — the snapshot is parsed in memory for the diff.</p>
+          </div>
           </div>
         </div>
       </div>
@@ -928,9 +942,20 @@ th.num { text-align: right !important; }
 .reopen-actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
 .btn-forget { border: none; background: none; color: var(--gray-500); font-size: 19px; line-height: 1; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm); }
 .btn-forget:hover { background: var(--white); color: var(--crit); }
-.compare-upload-card { max-width: 560px; margin: var(--space-8) auto; text-align: center; }
-.compare-upload-card h2 { font: var(--text-h2); color: var(--ink); margin-bottom: var(--space-2); }
-.compare-upload-card .subtitle { color: var(--gray-700); margin-bottom: var(--space-5); }
+/* Entry state for Compare. Was a 560px centred column, which squeezed the snapshot
+   register into a few characters per cell and centred a paragraph of prose. Now a
+   normal reading measure with the register as the primary path and upload beside it. */
+.compare-entry { max-width: 1100px; margin: var(--space-6) auto var(--space-8); text-align: left; }
+.compare-entry__head { margin-bottom: var(--space-5); }
+.compare-entry h2 { font: var(--text-h2); color: var(--ink); margin-bottom: var(--space-2); }
+.compare-entry .subtitle { color: var(--gray-700); max-width: 68ch; margin: 0; }
+.compare-entry__cols { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(260px, 1fr); gap: var(--space-5); align-items: start; }
+.compare-upload__title { font: var(--text-h3); color: var(--ink); margin: 0 0 var(--space-2); }
+.compare-upload__note { font: var(--text-micro); color: var(--gray-700); margin-top: var(--space-2); }
+.compare-entry .drop-zone { padding: var(--space-6) var(--space-4); }
+@media (max-width: 900px) {
+  .compare-entry__cols { grid-template-columns: 1fr; }
+}
 .drop-zone { border: 1px solid var(--gray-300); border-radius: var(--radius-md); padding: 48px var(--space-6); cursor: pointer; transition: all 0.2s; background: var(--gray-100); }
 .drop-zone:hover, .drop-zone.active { border-color: var(--accent); background: var(--accent-soft); }
 .drop-zone input { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; }
@@ -1069,19 +1094,33 @@ th.num { text-align: right !important; }
 .wbs-tree { border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; }
 
 
-.snap-register { text-align: left; background: var(--gray-100); border: 1px solid var(--gray-300); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin: var(--space-5) 0; }
+.snap-register { text-align: left; background: var(--gray-100); border: 1px solid var(--gray-300); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin: 0; }
 .snap-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
 .snap-head h3 { font: var(--text-h3); color: var(--ink); margin: 0; }
 .snap-empty { font: var(--text-small); color: var(--gray-700); margin-top: var(--space-2); }
-.snap-table { width: 100%; border-collapse: collapse; font: var(--text-small); margin-top: var(--space-3); }
+/* table-layout: fixed so the file column can be given a share of the width and
+   truncate, instead of collapsing to a few characters wide and breaking a long
+   P6 export name down the page one letter per line. */
+.snap-table { width: 100%; table-layout: fixed; border-collapse: collapse; font: var(--text-small); margin-top: var(--space-3); }
+.snap-table col.c-proj { width: 20%; }
+.snap-table col.c-file { width: 34%; }
+.snap-table col.c-date { width: 15%; }
+.snap-table col.c-acts { width: 9%; }
+.snap-table col.c-saved { width: 12%; }
+.snap-table col.c-act { width: 10%; }
 .snap-table th { text-align: left; font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); border-bottom: 2px solid var(--gray-300); padding: var(--space-1) var(--space-2); }
 .snap-table th.num { text-align: right; }
 .snap-table td { padding: 6px var(--space-2); border-bottom: 1px solid var(--gray-150); }
 .snap-table .code { font-family: var(--font-mono); font-weight: 600; color: var(--accent); white-space: nowrap; }
-.snap-table .name-cell { color: var(--ink-soft); word-break: break-all; }
+.snap-table .code { overflow: hidden; text-overflow: ellipsis; }
+.snap-file { color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .snap-table .num-cell { font-family: var(--font-mono); text-align: right; white-space: nowrap; }
 .snap-other-proj td { opacity: 0.55; }
+/* the flex container is an inner div: a <td> set to display:flex drops out of the
+   table's column model and its buttons escape the table box. */
+.snap-actions-cell { padding-right: 0 !important; }
 .snap-actions { display: flex; gap: var(--space-2); justify-content: flex-end; align-items: center; }
+.snap-actions .btn-outline { white-space: nowrap; padding: 3px 10px; font: var(--text-micro); }
 
 /* Code-filter provenance eyebrow: these dropdowns are generated from the file's own
    ACTVTYPE table — the tag says so at a glance, the tooltip spells it out. */
