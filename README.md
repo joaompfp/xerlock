@@ -2,16 +2,16 @@
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue) ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB) ![Vue 3](https://img.shields.io/badge/vue-3-42b883) ![Self-hosted](https://img.shields.io/badge/self--hosted-yes-8250df)
 
-**Review a contractor's programme in full — without a P6 license.** Upload a `.xer` export and get
+**Review a contractor's programme in full - without a P6 license.** Upload a `.xer` export and get
 an interactive Gantt chart, a critical-path network diagram, configurable DCMA-14-style schedule
-quality checks, calendar and raw-table inspection, progress tracking, and snapshot comparison —
+quality checks, calendar and raw-table inspection, progress tracking, and snapshot comparison -
 everything a planner needs to review a schedule in detail, self-hosted so the file never leaves
 your own infrastructure.
 
 The name is the promise: XERlock is **locked read-only**. It never modifies, never re-saves, and
-never stores your `.xer` — files are parsed in memory and discarded.
+never stores your `.xer` - files are parsed in memory and discarded.
 
-**[▶ Try it live](https://schedule.joao.date)** — one click loads a sample data-centre fit-out, or
+**[▶ Try it live](https://schedule.joao.date)** - one click loads a sample data-centre fit-out, or
 upload your own `.xer` (parsed in memory, never stored).
 
 Built for project controls professionals: the checks, terminology, and defaults follow how
@@ -19,12 +19,12 @@ schedules actually get reviewed (total float severity bands, longest-path vs TF�
 open-end detection, lag/lead audits, out-of-sequence progress).
 
 ![Gantt chart](docs/screenshots/gantt.png)
-*Critical-path links drawn above the bars — logic never hides behind unrelated activities. Chain
+*Critical-path links drawn above the bars - logic never hides behind unrelated activities. Chain
 tracing rebuilds an activity's driving path link by link.*
 
 ## Features
 
-**Gantt Chart** — the primary view
+**Gantt Chart** - the primary view
 - WBS-hierarchical activity grid with duration, start, and finish columns
 - Continuous zoom (presets + Ctrl/scroll), drag-pan, fit-to-width, resizable activity column
 - Critical-path link overlay drawn *above* bars so logic never hides behind unrelated activities
@@ -32,18 +32,18 @@ tracing rebuilds an activity's driving path link by link.*
 - Progress line, today + data-date markers, weekend shading, filter bar (text/status/critical/
   activity codes/date window with 4- and 8-week look-ahead presets from the data date)
 - Baseline ghost bars: with a Compare baseline loaded, every activity draws a hollow bar at its
-  baseline position — slips read as horizontal offsets, right in the Gantt
+  baseline position - slips read as horizontal offsets, right in the Gantt
 - Right-side detail drawer: stat tiles for duration/float/dates/status, predecessor and successor
-  lists with dates, durations, and lags — click any related activity to jump to it
+  lists with dates, durations, and lags - click any related activity to jump to it
 - Print-friendly export
 
-**Critical Path** — activity-on-node network diagram
+**Critical Path** - activity-on-node network diagram
 ![Critical path network](docs/screenshots/critical-path.png)
 - Dagre-based DAG layout folded into a "snake" so long chains stay readable
 - Shows the critical + near-critical set by default; expand hidden neighbors on demand
 - Pan/zoom canvas, full-width, with the same detail panel and jump navigation
 
-**Health Check** — configurable DCMA-14-inspired logic & quality scorecard
+**Health Check** - configurable DCMA-14-inspired logic & quality scorecard
 ![Health check](docs/screenshots/health-check.png)
 - 14 checks: open ends, leads, large lags, FS-relationship mix, hard constraints, negative float,
   high float, invalid dates vs the data date, missed tasks (BEI against the current plan),
@@ -55,36 +55,36 @@ tracing rebuilds an activity's driving path link by link.*
   counted toward the score
 - Every finding is one click away from the activity in the Gantt
 
-**Progress** — status-date-anchored monitoring
+**Progress** - status-date-anchored monitoring
 ![Progress view](docs/screenshots/progress.png)
 - Milestone tracker with target-vs-forecast variance
 - 4/8-week look-ahead window with remaining vs original durations
 - Planned-vs-actual S-curve anchored to the schedule's data date
 
-**Calendars** — the check most tools can't do without P6
+**Calendars** - the check most tools can't do without P6
 ![Calendar viewer](docs/screenshots/calendars.png)
 - Month-by-month browser for every calendar in the file: weekly work patterns, holiday
-  exceptions, and — highlighted loudly — **working exceptions**, i.e. dates deliberately marked
+  exceptions, and - highlighted loudly - **working exceptions**, i.e. dates deliberately marked
   to work that would normally be holidays. Stripped holidays and invented workdays are a classic
   way a programme gets quietly compressed, and they're invisible to date-based checks.
 - Full exception register per calendar, plus which calendars are actually assigned to activities
 
-**Raw Tables** — audit-grade file inspection
+**Raw Tables** - audit-grade file inspection
 ![Raw table inspector](docs/screenshots/tables.png)
 - Every table in the `.xer` exactly as exported (`TASK`, `PROJWBS`, `CALENDAR`, `TASKPRED`,
-  UDFs, …) with filter, sort, pagination, and a per-row record view — verify what the submission
+  UDFs, …) with filter, sort, pagination, and a per-row record view - verify what the submission
   actually contains rather than trusting any tool's interpretation (including this one's)
 - Shows P6 version and export date from the file header; correct accented characters even for
   cp1252 exports
 
-**Compare** — diff two `.xer` snapshots
+**Compare** - diff two `.xer` snapshots
 - Leads with the verdict: project finish baseline → current with the day delta, then milestone
-  dumbbell chart (baseline ● — ● current per milestone) and a slip tornado of the biggest
-  movers — tables below for drill-down
+  dumbbell chart (baseline ● - ● current per milestone) and a slip tornado of the biggest
+  movers - tables below for drill-down
 - Date slips, duration edits, float erosion, critical-path churn (with a stability score),
   logic changes, added/removed activities
 - **Snapshot register**: save the current parse in the browser (IndexedDB) and diff
-  against it next month — no need to keep old `.xer` files at hand; nothing leaves
+  against it next month - no need to keep old `.xer` files at hand; nothing leaves
   the browser
 - Activities matched by code (stable across re-exports), not internal IDs
 
@@ -97,7 +97,7 @@ tracing rebuilds an activity's driving path link by link.*
 ## Try it
 
 The **Load the sample project** button on the upload screen loads a synthetic 24-activity
-data-centre fit-out (realistic logic, a critical path, negative float, in-progress work) — the
+data-centre fit-out (realistic logic, a critical path, negative float, in-progress work) - the
 same file ships in [`examples/sample-schedule.xer`](examples/sample-schedule.xer).
 
 ## Architecture
@@ -111,14 +111,14 @@ same file ships in [`examples/sample-schedule.xer`](examples/sample-schedule.xer
 
 - **Backend** (`backend/main.py`): FastAPI + [PyP6XER](https://github.com/HotaOsman/PyP6XER).
   One endpoint (`POST /api/upload`) parses the `.xer` in memory and returns the full schedule as
-  JSON — activities with float/constraints/actuals/codes, the WBS tree, and project stats
+  JSON - activities with float/constraints/actuals/codes, the WBS tree, and project stats
   including a longest-path trace. **Nothing is persisted server-side**; files are parsed and
   discarded.
-- **Frontend** (`frontend/`): Vue 3 (Options API) + Vite. No UI framework — hand-rolled CSS on a
+- **Frontend** (`frontend/`): Vue 3 (Options API) + Vite. No UI framework - hand-rolled CSS on a
   design-token system. [dagre](https://github.com/dagrejs/dagre) computes the network layout;
   [ExcelJS](https://github.com/exceljs/exceljs) (lazy-loaded) generates the Excel exports.
   Annotations and the last-opened file live in `localStorage` only.
-- In production, FastAPI serves the built frontend from `frontend/dist/` — a single container
+- In production, FastAPI serves the built frontend from `frontend/dist/` - a single container
   runs everything.
 
 ## Run locally
@@ -135,7 +135,7 @@ python3 -m venv .venv
 cd frontend && npm install && npm run dev
 ```
 
-Open http://localhost:5173 — the dev server proxies `/api` to the backend on port 8000.
+Open http://localhost:5173 - the dev server proxies `/api` to the backend on port 8000.
 
 ## Deploy
 
@@ -156,7 +156,7 @@ docker run -d -p 8000:8000 schedule-app
 The container serves the whole app on port 8000. Put your reverse proxy of choice
 (Traefik, Caddy, nginx) in front for TLS.
 
-> The frontend must be built (`npm run build`) *before* the image build — the Dockerfile copies
+> The frontend must be built (`npm run build`) *before* the image build - the Dockerfile copies
 > `frontend/dist/` rather than running Node inside the image, keeping it a slim single-stage
 > Python image. If you prefer building inside Docker, a multi-stage
 > `node:20-alpine → python:3.12-slim` Dockerfile works too.
@@ -165,7 +165,7 @@ The container serves the whole app on port 8000. Put your reverse proxy of choic
 
 - All colors/typography/spacing are CSS custom properties defined once in `App.vue` (`:root`
   block). Semantic status colors (`--crit`, `--near`, `--ok`, `--milestone`) mean the same thing
-  in every view — don't introduce new colors for criticality states.
+  in every view - don't introduce new colors for criticality states.
 - The Gantt deliberately avoids `position: sticky` for its frozen header/label column
   (Chromium mis-renders sticky grid items near scroll boundaries); positions are tracked
   manually from the scroll handler. See comments in `GanttChart.vue`.
