@@ -1,8 +1,7 @@
 <template>
   <div class="gantt-wrap" :class="{ 'is-fullscreen': isFullscreen }" ref="wrapEl">
-    <div class="gantt-strip">
+    <div class="view-bar">
       <div class="strip-title">
-        <h2>Gantt Chart</h2>
         <span class="strip-sub">{{ data.project.total_activities }} activities</span>
       </div>
       <div class="basis-group">
@@ -1296,14 +1295,10 @@ export default {
 
 /* Thin ink strip: title + the one highest-value toggle. Everything else lives in the
    light control row below, so there's no large dark panel to justify visually. */
-.gantt-strip { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-4); background: var(--nav); gap: var(--space-3); }
-.strip-title { display: flex; align-items: baseline; gap: var(--space-2); }
-.strip-title h2 { font: var(--text-h2); color: var(--nav-ink); }
-.strip-sub { font: var(--text-micro); color: var(--nav-ink-2); text-transform: uppercase; letter-spacing: 0.04em; }
 
 .basis-group { display: flex; align-items: center; gap: 6px; border: 1px solid var(--ink-soft); border-radius: var(--radius-sm); padding: 2px; flex-shrink: 0; }
 .basis-label { font: var(--text-micro); color: var(--gray-500); padding-left: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
-.basis-group button { padding: 4px 10px; border: none; border-radius: 3px; background: none; cursor: pointer; font: var(--text-small); color: var(--nav-ink-2); }
+.basis-group button { padding: 4px 10px; border: none; border-radius: 3px; background: none; cursor: pointer; font: var(--text-small); color: var(--ink-2); }
 .basis-group button.active { background: var(--crit); color: var(--on-solid); font-weight: 700; }
 .basis-group button:hover:not(.active) { background: var(--ink-soft); }
 

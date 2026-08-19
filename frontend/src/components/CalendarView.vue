@@ -1,8 +1,7 @@
 <template>
   <div class="cal-wrap">
-    <div class="cal-strip">
+    <div class="view-bar">
       <div class="strip-title">
-        <h2>Calendars</h2>
         <span class="strip-sub">{{ calendars.length }} in file &middot; work patterns and exceptions exactly as exported — check for stripped holidays or invented workdays</span>
       </div>
     </div>
@@ -17,7 +16,7 @@
           :key="c.clndr_id"
           class="cal-card"
           :class="{ active: c.clndr_id === selectedId }"
-          @click="selectedId = c.clndr_id"
+          @click="selectedId = c.clndr_id; showAllActs = false"
         >
           <div class="cal-card-top">
             <span class="cal-name">{{ c.clndr_name || '(unnamed)' }}</span>
@@ -44,47 +43,103 @@
           <span class="cal-pattern-sum">{{ patternSummary }}</span>
         </div>
 
-        <div class="cal-grid">
-          <div v-for="d in dayHeaders" :key="d" class="cal-head-cell">{{ d }}</div>
-          <div
-            v-for="cell in monthCells"
-            :key="cell.key"
-            class="cal-cell"
-            :class="[cell.cls, { 'cal-other': !cell.inMonth, 'cal-datadate': cell.isDataDate }]"
-            :title="cell.tip"
-          >
-            <span class="cal-day-num">{{ cell.day }}</span>
-            <span v-if="cell.hours" class="cal-day-hrs">{{ cell.hours }}</span>
-            <span v-if="cell.cls === 'cal-workexc'" class="cal-flag">!</span>
+        <div class="cal-main">
+          <div class="cal-grid-col">
+            <div class="cal-grid">
+              <div v-for="d in dayHeaders" :key="d" class="cal-head-cell">{{ d }}</div>
+              <div
+                v-for="cell in monthCells"
+                :key="cell.key"
+                class="cal-cell"
+                :class="[cell.cls, { 'cal-other': !cell.inMonth, 'cal-datadate': cell.isDataDate }]"
+                :title="cell.tip"
+              >
+                <span class="cal-day-num">{{ cell.day }}</span>
+                <span v-if="cell.hours" class="cal-day-hrs">{{ cell.hours }}</span>
+                <span v-if="cell.cls === 'cal-workexc'" class="cal-flag">!</span>
+              </div>
+            </div>
+
+            <!-- Which months hold exceptions, and month navigation in one strip.
+                 Replaces the register table: exceptions belong to the calendar. -->
+            <div class="cal-year">
+              <span class="cal-year-label">EXCEPTIONS {{ viewYear }}</span>
+              <button
+                v-for="m in yearMonths"
+                :key="m.i"
+                class="cal-year-month"
+                :class="{ active: m.i === viewMonth }"
+                :title="m.tip"
+                @click="viewMonth = m.i"
+              >
+                <i :class="m.cls"></i><span>{{ m.label }}</span>
+              </button>
+              <span class="cal-year-sum">{{ yearSummary }}</span>
+            </div>
+
+            <div class="cal-legend">
+              <span><i class="lg lg-work"></i> Working day</span>
+              <span><i class="lg lg-nonwork"></i> Non-working</span>
+              <span><i class="lg lg-holiday"></i> Holiday</span>
+              <span><i class="lg lg-workexc"></i> Working exception</span>
+            </div>
           </div>
+
+          <!-- Exceptions live beside the calendar they belong to -->
+          <aside class="cal-exc-panel">
+            <div v-if="workingExceptions.length" class="cal-callout">
+              <div class="cal-callout-head">WORKING EXCEPTIONS ({{ workingExceptions.length }})</div>
+              <button v-for="e in workingExceptions" :key="e.date" class="cal-exc-row cal-exc-work" @click="goToDate(e.date)">
+                <b>{{ formatDate(e.date) }}</b>
+                <span>{{ periodsText(e.periods) }}</span>
+              </button>
+              <p class="cal-callout-note">date deliberately marked to work — often a worked holiday, verify</p>
+            </div>
+
+            <div class="cal-holidays">
+              <div class="cal-panel-head">HOLIDAYS ({{ holidays.length }})</div>
+              <div v-if="holidays.length === 0" class="cal-panel-empty">None modelled in this calendar.</div>
+              <button v-for="e in holidays" :key="e.date" class="cal-exc-row" @click="goToDate(e.date)">
+                <b>{{ formatDate(e.date) }}</b>
+                <span>{{ weekdayName(e.date) }}</span>
+              </button>
+            </div>
+          </aside>
         </div>
 
-        <div class="cal-legend">
-          <span><i class="lg lg-work"></i> Working day</span>
-          <span><i class="lg lg-nonwork"></i> Non-working</span>
-          <span><i class="lg lg-holiday"></i> Holiday exception</span>
-          <span><i class="lg lg-workexc"></i> Working exception <em>(date deliberately marked to work — often a worked holiday, verify!)</em></span>
-        </div>
-
-        <!-- Exception register -->
-        <div class="cal-exceptions">
-          <h3>Exceptions <em>({{ selected.exceptions.length }})</em></h3>
-          <div v-if="selected.exceptions.length === 0" class="empty-state">✓ No exceptions — the weekly pattern applies year-round (also worth questioning: no public holidays modelled?).</div>
-          <table v-else class="data-table exc-table">
-            <thead><tr><th>Date</th><th>Weekday</th><th>Type</th><th>Hours</th></tr></thead>
+        <!-- Which activities actually run on this calendar -->
+        <div class="cal-activities">
+          <div class="cal-act-head">
+            <h3>Activities on this calendar <em>({{ activitiesOnCalendar.length }})</em></h3>
+            <button v-if="activitiesOnCalendar.length > ACT_PAGE" class="btn-tiny-light" @click="showAllActs = !showAllActs">
+              {{ showAllActs ? 'Show fewer' : `Showing ${ACT_PAGE} of ${activitiesOnCalendar.length}` }}
+            </button>
+          </div>
+          <div v-if="activitiesOnCalendar.length === 0" class="cal-panel-empty">No activity uses this calendar.</div>
+          <div v-else class="cal-act-scroll">
+          <table class="data-table act-table">
+            <thead><tr>
+              <th>Code</th><th>Activity</th><th>WBS</th>
+              <th class="num">Dur</th><th class="num">Start</th><th class="num">Finish</th><th class="num">Float</th>
+              <th>Exception in span</th>
+            </tr></thead>
             <tbody>
-              <tr v-for="e in selected.exceptions" :key="e.date" :class="{ 'exc-unusual': isWorkingException(e) }">
-                <td class="num-cell mono">{{ formatDate(e.date) }}</td>
-                <td>{{ weekdayName(e.date) }}</td>
-                <td>
-                  <span class="issue-badge" :class="isWorkingException(e) ? 'issue-severe' : 'issue-warn'">
-                    {{ isWorkingException(e) ? 'Working exception' : 'Non-working (holiday)' }}
-                  </span>
+              <tr v-for="a in visibleActivities" :key="a.task_id" class="jump-row" title="Show in Gantt" @click="$emit('jump', a.task_id)">
+                <td class="code">{{ a.task_code }}</td>
+                <td class="name-cell">{{ a.task_name }}</td>
+                <td class="wbs-cell">{{ a.wbs_path }}</td>
+                <td class="num-cell mono">{{ formatHours(a.duration_hrs, a.calendar_hrs_per_day) }}</td>
+                <td class="num-cell mono">{{ formatDate(displayStart(a)) }}</td>
+                <td class="num-cell mono">{{ formatDate(displayEnd(a)) }}</td>
+                <td class="num-cell mono">{{ formatFloat(a.total_float_hrs, a.calendar_hrs_per_day) }}</td>
+                <td class="mono cal-exc-span">
+                  <span v-if="a.excInSpan" class="exc-hit">{{ formatDate(a.excInSpan) }}</span>
+                  <span v-else class="cal-dash">—</span>
                 </td>
-                <td class="mono">{{ periodsText(e.periods) }}</td>
               </tr>
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </div>
@@ -92,7 +147,8 @@
 </template>
 
 <script>
-import { formatDate } from '../utils/format'
+import { formatDate, formatHours, formatFloat } from '../utils/format'
+import { displayStart, displayEnd } from '../utils/p6'
 
 // P6 weekday keys are 1..7 = Sunday..Saturday; the grid displays Monday-first.
 const P6_KEY_BY_JSDAY = { 0: '1', 1: '2', 2: '3', 3: '4', 4: '5', 5: '6', 6: '7' }
@@ -104,6 +160,7 @@ export default {
   props: {
     data: { type: Object, required: true },
   },
+  emits: ['jump'],
   data() {
     const dd = this.data.project.data_date ? new Date(this.data.project.data_date) : new Date(2000, 0, 1)
     return {
@@ -111,6 +168,8 @@ export default {
       viewYear: dd.getFullYear(),
       viewMonth: dd.getMonth(),
       dayHeaders: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+      showAllActs: false,
+      ACT_PAGE: 10,
     }
   },
   computed: {
@@ -135,6 +194,50 @@ export default {
       if (!this.selected) return ''
       const days = this.workdaysPerWeek(this.selected)
       return `${days}-day week · ${this.selected.day_hr_cnt}h/day · ${this.selected.exceptions.length} exception${this.selected.exceptions.length === 1 ? '' : 's'}`
+    },
+    workingExceptions() {
+      return (this.selected?.exceptions || []).filter(e => e.periods.length > 0)
+    },
+    holidays() {
+      return (this.selected?.exceptions || []).filter(e => e.periods.length === 0)
+    },
+    yearSummary() {
+      const h = this.holidays.length
+      const w = this.workingExceptions.length
+      return `${h} holiday${h === 1 ? '' : 's'} · ${w} working exception${w === 1 ? '' : 's'}`
+    },
+    yearMonths() {
+      const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+      return MON.map((label, i) => {
+        const inMonth = (this.selected?.exceptions || []).filter(
+          e => +e.date.slice(0, 4) === this.viewYear && +e.date.slice(5, 7) - 1 === i)
+        const work = inMonth.some(e => e.periods.length > 0)
+        return {
+          i, label,
+          cls: work ? 'ym-work' : inMonth.length ? 'ym-holiday' : 'ym-none',
+          tip: inMonth.length ? `${inMonth.length} exception${inMonth.length === 1 ? '' : 's'}` : 'No exceptions',
+        }
+      })
+    },
+    // The activities-per-calendar list is a client-side group-by on clndr_id, which
+    // the parse already puts on every activity — no backend change.
+    activitiesOnCalendar() {
+      if (!this.selected) return []
+      const excDates = (this.selected.exceptions || []).map(e => e.date)
+      return this.data.activities
+        .filter(a => a.clndr_id === this.selected.clndr_id)
+        .map(a => {
+          const s = (displayStart(a) || '').slice(0, 10)
+          const e = (displayEnd(a) || s).slice(0, 10)
+          // Flags an activity whose date range covers one of this calendar's
+          // exceptions — where a stripped or worked holiday actually bites.
+          const hit = s ? excDates.find(d => d >= s && d <= e) : null
+          return { ...a, excInSpan: hit || null }
+        })
+        .sort((a, b) => (displayStart(a) || '').localeCompare(displayStart(b) || ''))
+    },
+    visibleActivities() {
+      return this.showAllActs ? this.activitiesOnCalendar : this.activitiesOnCalendar.slice(0, this.ACT_PAGE)
     },
     monthCells() {
       if (!this.selected) return []
@@ -175,6 +278,15 @@ export default {
   },
   methods: {
     formatDate,
+    formatHours,
+    formatFloat,
+    displayStart,
+    displayEnd,
+    goToDate(iso) {
+      const d = new Date(iso + 'T12:00:00')
+      this.viewYear = d.getFullYear()
+      this.viewMonth = d.getMonth()
+    },
     typeLabel(t) {
       return { CA_Base: 'Global', CA_Project: 'Project', CA_Rsrc: 'Resource' }[t] || t
     },
@@ -217,10 +329,6 @@ export default {
 
 <style scoped>
 .cal-wrap { display: flex; flex-direction: column; background: var(--white); border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; }
-.cal-strip { background: var(--nav); color: var(--nav-ink); padding: var(--space-3) var(--space-4); }
-.strip-title { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
-.strip-title h2 { font: var(--text-h2); margin: 0; }
-.strip-sub { font: var(--text-small); color: var(--nav-ink-2); }
 
 .cal-body { display: grid; grid-template-columns: 300px 1fr; gap: 0; }
 .empty-state { font: var(--text-small); color: var(--gray-700); padding: var(--space-4); }
@@ -237,7 +345,7 @@ export default {
 .cal-badge { font: var(--text-micro); padding: 0 6px; border-radius: var(--radius-sm); background: var(--gray-150); color: var(--gray-700); border: 1px solid var(--gray-300); }
 .cal-default { background: var(--active-soft); color: var(--active); border-color: var(--active); }
 
-.cal-detail { padding: var(--space-4); min-width: 0; }
+.cal-detail { padding: var(--space-4); min-width: 0; overflow: hidden; }
 .cal-nav { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .cal-nav-btn { width: 30px; height: 30px; border: 1px solid var(--gray-300); background: var(--white); border-radius: var(--radius-sm); cursor: pointer; font-size: 17px; line-height: 1; color: var(--ink); }
 .cal-nav-btn:hover { background: var(--gray-100); }
@@ -269,6 +377,61 @@ export default {
 .lg-nonwork { background: var(--gray-150); }
 .lg-holiday { background: var(--near-tint); border-color: var(--near); }
 .lg-workexc { background: var(--crit); border-color: var(--crit-deep); }
+
+/* ── Calendar detail: grid + exceptions beside it, activities below ───────── */
+.cal-main { display: grid; grid-template-columns: minmax(0, 1fr) 236px; gap: var(--space-4); align-items: start; }
+.cal-grid-col { min-width: 0; }
+
+.cal-year { display: flex; align-items: center; gap: 3px; margin-top: var(--space-3); flex-wrap: wrap; }
+.cal-year-label { font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em; color: var(--ink-3); margin-right: var(--space-2); }
+.cal-year-month { display: flex; flex-direction: column; align-items: center; gap: 3px; flex: 1; min-width: 34px; background: none; border: none; border-radius: var(--radius-sm); padding: 4px 2px; cursor: pointer; }
+.cal-year-month:hover { background: var(--chip); }
+.cal-year-month.active { background: var(--chip); }
+.cal-year-month i { display: block; width: 100%; height: 4px; border-radius: 2px; }
+.cal-year-month span { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); }
+.cal-year-month.active span { color: var(--ink); font-weight: 600; }
+.ym-none { background: var(--line); }
+.ym-holiday { background: var(--near); }
+.ym-work { background: var(--crit); }
+.cal-year-sum { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); }
+
+.cal-exc-panel { display: flex; flex-direction: column; gap: var(--space-3); }
+.cal-callout { border: 1px solid var(--crit); background: var(--crit-soft); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); }
+.cal-callout-head, .cal-panel-head { font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em; color: var(--crit); margin-bottom: 4px; }
+.cal-panel-head { color: var(--ink-3); }
+.cal-callout-note { font: var(--text-micro); color: var(--crit); font-style: italic; margin-top: 4px; }
+.cal-holidays { border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); }
+.cal-exc-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); width: 100%; background: none; border: none; border-radius: 4px; padding: 3px 4px; cursor: pointer; text-align: left; }
+.cal-exc-row:hover { background: var(--panel); }
+.cal-exc-row b { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--ink); }
+.cal-exc-row span { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); }
+.cal-exc-work b { color: var(--crit); }
+.cal-panel-empty { font: var(--text-small); color: var(--ink-3); }
+
+/* The table is wider than the column on a real schedule. Without its own scroll
+   container it overflows .cal-wrap (overflow:hidden), and clicking anything inside
+   makes the browser scroll the whole card sideways — taking the calendar list
+   off-screen. */
+.cal-activities { margin-top: var(--space-5); min-width: 0; }
+.cal-act-scroll { overflow-x: auto; }
+.cal-act-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-2); }
+.cal-act-head h3 { font: var(--text-h3); color: var(--ink); margin: 0; }
+.cal-act-head h3 em { font-style: normal; color: var(--accent); font-family: var(--font-mono); }
+.act-table { width: 100%; min-width: 880px; border-collapse: collapse; font: var(--text-small); }
+.act-table th { text-align: left; font: var(--text-micro); text-transform: uppercase; color: var(--ink-3); background: var(--panel-2); border-bottom: 2px solid var(--line); padding: var(--space-2) var(--space-3); }
+.act-table th.num { text-align: right; }
+.act-table td { padding: 5px var(--space-3); border-bottom: 1px solid var(--line-soft); }
+.act-table .jump-row { cursor: pointer; }
+.act-table .jump-row:hover td { background: var(--accent-soft); }
+.act-table .code { font-family: var(--font-mono); font-weight: 600; color: var(--accent); white-space: nowrap; }
+.act-table .name-cell { color: var(--ink-2); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-table .wbs-cell { font-family: var(--font-mono); font: var(--text-micro); color: var(--ink-3); max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-exc-span .exc-hit { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--crit); }
+.cal-dash { color: var(--ink-3); }
+
+@media (max-width: 1000px) {
+  .cal-main { grid-template-columns: 1fr; }
+}
 
 .cal-exceptions h3 { font: var(--text-h3); color: var(--ink); margin: 0 0 var(--space-2); }
 .cal-exceptions h3 em { font-style: normal; color: var(--accent); font-family: var(--font-mono); }
