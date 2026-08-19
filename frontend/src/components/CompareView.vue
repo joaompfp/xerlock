@@ -36,6 +36,7 @@
       <span v-if="stability.driverChanged"> &middot; the finish-driving activity changed</span>
     </p>
 
+    <div class="cmp-side-by-side">
     <!-- Milestone movement (dumbbells) -->
     <section class="compare-section" v-if="milestoneMoves.length">
       <button class="section-head" @click="toggle('milestones')">
@@ -88,6 +89,7 @@
         </div>
       </div>
     </section>
+    </div>
 
     <!-- Slipped / pulled ahead -->
     <section class="compare-section">
@@ -523,6 +525,12 @@ export default {
 .tor-bar.tor-gain { background: var(--ok); }
 .tor-delta { font-family: var(--font-mono); font-size: 13px; text-align: right; white-space: nowrap; }
 .tor-note { font: var(--text-micro); color: var(--gray-700); margin-top: var(--space-2); }
+
+/* Milestone movement and the biggest movers answer the same question at two
+   scales; side by side they are read together instead of scrolled between. */
+.cmp-side-by-side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1px; background: var(--line); }
+.cmp-side-by-side > .compare-section { background: var(--panel); border-bottom: none; }
+@media (max-width: 1200px) { .cmp-side-by-side { grid-template-columns: 1fr; } }
 
 .lag-neg { color: var(--crit); font-weight: 700; }
 .lag-pos { color: var(--ok); font-weight: 700; }

@@ -1348,6 +1348,16 @@ th.num { text-align: right !important; }
 .view-bar .strip-title { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; min-width: 0; }
 .view-bar .strip-sub { font: var(--text-small); color: var(--ink-3); }
 
+/* Toggle chip, shared by the Gantt and Critical Path toolbars: solid border with
+   a dot when on, dashed when off. Global because both components use it — defined
+   in one component's scoped block it renders as an unstyled UA button in the other. */
+.tb-chip { display: inline-flex; align-items: center; gap: 5px; border: 1px dashed var(--line); border-radius: 14px; background: var(--panel); color: var(--ink-3); padding: 4px 9px; cursor: pointer; font: var(--text-small); }
+.tb-chip i { width: 6px; height: 6px; border-radius: 50%; background: transparent; border: 1px solid var(--ink-3); }
+.tb-chip:hover { border-color: var(--ink-3); color: var(--ink-2); }
+.tb-chip.on { border-style: solid; border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.tb-chip.on i { background: var(--accent); border-color: var(--accent); }
+
+
 /* ── Shared small buttons ─────────────────────────────────────────────────────
    These three class names are used across five components but each was defined
    in a single component's *scoped* block, so everywhere else they rendered as
