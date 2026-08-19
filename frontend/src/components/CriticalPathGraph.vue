@@ -1,7 +1,7 @@
 <template>
   <div
     class="graph-wrap"
-    :class="{ 'is-fullscreen': isFullscreen, 'extra-room': extraRoom }"
+    :class="{ 'is-fullscreen': isFullscreen }"
     :style="{ '--print-w': printTargetSize.w + 'px', '--print-h': printTargetSize.h + 'px' }"
     ref="wrapEl"
   >
@@ -172,7 +172,6 @@ export default {
   mixins: [fullscreenMixin],
   props: {
     activities: { type: Array, required: true },
-    extraRoom: { type: Boolean, default: false },
     annotations: { type: Object, default: () => ({}) },
     visible: { type: Boolean, default: true },
     projectName: { type: String, default: '' },
@@ -721,11 +720,10 @@ export default {
 .zbtn:last-child { border-right: none; }
 .zbtn:hover { background: var(--gray-150); }
 
-.graph-canvas { position: relative; overflow: hidden; touch-action: none; height: min(75vh, 900px); background: radial-gradient(var(--gray-150) 1.5px, transparent 1.5px) 0 0 / 18px 18px, var(--white); cursor: grab; }
-.graph-wrap.extra-room .graph-canvas { height: calc(100dvh - 208px); min-height: 320px; }
+.graph-canvas { position: relative; overflow: hidden; touch-action: none; height: calc(100dvh - 212px); min-height: 320px; background: radial-gradient(var(--gray-150) 1.5px, transparent 1.5px) 0 0 / 18px 18px, var(--white); cursor: grab; }
 /* Toolbar rows stack taller on narrow screens — leave more room above the canvas */
 @media (max-width: 900px) {
-  .graph-canvas, .graph-wrap.extra-room .graph-canvas { height: calc(100dvh - 260px); min-height: 320px; }
+  .graph-canvas { height: calc(100dvh - 250px); min-height: 320px; }
 }
 .graph-canvas.dragging { cursor: grabbing; }
 
@@ -782,10 +780,10 @@ export default {
      Sized to the selected paper's usable area (a --print-w/-h CSS var set from the
      component) rather than the on-screen min(75vh,900px) — printGraph() already fit
      the diagram's scale/pan to those exact dimensions before calling window.print(). */
-  /* Matches .graph-wrap.extra-room .graph-canvas's specificity — extraRoom is the
+  /* Overrides the on-screen height for print —
      app's default (header collapsed), and that on-screen rule would otherwise win
      over a plain .graph-canvas override here regardless of the media query. */
-  .graph-canvas, .graph-wrap.extra-room .graph-canvas { width: var(--print-w); height: var(--print-h); overflow: visible; background: none; }
+  .graph-wrap .graph-canvas { width: var(--print-w); height: var(--print-h); overflow: visible; background: none; }
   .expand-btn { display: none; }
 }
 

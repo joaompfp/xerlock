@@ -1,5 +1,5 @@
 <template>
-  <div class="gantt-wrap" :class="{ 'is-fullscreen': isFullscreen, 'extra-room': extraRoom }" ref="wrapEl">
+  <div class="gantt-wrap" :class="{ 'is-fullscreen': isFullscreen }" ref="wrapEl">
     <div class="gantt-strip">
       <div class="strip-title">
         <h2>Gantt Chart</h2>
@@ -444,7 +444,6 @@ export default {
   components: { IconChevron, ActivityDetailDrawer },
   props: {
     data: { type: Object, required: true },
-    extraRoom: { type: Boolean, default: false },
     jumpTo: { type: [Number, String], default: null },
     annotations: { type: Object, default: () => ({}) },
     returnTab: { type: String, default: '' },
@@ -1355,12 +1354,11 @@ export default {
 /* Fixed height, not max-height: with a collapsed WBS the viewport used to shrink to
    the handful of visible rows, leaving a cramped partial canvas. A constant-height
    viewport keeps the full working area available no matter how much is expanded. */
-.gantt-scroll { overflow: auto; scrollbar-width: thin; scrollbar-color: var(--nav-ink-2) transparent; height: min(75vh, 900px); position: relative; cursor: grab; }
+.gantt-scroll { overflow: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; height: calc(100dvh - 288px); min-height: 320px; position: relative; cursor: grab; }
 .gantt-scroll.panning { cursor: grabbing; }
-.gantt-wrap.extra-room .gantt-scroll { height: calc(100dvh - 258px); min-height: 320px; }
 /* Controls + filter bar wrap taller on narrow screens — leave more room above the grid */
 @media (max-width: 900px) {
-  .gantt-scroll, .gantt-wrap.extra-room .gantt-scroll { height: calc(100dvh - 445px); min-height: 320px; }
+  .gantt-scroll { height: calc(100dvh - 400px); min-height: 320px; }
 }
 .gantt-grid { display: grid; grid-template-rows: 52px; grid-auto-rows: 20px; position: relative; }
 
