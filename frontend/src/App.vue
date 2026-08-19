@@ -444,10 +444,17 @@ const PARSE_STAGES = [
   'Laying out the Gantt…',
 ]
 
+// Sepia/Slate/Clay/Ink were four variations of one light theme. They collapse into
+// Light; anyone carrying a stored value for them lands there rather than on a broken
+// picker. The storage key is unchanged.
+function normaliseTheme(v) {
+  return v === 'dark' ? 'dark' : 'light'
+}
+
 function applyTheme(theme) {
-  // Default theme lives on :root directly; named themes override via the attribute.
-  if (theme === 'sepia') document.documentElement.removeAttribute('data-theme')
-  else document.documentElement.setAttribute('data-theme', theme)
+  // Light lives on :root directly; dark overrides via the attribute.
+  if (theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark')
+  else document.documentElement.removeAttribute('data-theme')
 }
 
 export default {
@@ -478,13 +485,13 @@ export default {
       currentFilename: '',
       compareFilename: '',
       dismissedWarnings: [],
-      theme: localStorage.getItem('schedule-app:theme') || 'sepia',
+      theme: normaliseTheme(localStorage.getItem('schedule-app:theme')),
       uploadError: null,
       parsingStage: 0,
       jumpOrigin: null,
       tabLabels: { gantt: 'Gantt Chart', story: 'Critical Path', table: 'Activity Table', wbs: 'WBS Tree', progress: 'Progress', health: 'Health Check', compare: 'Compare' },
       exportState: '',
-      themeOptions: { sepia: 'Sepia', slate: 'Slate', clay: 'Clay', ink: 'Ink' },
+      themeOptions: { light: 'Light', dark: 'Dark' },
       compareLoading: false,
       compareDragOver: false,
     }
@@ -808,38 +815,81 @@ export default {
 <style>
 /* ── Design tokens ──────────────────────────────────────────────────────── */
 :root {
-  /* Brand / structural */
-  --ink: #1C1917;
-  --ink-soft: #4A4038;
-  --accent: #2951C4;
-  --accent-soft: #E4EAFB;
+  /* ─────────────────────────────────────────────────────────────────────────
+     Two real themes: light (cool paper) and dark (graphite). Structural colours
+     re-theme; SEMANTIC STATE COLOURS ARE RE-LIT PER THEME BUT KEEP THEIR MEANING,
+     so criticality never changes meaning with the theme.
+     Legacy names at the bottom alias onto these, so components that have not been
+     migrated to the new names still repaint correctly in both themes.
+     ───────────────────────────────────────────────────────────────────────── */
 
-  /* Semantic state — the ONLY colors allowed to represent criticality/float/status,
-     used identically across the Gantt, network diagram, and activity table. */
-  --crit: #A5291D;
-  --crit-tint: #F7E1DC;
-  --near: #8F6300;
-  --near-tint: #F5EBD3;
-  --ok: #3F7355;
-  --ok-tint: #E2ECE3;
-  --milestone: #6A3E9E;
-  --active: #2951C4;
-  --active-soft: #E4EAFB;
-  --crit-deep: #6E150D;
-  /* On-dark variants: the section strips sit on --ink, where the standard
-     semantic colors above fail contrast. Pinned across themes like the rest. */
-  --crit-bright: #F08A7E;
+  /* Surfaces & lines */
+  --bg: #F1F3F5;
+  --panel: #FFFFFF;
+  --panel-2: #F7F8FA;
+  --chip: #EDF0F3;
+  --line: #DEE2E7;
+  --line-soft: #EBEEF1;
+  --weekend: #F2F4F6;
+
+  /* Text */
+  --ink: #14181D;
+  --ink-2: #454E58;
+  --ink-3: #79838E;
+
+  /* Interactive */
+  --accent: #2456E6;
+  --accent-soft: #E8EDFD;
+
+  /* Semantic state */
+  --crit: #B4291B;
+  --crit-soft: #FBE7E3;
+  --near: #8A5F00;
+  --near-soft: #FAF1DA;
+  --ok: #2F6B4A;
+  --ok-soft: #E5EFE8;
+  --ms: #6A3E9E;
+
+  /* Text drawn ON a solid semantic fill. Must flip: dark-theme semantics are
+     luminous, so white lettering on them would be unreadable. */
+  --on-solid: #FFFFFF;
+
+  /* Navigation / section strips — graphite in BOTH themes */
+  --nav: #171C23;
+  --nav-2: #1F262F;
+  --nav-line: #2B333D;
+  --nav-ink: #FFFFFF;
+  --nav-ink-2: #AAB4C0;
+  --nav-ink-3: #78838F;
+
+  /* Semantic variants for use on the graphite ground, where the standard
+     light-theme semantics fail contrast. */
+  --crit-bright: #FF8272;
   --near-bright: #E3B341;
   --ok-bright: #7FC49A;
 
-  /* Neutrals (warm stone scale — paper/graphite, not blue-gray) */
-  --gray-900: #1F1B17;
-  --gray-700: #5C5347;
-  --gray-500: #8C8175;
-  --gray-300: #DCD5C9;
-  --gray-150: #F1ECE4;
-  --gray-100: #F8F5F0;
-  --white: #FFFFFF;
+  /* Derived chart values */
+  --crit-deep: #7A1A10;
+  --float-tail: #CBD2D9;
+  --bar-normal-fill: rgba(36,86,230,0.16);
+  --bar-progress: rgba(20,24,29,0.30);
+
+  /* Legacy aliases — resolved at use time, so they re-theme automatically.
+     Components adopt the names above view by view as the redesign lands. */
+  --white: var(--panel);
+  --ink-soft: var(--ink-2);
+  --gray-100: var(--panel-2);
+  --gray-150: var(--chip);
+  --gray-300: var(--line);
+  --gray-500: var(--ink-3);
+  --gray-700: var(--ink-2);
+  --gray-900: var(--ink);
+  --crit-tint: var(--crit-soft);
+  --near-tint: var(--near-soft);
+  --ok-tint: var(--ok-soft);
+  --milestone: var(--ms);
+  --active: var(--accent);
+  --active-soft: var(--accent-soft);
 
   /* Type */
   --font-ui: "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -869,52 +919,57 @@ export default {
    criticality must read the same no matter the wallpaper. */
 
 /* Slate — cool graphite neutrals, deep indigo accent. */
-[data-theme="slate"] {
-  --ink: #16181D;
-  --ink-soft: #3A414E;
-  --accent: #3A55C0;
-  --accent-soft: #E3E8FA;
-  --gray-900: #191B1F;
-  --gray-700: #4A5160;
-  --gray-500: #7C8494;
-  --gray-300: #D4D8DF;
-  --gray-150: #ECEEF2;
-  --gray-100: #F5F6F8;
+[data-theme="dark"] {
+  --bg: #0C0F13;
+  --panel: #14181E;
+  --panel-2: #191F26;
+  --chip: #222A33;
+  --line: #262E38;
+  --line-soft: #1D242B;
+  --weekend: #10151A;
+
+  --ink: #E9EDF2;
+  --ink-2: #AEB8C4;
+  --ink-3: #7A8590;
+
+  --accent: #7BA2FF;
+  --accent-soft: #1A2740;
+
+  --crit: #FF8272;
+  --crit-soft: #331A19;
+  --near: #E3B341;
+  --near-soft: #2E2413;
+  --ok: #7FC49A;
+  --ok-soft: #16261D;
+  --ms: #B98BFF;
+
+  /* the semantics are luminous here, so lettering on them goes dark */
+  --on-solid: #12161B;
+
+  --nav: #080B0E;
+  --nav-2: #12171D;
+  --nav-line: #1E252D;
+  --nav-ink: #E9EDF2;
+  --nav-ink-2: #A6B0BC;
+  --nav-ink-3: #6F7A85;
+
+  /* already luminous — the graphite ground needs no separate variant */
+  --crit-bright: #FF8272;
+  --near-bright: #E3B341;
+  --ok-bright: #7FC49A;
+
+  --crit-deep: #FFB3A8;
+  --float-tail: #39424D;
+  --bar-normal-fill: rgba(123,162,255,0.20);
+  --bar-progress: rgba(233,237,242,0.28);
 }
 
-/* Clay — the sepia warmth pushed further: terracotta accent on warm paper. */
-[data-theme="clay"] {
-  --ink: #221A15;
-  --ink-soft: #52453C;
-  --accent: #A6491F;
-  --accent-soft: #F6E2D7;
-  --gray-900: #241C16;
-  --gray-700: #5E5248;
-  --gray-500: #8E8276;
-  --gray-300: #DED5CA;
-  --gray-150: #F2ECE4;
-  --gray-100: #F9F5F0;
-}
-
-/* Ink — near-monochrome: pure neutrals, near-black accent, minimal chrome. */
-[data-theme="ink"] {
-  --ink: #111111;
-  --ink-soft: #3D3D3D;
-  --accent: #1F1F1F;
-  --accent-soft: #E9E9E9;
-  --gray-900: #1A1A1A;
-  --gray-700: #4F4F4F;
-  --gray-500: #8A8A8A;
-  --gray-300: #D9D9D9;
-  --gray-150: #EFEFEF;
-  --gray-100: #F7F7F7;
-}
 
 /* ── Reset & base ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 button, input, select, textarea { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
-body { font-family: var(--font-ui); background: var(--white); color: var(--ink); font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+body { font-family: var(--font-ui); background: var(--bg); color: var(--ink); font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
 
 /* Every number in the app reads as instrument output, not prose — codes, dates,
    durations, floats, percentages all get tabular monospace digits. */
@@ -972,7 +1027,7 @@ th.num { text-align: right !important; }
 .sample-link:hover strong { text-decoration: underline; }
 .sample-sub { font: var(--text-micro); color: var(--gray-500); margin-top: 4px; }
 .upload-error { margin-top: var(--space-3); font: var(--text-small); color: var(--crit); background: var(--crit-tint); border: 1px solid var(--crit); border-radius: var(--radius-sm); padding: 8px 12px; }
-.tab-report-btn { margin-left: var(--space-2); margin-bottom: 4px; padding: 5px 12px; font: var(--text-small); font-weight: 700; color: var(--white); background: var(--accent); border: none; border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap; }
+.tab-report-btn { margin-left: var(--space-2); margin-bottom: 4px; padding: 5px 12px; font: var(--text-small); font-weight: 700; color: var(--on-solid); background: var(--accent); border: none; border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap; }
 .tab-report-btn:hover { opacity: 0.92; }
 .tab-report-btn:disabled { opacity: 0.6; cursor: default; }
 .gh-link:hover { color: var(--accent); }
@@ -1076,7 +1131,7 @@ th.num { text-align: right !important; }
 /* Float colors — same crit/near tokens as every other surface */
 .float-crit { color: var(--crit); font-weight: 700; }
 .float-near { color: var(--near); font-weight: 600; }
-.float-neg { color: var(--white); background: var(--crit); font-weight: 700; padding: 1px 6px; border-radius: var(--radius-sm); }
+.float-neg { color: var(--on-solid); background: var(--crit); font-weight: 700; padding: 1px 6px; border-radius: var(--radius-sm); }
 
 /* Relationship panel (inline) */
 .rel-row td { background: var(--gray-100) !important; padding: var(--space-3) var(--space-4); }
@@ -1146,6 +1201,22 @@ th.num { text-align: right !important; }
   .data-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 }
 
+/* ── Shared small buttons ─────────────────────────────────────────────────────
+   These three class names are used across five components but each was defined
+   in a single component's *scoped* block, so everywhere else they rendered as
+   unstyled UA buttons (most visibly the annotation editor's Save). Defined once
+   here, globally, where the tokens already live. */
+.btn-tiny, .btn-tiny-light, .ctrl-btn {
+  padding: 4px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--panel); cursor: pointer; font: var(--text-small); color: var(--ink-2);
+}
+.btn-tiny:hover:not(:disabled), .btn-tiny-light:hover:not(:disabled), .ctrl-btn:hover:not(:disabled) {
+  background: var(--chip);
+}
+.btn-tiny:disabled, .btn-tiny-light:disabled, .ctrl-btn:disabled { opacity: 0.4; cursor: default; }
+.ctrl-btn-accent { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.ctrl-btn-accent:hover:not(:disabled) { background: var(--accent-soft); }
+
 /* ── Shared detail drawer (Gantt + Critical Path) ─────────────────────────── */
 .detail-drawer { position: fixed; top: 0; right: 0; bottom: 0; height: 100vh; width: 420px; max-width: 92vw; background: var(--white); border-left: 1px solid var(--gray-300); box-shadow: -8px 0 24px rgba(28,25,23,0.14); z-index: 15; overflow-y: auto; box-sizing: border-box; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-5); }
 .detail-slide-enter-active, .detail-slide-leave-active { transition: transform 0.2s ease, opacity 0.2s ease; }
@@ -1174,7 +1245,7 @@ th.num { text-align: right !important; }
 .stat-tile-near { background: var(--near-tint); border-color: var(--near); }
 .stat-tile-near .stat-value { color: var(--near); }
 .stat-tile-neg { background: var(--crit); border-color: var(--crit); }
-.stat-tile-neg .stat-value, .stat-tile-neg .stat-label { color: var(--white); }
+.stat-tile-neg .stat-value, .stat-tile-neg .stat-label { color: var(--on-solid); }
 
 .detail-constraint { background: var(--near-tint); border: 1px solid var(--near); border-radius: var(--radius-sm); padding: 7px 10px; font-size: 13px; color: var(--ink-soft); display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
 .detail-constraint .constraint-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--near); }
@@ -1194,7 +1265,7 @@ th.num { text-align: right !important; }
 .rel-dates { font-family: var(--font-mono); font-size: 12px; color: var(--gray-700); }
 .rel-dur { font-family: var(--font-mono); font-size: 12px; color: var(--gray-700); margin-left: auto; }
 .rel-lag { font-size: 11px; color: var(--gray-500); font-style: italic; }
-.rel-driving { flex-shrink: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--white); background: var(--crit); padding: 1px 7px; border-radius: 9px; }
+.rel-driving { flex-shrink: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--on-solid); background: var(--crit); padding: 1px 7px; border-radius: 9px; }
 @media print {
   /* App chrome (nav tabs, header, metrics, warning banners) isn't part of the printed
      report — without hiding it, it sits in normal document flow at the top of page 1

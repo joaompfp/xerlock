@@ -760,18 +760,18 @@ export default {
 
 <style scoped>
 .health-wrap { display: flex; flex-direction: column; background: var(--white); border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; }
-.health-strip { background: var(--ink); color: var(--white); padding: var(--space-3) var(--space-4); display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
+.health-strip { background: var(--nav); color: var(--nav-ink); padding: var(--space-3) var(--space-4); display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
 .strip-title { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
 .strip-title h2 { font: var(--text-h2); margin: 0; }
-.strip-sub { font: var(--text-small); color: var(--gray-300); }
+.strip-sub { font: var(--text-small); color: var(--nav-ink-2); }
 .strip-score { display: flex; align-items: center; gap: var(--space-3); }
 .score-num { font-family: var(--font-mono); font-size: 27px; font-weight: 800; }
 .score-good { color: var(--ok-bright); }
 .score-mid { color: var(--near-bright); }
 .score-bad { color: var(--crit-bright); }
-.score-detail { font: var(--text-micro); color: var(--gray-300); max-width: 120px; }
-.cfg-btn { font: var(--text-small); background: transparent; color: var(--gray-300); border: 1px solid var(--gray-500); border-radius: var(--radius-sm); padding: 4px 10px; cursor: pointer; }
-.cfg-btn:hover, .cfg-btn.active { color: var(--white); border-color: var(--white); }
+.score-detail { font: var(--text-micro); color: var(--nav-ink-2); max-width: 120px; }
+.cfg-btn { font: var(--text-small); background: transparent; color: var(--nav-ink-2); border: 1px solid var(--nav-ink-3); border-radius: var(--radius-sm); padding: 4px 10px; cursor: pointer; }
+.cfg-btn:hover, .cfg-btn.active { color: var(--nav-ink); border-color: var(--nav-ink); }
 
 .cfg-panel { border-bottom: 1px solid var(--gray-300); background: var(--gray-100); padding: var(--space-3) var(--space-4); }
 .cfg-table { border-collapse: collapse; font: var(--text-small); }
@@ -838,6 +838,6 @@ export default {
 .to-gantt { border: 1px solid var(--gray-300); background: var(--white); color: var(--gray-700); border-radius: var(--radius-sm); width: 22px; height: 22px; line-height: 1; cursor: pointer; font-size: 12px; padding: 0; }
 .to-gantt:hover { background: var(--active-soft); color: var(--active); border-color: var(--active); }
 .issue-badge { font: var(--text-micro); padding: 1px 7px; border-radius: var(--radius-sm); font-weight: 600; }
-.issue-severe { background: var(--crit); color: var(--white); }
+.issue-severe { background: var(--crit); color: var(--on-solid); }
 .issue-warn { background: var(--near-tint); color: var(--near); }
 </style>

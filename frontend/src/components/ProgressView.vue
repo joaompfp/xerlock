@@ -232,10 +232,10 @@ export default {
 
 <style scoped>
 .progress-wrap { display: flex; flex-direction: column; background: var(--white); border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; }
-.progress-strip { background: var(--ink); color: var(--white); padding: var(--space-3) var(--space-4); }
+.progress-strip { background: var(--nav); color: var(--nav-ink); padding: var(--space-3) var(--space-4); }
 .strip-title { display: flex; align-items: baseline; gap: var(--space-3); }
 .strip-title h2 { font: var(--text-h2); margin: 0; }
-.strip-sub { font: var(--text-small); color: var(--gray-300); }
+.strip-sub { font: var(--text-small); color: var(--nav-ink-2); }
 
 .progress-section { border-bottom: 1px solid var(--gray-300); }
 .progress-section:last-child { border-bottom: none; }

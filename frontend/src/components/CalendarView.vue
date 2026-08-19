@@ -217,10 +217,10 @@ export default {
 
 <style scoped>
 .cal-wrap { display: flex; flex-direction: column; background: var(--white); border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; }
-.cal-strip { background: var(--ink); color: var(--white); padding: var(--space-3) var(--space-4); }
+.cal-strip { background: var(--nav); color: var(--nav-ink); padding: var(--space-3) var(--space-4); }
 .strip-title { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
 .strip-title h2 { font: var(--text-h2); margin: 0; }
-.strip-sub { font: var(--text-small); color: var(--gray-300); }
+.strip-sub { font: var(--text-small); color: var(--nav-ink-2); }
 
 .cal-body { display: grid; grid-template-columns: 300px 1fr; gap: 0; }
 .empty-state { font: var(--text-small); color: var(--gray-700); padding: var(--space-4); }
@@ -257,8 +257,8 @@ export default {
 .cal-holiday { background: var(--near-tint); border-color: var(--near); }
 .cal-holiday .cal-day-num { color: var(--near); font-weight: 700; }
 .cal-workexc { background: var(--crit); border-color: var(--crit-deep); }
-.cal-workexc .cal-day-num, .cal-workexc .cal-day-hrs { color: var(--white); font-weight: 700; }
-.cal-flag { position: absolute; top: 2px; right: 5px; color: var(--white); font-weight: 800; }
+.cal-workexc .cal-day-num, .cal-workexc .cal-day-hrs { color: var(--on-solid); font-weight: 700; }
+.cal-flag { position: absolute; top: 2px; right: 5px; color: var(--on-solid); font-weight: 800; }
 .cal-other { opacity: 0.35; }
 .cal-datadate { outline: 2px solid var(--active); outline-offset: -2px; }
 
@@ -279,7 +279,7 @@ export default {
 .mono { font-family: var(--font-mono); }
 .num-cell { white-space: nowrap; }
 .issue-badge { font: var(--text-micro); padding: 1px 7px; border-radius: var(--radius-sm); font-weight: 600; }
-.issue-severe { background: var(--crit); color: var(--white); }
+.issue-severe { background: var(--crit); color: var(--on-solid); }
 .issue-warn { background: var(--near-tint); color: var(--near); }
 
 @media (max-width: 900px) {

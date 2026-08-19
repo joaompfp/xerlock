@@ -441,10 +441,10 @@ export default {
 
 <style scoped>
 .compare-wrap { display: flex; flex-direction: column; background: var(--white); border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; }
-.compare-strip { background: var(--ink); color: var(--white); padding: var(--space-3) var(--space-4); display: flex; align-items: center; justify-content: space-between; }
+.compare-strip { background: var(--nav); color: var(--nav-ink); padding: var(--space-3) var(--space-4); display: flex; align-items: center; justify-content: space-between; }
 .strip-title { display: flex; align-items: baseline; gap: var(--space-3); }
 .strip-title h2 { font: var(--text-h2); margin: 0; }
-.strip-sub { font: var(--text-small); color: var(--gray-300); }
+.strip-sub { font: var(--text-small); color: var(--nav-ink-2); }
 
 .scorecard { display: flex; flex-wrap: wrap; gap: 1px; background: var(--gray-300); border-bottom: 1px solid var(--gray-300); }
 .score-item { flex: 1; min-width: 110px; background: var(--white); padding: var(--space-3); text-align: center; }
