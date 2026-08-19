@@ -161,6 +161,18 @@ The container serves the whole app on port 8000. Put your reverse proxy of choic
 > Python image. If you prefer building inside Docker, a multi-stage
 > `node:20-alpine → python:3.12-slim` Dockerfile works too.
 
+## Tests
+
+```bash
+pip install -r requirements-dev.txt && pytest        # backend: parser, calendars, API
+cd frontend && npm install && npm run test:run       # frontend: pure utils, geometry
+```
+
+The backend suite pins the numerically load-bearing behaviour — longest-path trace,
+driving-relationship flags, float/day conversion, the display-date convention, calendar
+exception decoding — plus the API contract, including that no uploaded file survives the
+request. Both suites run on every push (`.github/workflows/test.yml`).
+
 ## Development notes
 
 - All colors/typography/spacing are CSS custom properties defined once in `App.vue` (`:root`
@@ -170,6 +182,10 @@ The container serves the whole app on port 8000. Put your reverse proxy of choic
   (Chromium mis-renders sticky grid items near scroll boundaries); positions are tracked
   manually from the scroll handler. See comments in `GanttChart.vue`.
 - Numeric text (codes, dates, durations, floats) renders in tabular monospace app-wide.
+- Timeline maths lives in `utils/ganttGeometry.js` and paper sizes in `utils/paper.js`,
+  both pure and unit-tested; `mixins/fullscreen.js` carries the fullscreen lifecycle shared
+  by the two charts. The charts' pan implementations are deliberately *not* shared — the
+  Gantt pans a scroll container, the network diagram pans an SVG transform.
 - `docs/DESIGN_TOKENS.md` is the authoritative reference for the design system as implemented
   (generated from `App.vue`: every token, its value, which themes override it, and which
   components consume it). `docs/DESIGN_SPEC.md` records the original design-review that

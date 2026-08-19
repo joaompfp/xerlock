@@ -147,7 +147,9 @@
 import dagre from 'dagre'
 import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
 import { formatDate, formatHours, formatLag, statusLabel, isMilestone, formatFloat, formatDateRange } from '../utils/format'
+import fullscreenMixin from '../mixins/fullscreen'
 import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
+import { PAPER_SIZES, usableWidthPx, usableHeightPx } from '../utils/paper'
 
 const NEAR_CRITICAL_THRESHOLD_HRS = 80 // 10 working days
 const NODE_WIDTH = 210
@@ -161,17 +163,13 @@ const CANVAS_PADDING = 30
 // px/inch, minus a ~15px safety buffer. Unlike the Gantt (a long row list needing real
 // pagination), this diagram is a 2D layout — it just needs to fit on ONE page, so both
 // width and height matter, not only width.
-const PAPER_SIZES = {
-  a4: { label: 'A4', pageCss: 'A4', wMm: 297, hMm: 210 },
-  a3: { label: 'A3', pageCss: 'A3', wMm: 420, hMm: 297 },
-  letter: { label: 'Letter', pageCss: 'letter', wMm: 279.4, hMm: 215.9 },
-}
-function mmToUsablePx(mm) {
-  return Math.round((mm - 20) * (96 / 25.4)) - 20
-}
+// 20px safety buffer: tuned against this diagram's printed output — deliberately
+// not the Gantt's value (see utils/paper.js).
+const PRINT_BUFFER_PX = 20
 
 export default {
   name: 'CriticalPathGraph',
+  mixins: [fullscreenMixin],
   props: {
     activities: { type: Array, required: true },
     extraRoom: { type: Boolean, default: false },
@@ -193,7 +191,6 @@ export default {
       panStart: null,
       animating: false,
       canvasWidth: 900,
-      isFullscreen: false,
       printPaperSize: 'a4',
       paperSizes: PAPER_SIZES,
     }
@@ -217,7 +214,6 @@ export default {
       })
       this._resizeObserver.observe(this.$refs.canvas)
     }
-    document.addEventListener('fullscreenchange', this.onFullscreenChange)
     this.$nextTick(this.resetView)
   },
   beforeUnmount() {
@@ -225,7 +221,6 @@ export default {
     document.removeEventListener('mousedown', this._onDocMousedown)
     this._resizeObserver?.disconnect()
     clearTimeout(this._animTimer)
-    document.removeEventListener('fullscreenchange', this.onFullscreenChange)
   },
   watch: {
     activities() {
@@ -279,8 +274,10 @@ export default {
       return ids
     },
     printTargetSize() {
-      const p = this.paperSizes[this.printPaperSize] || this.paperSizes.a4
-      return { w: mmToUsablePx(p.wMm), h: mmToUsablePx(p.hMm) }
+      return {
+        w: usableWidthPx(this.printPaperSize, PRINT_BUFFER_PX),
+        h: usableHeightPx(this.printPaperSize, PRINT_BUFFER_PX),
+      }
     },
     isolationActive() {
       return this.isolatedIds !== null
@@ -677,15 +674,9 @@ export default {
         my: (a.clientY + b.clientY) / 2,
       }
     },
-    toggleFullscreen() {
-      if (document.fullscreenElement) {
-        document.exitFullscreen()
-      } else if (this.$refs.wrapEl.requestFullscreen) {
-        this.$refs.wrapEl.requestFullscreen()
-      }
-    },
-    onFullscreenChange() {
-      this.isFullscreen = !!document.fullscreenElement
+    // Hook called by the fullscreen mixin: the diagram must re-fit to the new
+    // viewport, where the Gantt simply reflows.
+    onFullscreenChanged() {
       this.$nextTick(this.resetView)
     },
   },
