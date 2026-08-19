@@ -310,6 +310,62 @@
       </div>
     </div>
 
+    <!-- Print-only table: a real <table><thead> so the column/date header repeats on
+         every printed page and rows can never be silently dropped by pagination. The
+         interactive view above (position:absolute rows, an SVG links overlay spanning
+         the whole multi-page canvas) proved unsafe for print in Chromium — confirmed
+         by extracting text from a real multi-page printout and diffing activity codes
+         against the source data: a fixed/repeating header there hid whole rows, and a
+         CSS transform scale-to-fit corrupted the links overlay. Real table rows don't
+         get split or dropped across page breaks, and <thead> repetition is native
+         browser behavior, not a CSS trick. Cross-row relationship links are left out
+         of the printout by design — the Critical Path tab is the tool for tracing
+         those; a shared canvas is exactly the mechanism that made printing unsafe. -->
+    <table class="print-table">
+      <colgroup>
+        <col :style="{ width: labelColWidth + 'px' }" />
+        <col class="pt-col-num" />
+        <col class="pt-col-date" />
+        <col class="pt-col-date" />
+        <col :style="{ width: totalWidth + 'px' }" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th class="pt-label">Activity</th>
+          <th class="pt-num">Dur</th>
+          <th class="pt-num">Start</th>
+          <th class="pt-num">Finish</th>
+          <th class="pt-timeline">
+            <span v-for="t in monthTicks" :key="t.x" class="pt-tick" :style="{ left: t.x + 'px' }">{{ t.label }}</span>
+            <span v-if="printDataDateX !== null" class="pt-dd-tick" :style="{ left: printDataDateX + 'px' }">Data date</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="row in rows" :key="row.key" :class="{ 'pt-wbs-row': row.type === 'wbs', 'pt-stripe': row.index % 2 === 1 }">
+          <template v-if="row.type === 'wbs'">
+            <td class="pt-label" :style="{ paddingLeft: (8 + row.level * 11) + 'px' }">{{ row.name }}</td>
+            <td class="pt-num">{{ row.count }}</td>
+            <td class="pt-num"></td>
+            <td class="pt-num"></td>
+            <td class="pt-timeline">
+              <div v-if="row.start && row.finish" class="g-bar-wbs" :style="wbsBarStyle(row)"></div>
+            </td>
+          </template>
+          <template v-else>
+            <td class="pt-label" :style="{ paddingLeft: (8 + row.level * 11) + 'px' }">{{ row.activity.task_code }} &nbsp;{{ row.activity.task_name }}</td>
+            <td class="pt-num">{{ formatHours(row.activity.duration_hrs, row.activity.calendar_hrs_per_day) }}</td>
+            <td class="pt-num">{{ formatDateShort(displayStart(row.activity)) }}</td>
+            <td class="pt-num">{{ formatDateShort(displayEnd(row.activity)) }}</td>
+            <td class="pt-timeline">
+              <div v-if="row.milestone" class="g-milestone" :class="row.cls" :style="{ left: row.x + 'px' }"></div>
+              <div v-else class="g-bar" :class="row.cls" :style="{ left: row.x + 'px', width: row.w + 'px' }"></div>
+            </td>
+          </template>
+        </tr>
+      </tbody>
+    </table>
+
     <ActivityDetailDrawer
       :activity="selectedActivity"
       :lookup="actLookup"
@@ -619,6 +675,14 @@ export default {
       const x = Math.round(((dd - this.rangeStart) / 86400000) * this.dayWidth)
       // When the file is fresh, data date ≈ today — don't stack two flags on one pixel.
       return this.todayX !== null && Math.abs(x - this.todayX) < 3 ? null : x
+    },
+    // Print has no "Today" marker at all (today's date isn't meaningful once printed
+    // and later read), so the data date always shows, unlike the on-screen version.
+    printDataDateX() {
+      if (!this.data.project.data_date) return null
+      const dd = new Date(this.data.project.data_date)
+      if (isNaN(dd) || dd < this.rangeStart || dd > this.rangeEnd) return null
+      return Math.round(((dd - this.rangeStart) / 86400000) * this.dayWidth)
     },
     codeTypesAvailable() {
       return this.data.project.has_activity_codes ? this.data.project.activity_code_types : []
@@ -1423,21 +1487,29 @@ export default {
    at a glance instead of buried in an inline sentence. */
 
 
+.print-table { display: none; }
+
 @media print {
-  /* A repeating position:fixed header was tried here and reverted: Chromium does not
-     reliably fragment position:absolute content (this chart's rows, links overlay,
-     today/data-date lines are all absolutely positioned) across printed page breaks —
-     the fixed header ended up painting over rows that were themselves misplaced by the
-     pagination, hiding real content rather than just looking imperfect. A correct
-     repeating header needs a genuine print-only <table><thead> rendering path (browsers
-     DO fragment real tables correctly); until that's built, the header prints once on
-     page 1, which is lossless even if less convenient on later pages. */
   @page { size: landscape; margin: 10mm; }
   .gantt-strip, .gantt-controls, .filter-bar { display: none; }
-  .gantt-wrap, .gantt-wrap.is-fullscreen { border: none; box-shadow: none; height: auto; display: block; }
-  .gantt-scroll { height: auto !important; max-height: none !important; overflow: visible; cursor: default; }
-  .g-corner, .g-timeline-header, .g-label { position: static; }
-  .g-resize-handle { display: none; }
+  .gantt-wrap, .gantt-wrap.is-fullscreen { border: none; box-shadow: none; height: auto; overflow: visible; display: block; }
+  /* The interactive canvas (position:absolute rows, an SVG links overlay spanning the
+     whole multi-page height) doesn't survive Chromium's print pagination reliably —
+     see the print-table's own template comment for what was tried and why it's a real
+     <table> instead. */
+  .gantt-scroll, .gantt-grid { display: none !important; }
+  .print-table { display: table; width: 100%; border-collapse: collapse; table-layout: fixed; font: 11px/1.4 var(--font-ui); }
+  .print-table thead { display: table-header-group; }
+  .print-table th, .print-table td { border-bottom: 1px solid var(--gray-300); padding: 0 6px; height: 20px; box-sizing: border-box; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .print-table th { text-align: left; font-weight: 700; color: var(--gray-700); background: var(--gray-100); border-bottom: 2px solid var(--gray-300); height: 28px; }
+  .pt-num, .pt-col-num { font-family: var(--font-mono); text-align: right; width: 42px; }
+  .pt-col-date { width: 52px; }
+  .pt-timeline { position: relative; padding: 0; }
+  .pt-stripe { background: var(--gray-100); }
+  .pt-wbs-row { font-weight: 700; background: var(--gray-150); }
+  .pt-tick { position: absolute; top: 6px; font: 700 10px var(--font-ui); color: var(--ink); white-space: nowrap; }
+  .pt-dd-tick { position: absolute; top: 6px; font: 700 9px var(--font-mono); color: var(--white); background: var(--milestone); padding: 1px 4px; border-radius: 2px; transform: translateX(-4px); white-space: nowrap; }
+  .print-table .g-bar, .print-table .g-milestone, .print-table .g-bar-wbs { position: absolute; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 }
 </style>
