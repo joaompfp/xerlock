@@ -275,7 +275,7 @@ export default {
 .exc-table { width: 100%; border-collapse: collapse; font: var(--text-small); }
 .exc-table th { text-align: left; font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); background: var(--gray-100); border-bottom: 2px solid var(--gray-300); padding: var(--space-2) var(--space-3); }
 .exc-table td { padding: 5px var(--space-3); border-bottom: 1px solid var(--gray-150); }
-.exc-unusual td { background: var(--crit-tint, rgba(165,41,29,0.07)); }
+.exc-unusual td { background: var(--crit-tint); }
 .mono { font-family: var(--font-mono); }
 .num-cell { white-space: nowrap; }
 .issue-badge { font: var(--text-micro); padding: 1px 7px; border-radius: var(--radius-sm); font-weight: 600; }

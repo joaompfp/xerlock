@@ -5,6 +5,11 @@ Prepared as a pre-sprint design review. Part 1 is the critique (evidence-based, 
 the app loaded with a real-world construction schedule — a 483-activity `.xer` export). Part 2 is
 an implementable spec for the next sprint.
 
+> **Historical record.** This document captures the review that produced the current visual
+> system; it has not been updated as the system evolved, so some values here no longer match
+> the code (e.g. it specifies `--text-h2` at 16px; the implemented value is 17px).
+> For the design system **as implemented**, see [DESIGN_TOKENS.md](DESIGN_TOKENS.md).
+
 ---
 
 ## Part 1 — Critique
