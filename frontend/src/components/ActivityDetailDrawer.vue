@@ -79,6 +79,8 @@
       <AnnotationEditor
         :key="activity.task_id"
         :annotation="annotations[activity.task_id] || null"
+        :activity="activity"
+        :project-name="projectName"
         @save="patch => $emit('annotate', activity.task_id, patch)"
         @remove="$emit('unannotate', activity.task_id)"
       />
@@ -102,6 +104,7 @@ export default {
     // When set (Critical Path), rel entries absent from this set get a "not shown" badge
     visibleIds: { type: Set, default: null },
     showJump: { type: Boolean, default: false },
+    projectName: { type: String, default: '' },
   },
   emits: ['close', 'select', 'jump', 'annotate', 'unannotate'],
   computed: {

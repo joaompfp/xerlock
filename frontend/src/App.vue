@@ -167,6 +167,7 @@
           :extra-room="headerCollapsed"
           :visible="tab === 'story'"
           :annotations="annotations"
+          :project-name="data.project.proj_short_name"
           @annotate="setAnnotation"
           @unannotate="removeAnnotationFor"
         />
@@ -1139,7 +1140,14 @@ th.num { text-align: right !important; }
 .rel-dur { font-family: var(--font-mono); font-size: 12px; color: var(--gray-700); margin-left: auto; }
 .rel-lag { font-size: 11px; color: var(--gray-500); font-style: italic; }
 .rel-driving { flex-shrink: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--white); background: var(--crit); padding: 1px 7px; border-radius: 9px; }
-@media print { .detail-drawer { display: none; } }
+@media print {
+  /* App chrome (nav tabs, header, metrics, warning banners) isn't part of the printed
+     report — without hiding it, it sits in normal document flow at the top of page 1
+     while the Gantt's own fixed, repeating column header (position: fixed, so it can
+     repeat on every page) paints on top of it, since fixed elements ignore flow. */
+  .detail-drawer, .tabs, .header, .metrics-strip, .parse-warnings { display: none; }
+  .dashboard { padding: 0; }
+}
 
 @media (max-width: 540px) {
   .detail-drawer { width: 100vw; max-width: 100vw; border-left: none; }

@@ -1,4 +1,4 @@
-import { statusLabel, formatDate } from './format'
+import { statusLabel, formatDate, formatFloat } from './format'
 import { SEVERITY_LABELS } from './annotations'
 import { relTypeLabel, displayStart, displayEnd } from './p6'
 
@@ -286,6 +286,46 @@ export async function exportReviewReport(data, annotations) {
   ws.autoFilter = { from: { row: headerRowNum, column: 1 }, to: { row: headerRowNum, column: ws.columns.length } }
 
   await downloadWorkbook(wb, `${slug(data.project.proj_short_name)}-review-report.xlsx`)
+}
+
+/**
+ * Plain-text rendering of a single activity's review note — the shareable unit when a
+ * reviewer wants to paste or send one finding, rather than the whole Review Report.
+ */
+function formatNoteText(projectName, activity, annotation) {
+  const lines = [
+    'XERlock — Review Note',
+    projectName ? `Project: ${projectName}` : null,
+    `Activity: ${activity.task_code} — ${activity.task_name}`,
+    activity.wbs_path ? `WBS: ${activity.wbs_path}` : null,
+    `Severity: ${SEVERITY_LABELS[annotation.severity] || '—'}`,
+    `Dates: ${formatDate(displayStart(activity))} → ${formatDate(displayEnd(activity))} · Float: ${formatFloat(activity.total_float_hrs, activity.calendar_hrs_per_day)}`,
+    annotation.updatedAt ? `Logged: ${new Date(annotation.updatedAt).toLocaleString('en-GB')}` : null,
+    '',
+    annotation.note || '(no note text — severity flag only)',
+  ]
+  return lines.filter(l => l !== null).join('\n')
+}
+
+/** Copies one activity's note to the clipboard as plain text. Resolves false if the
+ * Clipboard API is unavailable or blocked (e.g. insecure context) — caller shows an
+ * error rather than silently failing. */
+export async function copyNoteToClipboard(projectName, activity, annotation) {
+  const text = formatNoteText(projectName, activity, annotation)
+  if (!navigator.clipboard) return false
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Downloads one activity's note as a standalone .txt file. */
+export function exportNoteTxt(projectName, activity, annotation) {
+  const text = formatNoteText(projectName, activity, annotation)
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8;' })
+  triggerDownload(blob, `${slug(activity.task_code)}-note.txt`)
 }
 
 function csvEscape(v) {
