@@ -38,7 +38,7 @@ describe('display-date convention', () => {
   })
 
   it('gives a completed activity a non-zero span', () => {
-    expect(new Date(displayEnd(completed)) - new Date(displayStart(completed))).toBeGreaterThan(0)
+    expect(new Date(displayEnd(completed)!).getTime() - new Date(displayStart(completed)!).getTime()).toBeGreaterThan(0)
   })
 })
 
@@ -118,9 +118,9 @@ describe('paper sizes', () => {
   it('reproduces each chart\'s previously inlined arithmetic exactly', () => {
     // Guards the extraction: these are the values the two components computed
     // from their own copies before utils/paper.js existed.
-    const gantt = (mm) => Math.round((mm - 20) * (96 / 25.4)) - 15
-    const cp = (mm) => Math.round((mm - 20) * (96 / 25.4)) - 20
-    for (const key of Object.keys(PAPER_SIZES)) {
+    const gantt = (mm: number) => Math.round((mm - 20) * (96 / 25.4)) - 15
+    const cp = (mm: number) => Math.round((mm - 20) * (96 / 25.4)) - 20
+    for (const key of Object.keys(PAPER_SIZES) as (keyof typeof PAPER_SIZES)[]) {
       expect(usableWidthPx(key, 15)).toBe(gantt(PAPER_SIZES[key].wMm))
       expect(usableWidthPx(key, 20)).toBe(cp(PAPER_SIZES[key].wMm))
       expect(usableHeightPx(key, 20)).toBe(cp(PAPER_SIZES[key].hMm))

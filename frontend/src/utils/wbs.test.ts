@@ -1,20 +1,17 @@
 import { describe, it, expect } from 'vitest'
 import { buildWbsRollups } from './wbs'
+import { makeActivity, makeWbsNode as node } from '../testing/factories'
 
-const tree = [{
-  wbs_id: 1, children: [
-    { wbs_id: 2, children: [] },
-    { wbs_id: 3, children: [{ wbs_id: 4, children: [] }] },
-  ],
-}]
+const tree = [node(1, [node(2), node(3, [node(4)])])]
 const acts = [
   { wbs_id: 2, is_critical: true, pct_complete: 100, act_start: '2026-01-10', act_end: '2026-01-20', early_start: null, early_end: null },
   { wbs_id: 2, is_critical: false, pct_complete: 0, act_start: null, act_end: null, early_start: '2026-02-01', early_end: '2026-02-10' },
   { wbs_id: 4, is_critical: true, pct_complete: 50, act_start: null, act_end: null, early_start: '2026-03-01', early_end: '2026-04-30' },
-]
+].map(makeActivity)
 
 describe('buildWbsRollups', () => {
-  const r = buildWbsRollups(tree, acts)
+  const rollups = buildWbsRollups(tree, acts)
+  const r = { get: (id: number) => rollups.get(id)! }
 
   it('rolls descendants up into their ancestors', () => {
     expect(r.get(2).activities).toBe(2)
@@ -40,7 +37,7 @@ describe('buildWbsRollups', () => {
   })
 
   it('reports an empty node without dates rather than throwing', () => {
-    const empty = buildWbsRollups([{ wbs_id: 9, children: [] }], [])
+    const empty = buildWbsRollups([node(9)], [])
     expect(empty.get(9)).toEqual({ activities: 0, critical: 0, start: null, finish: null, pct: 0 })
   })
 

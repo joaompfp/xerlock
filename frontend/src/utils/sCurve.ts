@@ -11,15 +11,35 @@
 // resolution plotted here the difference is small, and it keeps the curve independent of
 // calendar decoding. Documented in docs/METHODOLOGY.md.
 
+import type { Activity } from '../types/schedule'
+
 const WEIGHTED = new Set(['TT_Task', 'TT_Rsrc'])
 
-function elapsed(start, end, t) {
+type Window = [number, number]
+
+export interface SCurvePoint {
+  t: number
+  planned: number
+  /** null after the data date */
+  actual: number | null
+  /** null before the data date */
+  forecast: number | null
+}
+
+export interface SCurve {
+  points: SCurvePoint[]
+  totalDays: number
+  skipped: number
+  dataDate: number | null
+}
+
+function elapsed(start: number, end: number, t: number): number {
   if (t >= end) return 1
   if (t <= start) return 0
   return (t - start) / (end - start)
 }
 
-const ms = d => (d ? new Date(d).getTime() : null)
+const ms = (d: string | null | undefined): number | null => (d ? new Date(d).getTime() : null)
 
 /**
  * @returns null when nothing carries duration, else
@@ -27,9 +47,19 @@ const ms = d => (d ? new Date(d).getTime() : null)
  *   planned/actual/forecast are % of total original duration; actual is null after the
  *   data date and forecast null before it.
  */
-export function durationSCurve(activities, dataDate) {
+export function durationSCurve(
+  activities: Activity[],
+  dataDate: string | null | undefined,
+): SCurve | null {
   const dd = ms(dataDate)
-  const items = []
+  const items: {
+    od: number
+    plan: Window | null
+    earned: number
+    earnedWin: Window | null
+    remaining: number
+    remainWin: Window | null
+  }[] = []
   let totalDays = 0
   let skipped = 0
   for (const a of activities) {
@@ -48,9 +78,10 @@ export function durationSCurve(activities, dataDate) {
       od,
       plan: planStart != null && planEnd != null ? [planStart, planEnd] : null,
       earned,
-      earnedWin: a.act_start ? [ms(a.act_start), ms(a.act_end) ?? dd] : null,
+      // An activity in progress earns up to the data date; with no data date, up to its start.
+      earnedWin: a.act_start ? [ms(a.act_start)!, ms(a.act_end) ?? dd ?? ms(a.act_start)!] : null,
       remaining: done ? 0 : rd,
-      remainWin: a.early_start && a.early_end ? [ms(a.early_start), ms(a.early_end)] : null,
+      remainWin: a.early_start && a.early_end ? [ms(a.early_start)!, ms(a.early_end)!] : null,
     })
   }
   if (!totalDays) return null
@@ -61,13 +92,13 @@ export function durationSCurve(activities, dataDate) {
     if (it.remainWin) dates.push(...it.remainWin)
     if (it.earnedWin) dates.push(...it.earnedWin)
   }
-  const known = dates.filter(d => d != null)
+  const known = dates.filter((d): d is number => d != null)
   const lo = new Date(Math.min(...known))
   const hi = new Date(Math.max(...known))
 
   // Month starts spanning the programme, plus the data date itself so the actual and
   // forecast lines meet exactly where the status was taken.
-  const times = []
+  const times: number[] = []
   let m = new Date(lo.getFullYear(), lo.getMonth(), 1)
   const end = new Date(hi.getFullYear(), hi.getMonth() + 1, 1)
   for (let guard = 0; m <= end && guard < 600; guard++) {
@@ -77,8 +108,8 @@ export function durationSCurve(activities, dataDate) {
   if (dd != null && !times.includes(dd)) times.push(dd)
   times.sort((x, y) => x - y)
 
-  const pct = v => Math.round((1000 * v) / totalDays) / 10
-  const earnedAt = t => items.reduce((s, it) => s + (it.earnedWin ? it.earned * elapsed(it.earnedWin[0], it.earnedWin[1], t) : 0), 0)
+  const pct = (v: number) => Math.round((1000 * v) / totalDays) / 10
+  const earnedAt = (t: number) => items.reduce((s, it) => s + (it.earnedWin ? it.earned * elapsed(it.earnedWin[0], it.earnedWin[1], t) : 0), 0)
   const earnedAtDD = dd != null ? earnedAt(dd) : null
 
   const points = times.map(t => ({
@@ -86,7 +117,7 @@ export function durationSCurve(activities, dataDate) {
     planned: pct(items.reduce((s, it) => s + (it.plan ? it.od * elapsed(it.plan[0], it.plan[1], t) : 0), 0)),
     actual: dd != null && t <= dd ? pct(earnedAt(t)) : null,
     forecast: dd != null && t >= dd
-      ? pct(earnedAtDD + items.reduce((s, it) => s + (it.remainWin ? it.remaining * elapsed(it.remainWin[0], it.remainWin[1], t) : 0), 0))
+      ? pct((earnedAtDD ?? 0) + items.reduce((s, it) => s + (it.remainWin ? it.remaining * elapsed(it.remainWin[0], it.remainWin[1], t) : 0), 0))
       : null,
   }))
   return { points, totalDays: Math.round(totalDays), skipped, dataDate: dd }

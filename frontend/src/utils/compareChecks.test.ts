@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import { actualDateChanges, constraintChanges } from './compareChecks'
 
-const pair = (base, cur) => ({ code: 'A1', base: { ...base }, cur: { ...cur } })
+import type { Activity } from '../types/schedule'
+import { makeActivity } from '../testing/factories'
+
+const pair = (base: Partial<Activity>, cur: Partial<Activity>) =>
+  ({ code: 'A1', base: makeActivity(base), cur: makeActivity(cur) })
 
 describe('actualDateChanges', () => {
   it('flags a moved actual and a withdrawn actual', () => {

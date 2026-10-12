@@ -3,6 +3,44 @@
 // unit-tested and audited in one place; docs/METHODOLOGY.md cites this file.
 
 import { HARD_CONSTRAINT_TYPES } from './p6'
+import type { Activity, ScheduleCore } from '../types/schedule'
+
+export type CheckKey =
+  | 'openends' | 'leads' | 'lags' | 'fs' | 'hardcstr' | 'highfloat' | 'negfloat' | 'highdur'
+  | 'invdates' | 'noresource' | 'missed' | 'cpt' | 'cpli' | 'oos' | 'alap' | 'loe' | 'driving'
+
+export interface CheckDef {
+  key: CheckKey
+  /** 'DCMA nn' for a DCMA 14-Point metric, 'XERlock' for an addition. */
+  source: string
+  label: string
+  /** Detail section the scorecard opens, or null when the check has no list. */
+  section: string | null
+  unit: 'pct' | 'count' | 'ratio'
+  cmp: 'lte' | 'gte'
+  target: number
+  weight: number
+  param?: number
+  paramLabel?: string
+  /** Why the check never runs, when that is by design rather than missing data. */
+  naReason?: string
+}
+
+export interface CheckConfig {
+  enabled: boolean
+  target: number
+  weight: number
+  param?: number
+}
+export type HealthConfig = Record<CheckKey, CheckConfig>
+
+export interface CheckResult {
+  count: number
+  value: number
+  pass: boolean
+  display: number | string
+  included: boolean
+}
 
 // Bumped when a default changes meaning (v2: Lags became DCMA 03's "any positive
 // lag"), so a saved configuration from the old definition is not silently reused.
@@ -14,7 +52,7 @@ export const CFG_VERSION = 2
 // DCMA 14-Point Assessment metric it implements, or 'XERlock' for an addition. Targets
 // and weights are user-editable because contracts specify their own; the defaults are
 // DCMA's.
-export const CHECK_DEFS = [
+export const CHECK_DEFS: readonly CheckDef[] = [
   { key: 'openends', source: 'DCMA 01', label: 'Logic (open ends)', section: 'openEnds', unit: 'pct', cmp: 'lte', target: 5, weight: 2 },
   { key: 'leads', source: 'DCMA 02', label: 'Leads', section: 'rel', unit: 'count', cmp: 'lte', target: 0, weight: 1 },
   { key: 'lags', source: 'DCMA 03', label: 'Lags', section: 'rel', unit: 'pct', cmp: 'lte', target: 5, weight: 1, param: 0, paramLabel: 'Lag over (days)' },
@@ -37,15 +75,49 @@ export const CHECK_DEFS = [
 // DCMA's population for its percentage metrics: incomplete activities, less
 // level-of-effort and WBS-summary activities (which carry no logic of their own).
 // Milestones stay in: they carry logic and constraints like any task.
-export function inScope(a) {
+export function inScope(a: Pick<Activity, 'status' | 'task_type'>): boolean {
   return a.status !== 'TK_Complete' && a.task_type !== 'TT_LOE' && a.task_type !== 'TT_WBS'
 }
 
 const TASK_TYPES = new Set(['TT_Task', 'TT_Rsrc'])
-const hrsPerDay = a => a.calendar_hrs_per_day || 8
+const hrsPerDay = (a: Pick<Activity, 'calendar_hrs_per_day'>) => a.calendar_hrs_per_day || 8
+// P6 timestamps compare correctly as strings; a missing date sorts first.
+const byDate = (x: string | null, y: string | null) => ((x ?? '') < (y ?? '') ? -1 : 1)
+// Float is null where P6 computed none; the lists that sort by it hold only activities
+// that have one, so null only needs a stable place.
+const floatOf = (a: Pick<Activity, 'total_float_hrs'>) => a.total_float_hrs ?? 0
 
-export function defaultConfig() {
-  const cfg = {}
+export interface LinkFinding {
+  succ: Activity
+  predId: number
+  type: string
+  lag: number
+}
+
+export interface OpenEnd extends Activity {
+  openStart: boolean
+  openFinish: boolean
+  bothOpen: boolean
+  dangling: boolean
+}
+
+export interface OutOfSequence {
+  activity: Activity
+  predecessor: Activity
+  type: string
+  what: string
+  predDate: string | null
+}
+
+interface RawMeasure {
+  count: number
+  denom: number
+  valueOverride?: number
+  displayOverride?: string
+}
+
+export function defaultConfig(): HealthConfig {
+  const cfg = {} as HealthConfig
   for (const d of CHECK_DEFS) {
     cfg[d.key] = { enabled: true, target: d.target, weight: d.weight }
     if (d.param !== undefined) cfg[d.key].param = d.param
@@ -53,7 +125,7 @@ export function defaultConfig() {
   return cfg
 }
 
-export function runChecks(data, cfg) {
+export function runChecks(data: ScheduleCore, cfg: HealthConfig) {
   const acts = data.activities
   const byId = new Map(acts.map(a => [a.task_id, a]))
   const dd = data.project.data_date ? new Date(data.project.data_date) : null
@@ -66,11 +138,11 @@ export function runChecks(data, cfg) {
   // Exempt: the one project start milestone and the one project finish milestone.
   const firstStart = scope
     .filter(a => a.task_type === 'TT_StartMile' && !a.predecessors.length)
-    .sort((x, y) => (x.early_start < y.early_start ? -1 : 1))[0]
+    .sort((x, y) => byDate(x.early_start, y.early_start))[0]
   const lastFinish = scope
     .filter(a => a.task_type === 'TT_FinMile' && !a.successors.length)
-    .sort((x, y) => (x.early_end > y.early_end ? -1 : 1))[0]
-  const openEnds = []
+    .sort((x, y) => byDate(y.early_end, x.early_end))[0]
+  const openEnds: OpenEnd[] = []
   for (const a of scope) {
     const startTied = a.predecessors.some(p => p.type === 'PR_FS' || p.type === 'PR_SS')
     const finishTied = a.successors.some(s => s.type === 'PR_FS' || s.type === 'PR_FF')
@@ -89,9 +161,9 @@ export function runChecks(data, cfg) {
   }
 
   const relationshipStats = (() => {
-    const counts = {}
-    const leads = []
-    const bigLags = []
+    const counts: Record<string, number> = {}
+    const leads: LinkFinding[] = []
+    const bigLags: LinkFinding[] = []
     // DCMA 02-04 count the relationships of incomplete work: a lag on a link
     // between two finished activities can no longer move anything.
     const lagOverDays = cfg.lags.param ?? 0
@@ -115,7 +187,7 @@ export function runChecks(data, cfg) {
     .filter(a => a.cstr_type || a.cstr_type2)
     .map(a => ({
       ...a,
-      hard: HARD_CONSTRAINT_TYPES.has(a.cstr_type) || HARD_CONSTRAINT_TYPES.has(a.cstr_type2),
+      hard: HARD_CONSTRAINT_TYPES.has(a.cstr_type ?? '') || HARD_CONSTRAINT_TYPES.has(a.cstr_type2 ?? ''),
       criticalOnlyByConstraint: a.is_critical && !a.is_longest_path,
     }))
     .sort((a, b) => (b.hard === a.hard ? 0 : b.hard ? 1 : -1))
@@ -131,17 +203,17 @@ export function runChecks(data, cfg) {
 
   const negativeFloatList = scope
     .filter(a => a.is_negative_float)
-    .sort((a, b) => a.total_float_hrs - b.total_float_hrs)
+    .sort((a, b) => floatOf(a) - floatOf(b))
 
   const highFloatTh = cfg.highfloat.param ?? 44
   const highFloatList = scope
     .filter(a => a.total_float_hrs !== null && a.total_float_hrs / hrsPerDay(a) > highFloatTh)
-    .sort((a, b) => b.total_float_hrs - a.total_float_hrs)
+    .sort((a, b) => floatOf(b) - floatOf(a))
 
-  const invalidDatesList = []
+  const invalidDatesList: (Activity & { issues: string[] })[] = []
   if (dd) {
     for (const a of acts) {
-      const issues = []
+      const issues: string[] = []
       if (a.act_start && new Date(a.act_start) > dd) issues.push('Actual start after data date')
       if (a.act_end && new Date(a.act_end) > dd) issues.push('Actual finish after data date')
       if (!a.act_start && a.early_start && new Date(a.early_start) < dd) issues.push('Forecast start before data date')
@@ -155,11 +227,13 @@ export function runChecks(data, cfg) {
   // against the baseline; a single .xer has none, so "planned" is P6's Planned Finish
   // (target_end), which P6 moves with the forecast on unstarted work. Read it as a
   // check against the current plan, not a baseline BEI.
-  const plannedDone = dd ? acts.filter(a => a.target_end && new Date(a.target_end) <= dd) : []
+  const plannedDone = dd
+    ? acts.filter((a): a is Activity & { target_end: string } => !!a.target_end && new Date(a.target_end) <= dd)
+    : []
   const plannedDoneCount = plannedDone.length
   const missedTasksList = plannedDone
     .filter(a => a.status !== 'TK_Complete' || (a.act_end && new Date(a.act_end) > new Date(a.target_end)))
-    .sort((a, b) => (a.target_end < b.target_end ? -1 : 1))
+    .sort((a, b) => byDate(a.target_end, b.target_end))
 
   const highDurTh = cfg.highdur.param ?? 44
   const highDurationList = scope
@@ -174,13 +248,14 @@ export function runChecks(data, cfg) {
   // Progress that contradicts the logic: the successor did, by its actual dates, what the
   // relationship says it could not do yet. FS: started before the predecessor finished.
   // SS: started before the predecessor started. FF: finished before it finished.
-  const before = (x, y) => !y || new Date(x) < new Date(y)
-  const OOS_RULES = {
-    PR_FS: (a, p) => a.act_start && before(a.act_start, p.act_end) && { what: 'Started before predecessor finished', predDate: p.act_end },
-    PR_SS: (a, p) => a.act_start && before(a.act_start, p.act_start) && { what: 'Started before predecessor started', predDate: p.act_start },
-    PR_FF: (a, p) => a.act_end && before(a.act_end, p.act_end) && { what: 'Finished before predecessor finished', predDate: p.act_end },
+  type OosHit = { what: string; predDate: string | null } | null | false
+  const before = (x: string, y: string | null) => !y || new Date(x) < new Date(y)
+  const OOS_RULES: Record<string, (a: Activity, p: Activity) => OosHit> = {
+    PR_FS: (a, p) => !!a.act_start && before(a.act_start, p.act_end) && { what: 'Started before predecessor finished', predDate: p.act_end },
+    PR_SS: (a, p) => !!a.act_start && before(a.act_start, p.act_start) && { what: 'Started before predecessor started', predDate: p.act_start },
+    PR_FF: (a, p) => !!a.act_end && before(a.act_end, p.act_end) && { what: 'Finished before predecessor finished', predDate: p.act_end },
   }
-  const outOfSequenceList = []
+  const outOfSequenceList: OutOfSequence[] = []
   for (const a of acts) {
     for (const link of a.predecessors) {
       const pred = byId.get(link.task_id)
@@ -211,7 +286,7 @@ export function runChecks(data, cfg) {
   const nAct = scope.length || 1
   const nRel = relationshipStats.total || 1
   const cpli = data.project.cpli?.value
-  const raw = {
+  const raw: Record<CheckKey, RawMeasure> = {
     openends: { count: openEnds.length, denom: nAct },
     leads: { count: relationshipStats.leads.length, denom: nRel },
     lags: { count: relationshipStats.bigLags.length, denom: nRel },
@@ -230,7 +305,7 @@ export function runChecks(data, cfg) {
     cpt: { count: 0, denom: 1 },
     cpli: { count: cpli ?? 0, denom: 1, valueOverride: cpli ?? 0, displayOverride: cpli != null ? cpli.toFixed(2) : '—' },
   }
-  const results = {}
+  const results = {} as Record<CheckKey, CheckResult>
   for (const def of CHECK_DEFS) {
     const r = raw[def.key]
     const c = cfg[def.key]
@@ -256,7 +331,7 @@ export function runChecks(data, cfg) {
 }
 
 // Share of included checks' weight that passes, 0-100.
-export function weightedScore(results, cfg) {
+export function weightedScore(results: Record<CheckKey, CheckResult>, cfg: HealthConfig): number {
   let wTotal = 0
   let wPass = 0
   for (const d of CHECK_DEFS) {

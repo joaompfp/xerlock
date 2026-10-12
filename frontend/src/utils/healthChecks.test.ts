@@ -1,10 +1,17 @@
 import { describe, it, expect } from 'vitest'
-import sample from './fixtures/sample-schedule.json'
+import fixture from './fixtures/sample-schedule.json'
 import { runChecks, defaultConfig, weightedScore } from './healthChecks'
+import type { CheckResult } from './healthChecks'
+import type { Activity, ProjectSummary, ScheduleCore } from '../types/schedule'
+import { makeActivity, makeSchedule, link } from '../testing/factories'
+
+// Typed as the API contract: if the backend's output and types/schedule.ts disagree, the
+// type check fails here.
+const sample: ScheduleCore = fixture
 
 // Fixture: the backend's parse of examples/sample-schedule.xer (project + activities).
 // tests/test_fixture.py fails when it drifts from the parser; it prints how to regenerate.
-const counts = r => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v.count]))
+const counts = (r: Record<string, CheckResult>) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v.count]))
 
 describe('runChecks on the sample schedule', () => {
   const out = runChecks(sample, defaultConfig())
@@ -39,22 +46,9 @@ describe('runChecks on the sample schedule', () => {
 })
 
 // Minimal synthetic schedules, one rule per test.
-let nextId = 1
-function act(over = {}) {
-  return {
-    task_id: nextId++, task_code: 'A' + nextId, task_type: 'TT_Task', status: 'TK_NotStart',
-    predecessors: [], successors: [], total_float_hrs: 0, duration_hrs: 80, calendar_hrs_per_day: 8,
-    cstr_type: null, cstr_type2: null, act_start: null, act_end: null, early_start: '2026-03-02 08:00:00',
-    early_end: '2026-03-13 16:00:00', target_end: null, resource_names: [], is_critical: false,
-    is_longest_path: false, is_negative_float: false, driving_path_flag: false, ...over,
-  }
-}
-function link(pred, succ, type = 'PR_FS', lag = 0) {
-  succ.predecessors.push({ task_id: pred.task_id, type, lag_hrs: lag })
-  pred.successors.push({ task_id: succ.task_id, type, lag_hrs: lag })
-}
-const run = (activities, project = {}) =>
-  runChecks({ activities, project: { data_date: '2026-03-02 08:00', has_resources: false, cpli: null, ...project } }, defaultConfig())
+const act = makeActivity
+const run = (activities: Activity[], project: Partial<ProjectSummary> = {}) =>
+  runChecks(makeSchedule(activities, project), defaultConfig())
 
 describe('DCMA rules', () => {
   it('exempts only the one project start and one project finish milestone', () => {
@@ -87,7 +81,7 @@ describe('DCMA rules', () => {
     link(a, b, 'PR_FS', 10)
     expect(run([a, b]).relationshipStats.bigLags).toHaveLength(1)
     const cfg = defaultConfig(); cfg.lags.param = 1
-    expect(runChecks({ activities: [a, b], project: { has_resources: false } }, cfg).relationshipStats.bigLags).toHaveLength(0)
+    expect(runChecks(makeSchedule([a, b]), cfg).relationshipStats.bigLags).toHaveLength(0)
   })
 
   it('treats Finish On or Before as hard, including as the secondary constraint', () => {
@@ -113,7 +107,7 @@ describe('DCMA rules', () => {
   })
 
   it('scores CPLI against 0.95 and marks the Critical Path Test as not performed', () => {
-    const r = run([act()], { cpli: { value: 0.9 } })
+    const r = run([act()], { cpli: { value: 0.9, cpl_hrs: 1000, tf_hrs: -100, finish_task_id: 1 } })
     expect(r.results.cpli).toMatchObject({ value: 0.9, pass: false, included: true })
     expect(r.availability.cpt).toBe(false)
     expect(r.results.cpt.included).toBe(false)
