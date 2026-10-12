@@ -5,23 +5,24 @@ departs from that standard. Written for a reviewer who has to defend a finding: 
 definition names the `.xer` fields it reads, so it can be re-checked by hand in the
 **Raw tables** view against the file as exported.
 
-## The principle: read P6's results, recompute only to cross-check
+## The principle: read P6's results, recompute to cross-check
 
-XERlock is not a scheduling engine. Early/late dates, total float, free float and
-remaining durations are **P6's own computed values**, read from the `TASK` table exactly as
-exported. The app never reschedules.
+Every figure XERlock shows is **P6's own computed value**, read from the `TASK` table
+exactly as exported: early/late dates, total float, free float, remaining durations. The
+uploaded file is never modified or re-saved.
 
-It does recompute three things independently, from those dates and the file's calendars,
-so that they can be checked against what P6 stored:
+It does recompute, in memory and independently, so that P6's values can be checked:
 
 | Recomputed | Checked against | Disagreement means |
 |---|---|---|
 | Driving relationships | (P6 does not export per-link driving flags) | — |
 | Longest Path | `TASK.driving_path_flag` | the schedule was edited and not recalculated, or a defect in XERlock |
 | CPLI | — (P6 does not compute it) | — |
+| The whole schedule: early and late dates, total and free float (see *Recalculation*) | `TASK` early/late/remaining dates and float | the submission was edited and not rescheduled, a scheduling feature the engine does not model, or a defect in XERlock |
 
 On the 12 real contractor submissions used in development (not published), the
-recomputed Longest Path matched P6's flag on every activity: 0 differences.
+recomputed Longest Path matched P6's flag on every activity, and the recalculation
+reproduced every stored date and float: 0 differences on each file.
 
 ## Standards referenced
 
@@ -126,12 +127,13 @@ roll-up is XERlock's: DCMA defines a pass/fail per metric, not a composite score
 | DCMA 09 | Invalid dates | Actual after the data date, or forecast (early) date before it | count | 0 |
 | DCMA 10 | Resources | Incomplete task without a resource assignment. Runs only if the file has resources | % of population | ≤ 5% |
 | DCMA 11 | Missed tasks | Planned finish on or before the data date, and not finished or finished late | % of those planned to finish | ≤ 5% |
-| DCMA 12 | Critical Path Test | **Not performed** (see below) | — | — |
+| DCMA 12 | Critical Path Test | The project finish fails to move by the test delay added to the first Longest Path activity (see *Critical Path Test*). Runs only when the recalculation reproduces P6 | count (0 pass, 1 fail) | 0 |
 | DCMA 13 | CPLI | (CPL + TF) / CPL | ratio | ≥ 0.95 |
 | XERlock | Out-of-sequence | Successor started before an FS predecessor finished, started before an SS predecessor started, or finished before an FF predecessor finished | count | 0 |
 | XERlock | ALAP constraints | As Late As Possible, primary or secondary | count | 0 |
 | XERlock | LOE on critical | Level of effort that is critical or on the Longest Path | count | 0 |
 | XERlock | Driving path cross-check | P6's stored Longest Path flag ≠ recomputed Longest Path | count | 0 |
+| XERlock | Recalculation matches P6 | Activities whose recalculated dates or float differ from the stored values. Not checkable when the engine refuses the file | count | 0 |
 
 Deviations from DCMA, stated so they can be weighed:
 
@@ -142,11 +144,9 @@ Deviations from DCMA, stated so they can be weighed:
   Tasks uses P6's Planned Finish (`target_end_date`). P6 moves planned dates with the
   forecast on work that has not started. Read the result as a check against the current
   plan, not a baseline execution index. **BEI (DCMA 14)** is not computed.
-- **DCMA 12 (Critical Path Test)** adds a delay to the critical path, reschedules, and
-  checks that the finish moves by the same amount. That needs a scheduling engine, which
-  XERlock deliberately is not. The Driving Path Cross-Check and the Logic checks cover part
-  of the same ground (an unbroken, driving chain to the finish), but they are not a
-  substitute.
+- **DCMA 12 (Critical Path Test)** is withheld on any file the recalculation does not
+  reproduce exactly, and on files the engine refuses. A result on a schedule the engine
+  cannot be shown to model would not be defensible.
 
 **CPLI.** CPL is the working time on the finish activity's calendar from the data date
 to the early finish of the Longest Path's last activity. TF is that activity's total
@@ -160,6 +160,135 @@ deserve a second look:
   Logic* is the conservative setting.
 - *Use Expected Finish dates*, which lets a typed-in date set the remaining duration in
   place of the estimate.
+
+## Recalculation
+
+`backend/cpm.py` is a CPM engine that reschedules the project from the file's own logic,
+remaining durations, calendars, constraints, progress and scheduling options, the way P6
+does. `backend/recalc.py` feeds it the raw tables and compares the result with what P6
+stored. **P6 is the oracle**: a rule is in the engine because real exports show P6
+behaving that way, and the comparison is reported, never smoothed over. Tolerances are one
+minute on dates and 0.01 h on float, as the driving rule uses.
+
+**What is compared.** For every activity that is not complete and not a WBS summary: the
+remaining early dates (`restart_date`, `reend_date`; the early dates where a file does
+not write those), the remaining late dates (`rem_late_start_date`, `rem_late_end_date`;
+else the late dates), `total_float_hr_cnt` and `free_float_hr_cnt`. Completed work has no
+remaining dates or float in P6, so it is excluded and the count of exclusions is shown.
+
+**Inputs.** `TASK` (type, status, calendar, remaining duration, actual dates, primary and
+secondary constraint, expected finish), `TASKPRED` (type, lag), `CALENDAR` (decoded as in
+*Units and dates*), `PROJECT.last_recalc_date` (data date) and `plan_end_date` (must
+finish by), and `SCHEDOPTIONS`: progress mode (`sched_retained_logic` /
+`sched_progress_override`; neither set is *Actual Dates*), `sched_float_type`,
+`sched_calendar_on_relationship_lag`, `sched_open_critical_flag`,
+`sched_use_expect_end_flag`, `sched_lag_early_start_flag`. Without the table, P6's
+defaults apply: Retained Logic, finish float, predecessor calendar for lags.
+
+**Working time and snapping.** Every duration, lag and float is working time on a named
+calendar. A date logic puts in non-working time is moved the way P6 moves it:
+
+- An early *start* goes forward to the next working start; a period's end (Friday 16:00)
+  is not a start, so it becomes Monday 08:00. An early *finish* may sit on a period's end,
+  and when it falls in non-working time it also moves forward, to the next working start
+  (a finish milestone driven from Saturday lands Monday 08:00, not Friday 16:00). A finish
+  at a period's start (Monday 08:00) is kept as it is.
+- A late *finish* goes back to the previous working end: Monday 08:00 becomes Friday
+  16:00. A late *start* imposed by a successor is kept wherever it falls inside a period,
+  its end included (a 16:00 start imposed from a calendar whose day ends later). A late
+  start set by a constraint date is read like an early start.
+- A link's lag is added (forward) or taken off (backward) on the lag calendar named in the
+  options. In the backward pass, a lagged result is then read as a date of the
+  successor's kind on the successor's calendar; a lag-free link passes the date through.
+
+**Forward pass** (activities in dependency order; a loop is reported and nothing is
+computed):
+
+- Remaining work starts no earlier than the data date. FS and SS predecessors bound the
+  start, FF and SF the finish; the latest bound wins. Early finish = early start plus
+  remaining duration on the activity's calendar. When an FF/SF link or a finish-side
+  constraint pushes the finish later than that, the start moves with it (P6 keeps the
+  duration; it never stretches an activity).
+- *Start milestones* (`TT_Mile`, `TT_StartMile`) have a start only; *finish milestones*
+  (`TT_FinMile`) a finish only, which every incoming link bounds: an FS link from a task
+  finishing Friday 16:00 puts a finish milestone at Friday 16:00 and a start milestone at
+  Monday 08:00. A task with zero remaining duration is placed like a task (its start
+  snaps forward).
+- *Constraints.* Start On or After, Start On, Mandatory Start bound the early start;
+  Finish On or After, Finish On, Mandatory Finish bound the early finish. Mandatory dates
+  then override whatever logic gave, in both passes. As Late As Possible is applied after
+  the backward pass: the early dates are delayed by the activity's free float, so it
+  finishes exactly where its nearest successor needs it (P6 uses free float, not total
+  float, for ALAP). Primary and secondary constraints both apply.
+- *Progress.* Under **Retained Logic**, the remaining work of a started activity waits
+  for its unfinished predecessors. Under **Progress Override** a started activity ignores
+  its predecessors and its remaining work starts at the data date. Under **Actual Dates**
+  the engine behaves as Retained Logic except that an actual start later than the data
+  date is honoured as the start of the remaining work (this mode is not represented in
+  the development corpus and is unverified against P6).
+- *Completed work* is still placed: at the data date itself (not moved into working
+  time), or later when Retained Logic holds it behind an unfinished predecessor. That
+  held date is what its successors see, which is how P6 keeps out-of-sequence completion
+  from releasing successors early. The lag of a link from completed work counts from the
+  activity's actual finish (or start); a lag already spent before the data date holds
+  nothing. SS lags from started work count from the early start, which P6 holds at the
+  data date, unless `sched_lag_early_start_flag` says to count from the actual start.
+- *Expected finish* (`expect_end_date`, when `sched_use_expect_end_flag` is on) replaces
+  the early finish when it is later than the early start (unverified on real files).
+- *Level of effort* never drives. It starts with the earliest link from its predecessors
+  and finishes with the latest link date from its predecessors' finishes or its
+  successors' dates. WBS summaries are not placed (their dates come from their children,
+  which the engine does not model) and are excluded from the comparison.
+
+**Backward pass** (reverse order):
+
+- The project finish is the latest early finish of any activity, or the must-finish-by
+  date when the project has one. An activity with no successor, or only SS/SF ones, gets
+  its late finish from there ("open finish"); with "make open-ended activities critical"
+  it gets its own early finish instead.
+- FS and FF successors bound the late finish, SS and SF the late start; the earliest
+  bound wins. Late start = late finish less the remaining duration; when a start-side
+  bound pulls the late start earlier, the late finish moves with it. Finish On or Before,
+  Finish On and Mandatory Finish bound the late finish; Start On or Before, Start On and
+  Mandatory Start the late start.
+- A start milestone's late dates are a start: an FS successor's late start of Monday 08:00
+  gives Monday 08:00, and an open-ended start milestone sits on the project finish as it
+  is. A finish milestone's late dates are a finish, so an SS successor's Monday 08:00 gives
+  Friday 16:00. A task with zero remaining duration is read as a finish here.
+- Completed work carries late dates for its predecessors' sake: the earliest its
+  successors allow, taken as it is. A lag into completed work is not taken off (it was
+  spent with the work).
+
+**Float.** Total float is late finish − early finish (`FT_FF`), late start − early start
+(`FT_SF`) or the smaller, in working hours on the activity's calendar. Free float is the
+least working time, on the activity's own calendar, from each successor link's implied
+date to the successor's early date; never negative; for an activity without successors,
+the time to the project finish. With a single project, "calculate float based on finish
+date of each project" and "opened projects" are the same thing.
+
+**Refused files.** The engine declines to model, and the Critical Path Test is withheld,
+when the file has: resource-dependent activities (`TT_Rsrc`, which schedule on resource
+calendars); activities with external relationship dates (`external_early_start_date`,
+`external_late_end_date`); relationships to activities outside the project; a logic
+loop; the multiple float path option (`enable_multiple_longest_path_calc`, or
+`float_path` set on activities); or no data date. The reason is shown in place of the
+check. Resource levelling leaves no flag in a `.xer`; a levelled schedule shows up as
+differences, which is the right outcome: its dates are not reproducible from logic.
+
+**Critical Path Test (DCMA 12).** Only on a file with zero differences. Take the first
+incomplete activity on the Longest Path that has a duration to extend (milestones have
+none); add the test delay, **600 working days** on that activity's calendar (a common
+DCMA practice value; the backend parameter `CPT_DELAY_DAYS` sets it); reschedule in
+memory. The project finish activity is the one without successors that finishes last.
+The test **passes** when its early finish moved by the full delay, measured in working
+time on the delayed activity's calendar. On failure, the activity named is the first
+along the path whose own finish moved less than the delay: a constraint, or a successor
+tied only by an SS link, is usually found there. When the activities from the delayed one
+to the finish use unlike calendars, the same span of clock time reads differently on each
+(holidays, work periods), so the test allows one working week and says so; with one
+calendar along the path the match must be exact. Two of the twelve development files fail
+the test legitimately: the first activity on their Longest Path is followed only by an SS
+link, so extending it moves nothing.
 
 ## Compare
 
@@ -205,7 +334,9 @@ additive or subtractive). It is the evidence-gathering step those methods start 
 
 ## Not done
 
-- Rescheduling, or any CPM forward/backward pass (so no Critical Path Test).
+- Modelling of resource-dependent activities, resource levelling, cross-project
+  relationships, multiple float paths and WBS summary activities in the recalculation
+  (see *Refused files*). No what-if rescheduling beyond the Critical Path Test.
 - BEI against a baseline.
 - Cost, earned value, resource levelling or loading analysis.
 - Schedule risk analysis, e.g. Monte Carlo (AACE 57R-09).
@@ -213,8 +344,13 @@ additive or subtractive). It is the evidence-gathering step those methods start 
 ## Verifying it yourself
 
 - `pytest` covers the working-time arithmetic (weekends, holidays, worked exceptions,
-  24-hour calendars), the driving rule, agreement with P6's flags on the sample, the CPLI
-  hand calculation, % complete per type, and the scheduling-options decoding.
+  24-hour calendars, snapping), the driving rule, agreement with P6's flags on the sample,
+  the CPLI hand calculation, % complete per type, the scheduling-options decoding, every
+  engine rule above on a minimal network (`tests/test_cpm.py`), and exact reproduction of
+  the sample with a passing Critical Path Test (`tests/test_cpm_sample.py`).
+- `scripts/cpm_oracle.py` runs the recalculation on any `.xer` files you hold and prints
+  per-file match counts only (no activity content), for checking the engine against your
+  own P6 exports.
 - `npm run test:run` in `frontend/` covers each health-check rule on minimal synthetic
   schedules, plus pinned finding counts on the sample.
 - For any finding, the **Raw tables** view shows the exact `TASK`, `TASKPRED`, `CALENDAR`
