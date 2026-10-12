@@ -192,8 +192,8 @@ The same Python parsing core the server runs (`backend/xer.py`) runs in the brow
 anywhere that serves files over HTTP (GitHub Pages, an intranet web server, any static host);
 there is no backend. **The `.xer` file never leaves the user's computer**, so parsing works with
 the network disconnected once the page has loaded. Everything is served from the app's own
-origin: no CDN, nothing for a corporate proxy to block. The first visit downloads about 4 MB
-(compressed) for the Python runtime; it is cached afterwards. Results are identical to the
+origin: no CDN, nothing for a corporate proxy to block. The first visit downloads about 6.5 MB
+(measured on GitHub Pages) for the Python runtime; the browser caches it afterwards. Results are identical to the
 server's: the test suite and CI build both modes.
 
 Experimental: this is the prototype of XERlock's no-install distribution.
