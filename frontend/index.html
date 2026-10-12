@@ -13,9 +13,13 @@
   <!-- One drawing, every platform: SVG for modern browsers (switches with dark mode),
        ICO for legacy Windows tooling and link previews, a 180px PNG for iOS/iPadOS
        home screens and Safari, and a manifest so Edge/Chrome can install it as an app. -->
+  <!-- The SVG and iOS icons go through Vite (src/assets/brand), so their built names carry a
+       content hash: browsers cache favicons by URL and ignore no-cache, and a stale icon
+       would otherwise outlive any redesign. favicon.ico stays at the root because tools
+       request /favicon.ico directly. -->
   <link rel="icon" href="/favicon.ico" sizes="48x48" />
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="icon" type="image/svg+xml" href="/src/assets/brand/favicon.svg" />
+  <link rel="apple-touch-icon" href="/src/assets/brand/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#171C23" />
 </head>

@@ -1,7 +1,7 @@
 <template>
   <!-- The XERlock mark: a magnifying glass whose lens is a padlock (read-only), with the
        schedule under review inside it; the last bar is the critical path. The one in-app
-       definition: public/favicon.svg and docs/logo.svg are the same drawing as files.
+       definition: src/assets/brand/favicon.svg and docs/logo.svg are the same drawing as files.
        Strokes take currentColor, so the caller sets the ink; the lens is filled with the
        surface it sits on, so the bars read on light and dark backgrounds alike. Colours
        are set through CSS properties, not SVG attributes, so every engine resolves the
