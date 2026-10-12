@@ -1,6 +1,6 @@
 {
   "name": "xerlock",
-  "description": "XERlock \u2014 self-hosted, read-only Primavera P6 .xer review tool: Gantt, critical path, health checks, progress, compare",
+  "description": "XERlock — self-hosted, read-only Primavera P6 .xer review tool: Gantt, critical path, health checks, progress, compare",
   "license": "AGPL-3.0-or-later",
   "private": true,
   "version": "1.0.0",
@@ -11,13 +11,16 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
-    "typecheck": "vue-tsc --noEmit -p ."
+    "typecheck": "vue-tsc --noEmit -p .",
+    "build:standalone": "node scripts/prepare-standalone.mjs && vue-tsc --noEmit -p . && vite build --mode standalone --outDir dist-standalone",
+    "dev:standalone": "node scripts/prepare-standalone.mjs && vite --mode standalone"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",
     "@fontsource/ibm-plex-sans": "^5.3.0",
     "dagre": "^0.8.5",
     "exceljs": "^4.4.0",
+    "pyodide": "^314.0.7",
     "vue": "^3.4.0"
   },
   "devDependencies": {
