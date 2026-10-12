@@ -277,7 +277,12 @@ differences, which is the right outcome: its dates are not reproducible from log
 
 **Critical Path Test (DCMA 12).** Only on a file with zero differences. Take the first
 incomplete activity on the Longest Path that has a duration to extend (milestones have
-none); add the test delay, **600 working days** on that activity's calendar (a common
+none) and whose *finish* carries the path onward: a driving FS or FF link to a later
+Longest Path activity, or the project finish itself. Where the path leaves an activity by
+its start (an SS or SF link), a longer activity is expected to move nothing, so delaying it
+would report a break that is not one; the test is about the continuity of the path, and a
+start-driven chain is valid logic (its untied finish is DCMA 01's business). Add the test
+delay, **600 working days** on that activity's calendar (a common
 DCMA practice value; the backend parameter `CPT_DELAY_DAYS` sets it); reschedule in
 memory. The project finish activity is the one without successors that finishes last.
 The test **passes** when its early finish moved by the full delay, measured in working
@@ -286,9 +291,7 @@ along the path whose own finish moved less than the delay: a constraint, or a su
 tied only by an SS link, is usually found there. When the activities from the delayed one
 to the finish use unlike calendars, the same span of clock time reads differently on each
 (holidays, work periods), so the test allows one working week and says so; with one
-calendar along the path the match must be exact. Two of the twelve development files fail
-the test legitimately: the first activity on their Longest Path is followed only by an SS
-link, so extending it moves nothing.
+calendar along the path the match must be exact. All twelve development files pass the test.
 
 ## Compare
 

@@ -463,15 +463,11 @@ def test_cpt_fails_when_a_constraint_absorbs_the_delay():
     assert r["absorbed_by_task_id"] == 3
 
 
-def test_cpt_fails_when_a_parallel_path_absorbs_part_of_the_delay():
-    # 1 -> 3 is the longest path (48h); 2 -> 3 is 40h. Delaying 1 by 8h moves the finish by 8h
-    # (clean); delaying by 80h also moves it 80h. Absorption needs a constraint-free case:
-    # a successor with its own SOA constraint later than the current finish.
-    tasks = [task(1, 8), task(2, 40), task(3, 8, cstr_type="CS_MSOA", cstr_date=dt(2026, 3, 16, 8))]
-    links = [Link(1, 3), Link(2, 3)]
-    r = cpt(tasks, links, longest_path=[2, 3], delay_days=2)
-    # 3 is held to Mon 16th by its constraint; a 16h delay on 2 moves nothing.
-    assert r["passed"] is False and r["absorbed_by_task_id"] == 3
+def test_cpt_fails_when_the_finish_itself_is_pinned():
+    # A mandatory finish on the project finish: the delay lands on it and goes nowhere.
+    tasks = [task(1, 40), task(2, 8, cstr_type="CS_MANDFIN", cstr_date=dt(2026, 3, 9, 16))]
+    r = cpt(tasks, [Link(1, 2)], longest_path=[1, 2], delay_days=10)
+    assert r["passed"] is False and r["finish_delta_hrs"] == 0 and r["absorbed_by_task_id"] == 2
 
 
 def test_cpt_skips_completed_activities_on_the_path():
@@ -486,6 +482,23 @@ def test_cpt_delays_the_first_activity_with_a_duration_not_a_milestone():
     r = cpt(tasks, [Link(1, 2), Link(2, 3)], longest_path=[1, 2, 3], delay_days=10)
     assert r["delayed_task_id"] == 2 and r["passed"] is True
     assert (r["delay_hrs"], r["finish_delta_hrs"]) == (80, 80)
+
+
+def test_cpt_skips_a_path_head_that_drives_only_by_its_start():
+    # 1 leads the Longest Path by an SS link: the path leaves it at its start, so a
+    # longer 1 moves nothing by design. The test delays 2, whose finish drives 3.
+    tasks = [task(1, 8), task(2, 40), task(3, 8)]
+    r = cpt(tasks, [Link(1, 2, "PR_SS"), Link(2, 3)], longest_path=[1, 2, 3], delay_days=10)
+    assert r["delayed_task_id"] == 2 and r["passed"] is True
+    # Driving by FF counts as driving by the finish: 1 (40h) pushes 2's finish.
+    tasks = [task(1, 40), task(2, 8), task(3, 8)]
+    r = cpt(tasks, [Link(1, 2, "PR_FF"), Link(2, 3)], longest_path=[1, 2, 3], delay_days=10)
+    assert r["delayed_task_id"] == 1 and r["passed"] is True
+
+
+def test_cpt_is_not_performed_when_no_finish_on_the_path_can_be_delayed():
+    tasks = [task(1, 8), task(2, 0, task_type="TT_FinMile")]
+    assert cpt(tasks, [Link(1, 2, "PR_SS")], longest_path=[1, 2], delay_days=10) is None
 
 
 def test_cpt_across_unlike_calendars_allows_a_week_and_says_so():

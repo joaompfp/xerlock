@@ -294,7 +294,7 @@ export function runChecks(data: ScheduleCore, cfg: HealthConfig) {
   } else if (recalculation.differing) {
     naReasons.cpt = `withheld: the recalculation differs from P6 on ${recalculation.differing} activit${recalculation.differing === 1 ? 'y' : 'ies'}`
   } else if (!criticalPathTest) {
-    naReasons.cpt = 'not performed: no incomplete activity with a duration on the Longest Path'
+    naReasons.cpt = 'not performed: no incomplete activity on the Longest Path has a duration whose finish drives the path'
   }
 
   const availability = {

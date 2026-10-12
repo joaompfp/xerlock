@@ -513,8 +513,9 @@ def critical_path_test(tasks, links, calendars, default_cal, opts: Options,
                        longest_path, delay_days: float, hrs_per_day: dict) -> Optional[dict]:
     """Add `delay_days` of working time to the remaining duration of the first
     incomplete activity on the Longest Path that has a duration to extend (a
-    milestone has none), reschedule, and check that the project finish moved by the
-    same amount, measured in working time on the delayed activity's calendar. On
+    milestone has none) and whose finish drives the path onward, reschedule, and
+    check that the project finish moved by the same amount, measured in working time
+    on the delayed activity's calendar. On
     failure, name the first activity along the path whose own finish moved less than
     the delay: that is where the delay was absorbed (a constraint, or a parallel
     path taking over).
@@ -534,11 +535,23 @@ def critical_path_test(tasks, links, calendars, default_cal, opts: Options,
     on_path = [by_id[i] for i in longest_path if i in by_id and by_id[i].status != COMPLETE
                and before[i].es is not None]
     on_path.sort(key=lambda t: (before[t.id].es, before[t.id].ef, t.id))
-    delayed = next((t for t in on_path if _Engine.remaining_of(t) > 0), None)
     has_succ = {l.pred for l in links}
     finish = max((t for t in tasks if t.id not in has_succ and before[t.id].ef is not None),
                  key=lambda t: (before[t.id].ef, -t.id), default=None)
-    if delayed is None or finish is None:
+    if finish is None:
+        return None
+    path_ids = {t.id for t in on_path}
+
+    def finish_drives(t):
+        """Its finish carries the path: a driving FS/FF link to a later Longest Path
+        activity, or it is the finish itself. Where the path leaves an activity by its
+        start (SS/SF), lengthening it is expected to move nothing, so it is no test."""
+        return t.id == finish.id or any(
+            l.type in ("PR_FS", "PR_FF") and l.succ in path_ids and t.id in before[l.succ].driving_preds
+            for l in links if l.pred == t.id)
+
+    delayed = next((t for t in on_path if _Engine.remaining_of(t) > 0 and finish_drives(t)), None)
+    if delayed is None:
         return None
     per_day = hrs_per_day.get(delayed.clndr_id) or 8.0
     delay_hrs = delay_days * per_day
