@@ -94,6 +94,52 @@ class WorkCalendar:
             d += timedelta(days=1 if forward else -1)
         return t
 
+    # P6 never schedules into non-working time. A start that logic puts at Friday
+    # 16:00 (a period's end) becomes Monday 08:00; a finish may sit exactly on a
+    # period's end, and when logic puts it in non-working time the forward pass moves
+    # it on to the next working start. The backward pass mirrors this: a late finish
+    # at Monday 08:00 (a period's start) becomes Friday 16:00.
+
+    def next_work_start(self, t: datetime) -> datetime:
+        """t if work is under way at t (period start inclusive, end exclusive), else
+        the next period start."""
+        return self._snap(t, forward=True, inclusive=False)
+
+    def next_work_finish(self, t: datetime) -> datetime:
+        """t if it lies in a period including its end, else the next period start."""
+        return self._snap(t, forward=True, inclusive=True)
+
+    def prev_work_finish(self, t: datetime) -> datetime:
+        """t if work has been done at t (period start exclusive, end inclusive), else
+        the previous period end."""
+        return self._snap(t, forward=False, inclusive=False)
+
+    def prev_work_start(self, t: datetime) -> datetime:
+        """t if it lies in a period including its start, else the previous period end."""
+        return self._snap(t, forward=False, inclusive=True)
+
+    def _snap(self, t: datetime, forward: bool, inclusive: bool) -> datetime:
+        d = t.date()
+        for _ in range(MAX_SPAN_DAYS):
+            day0 = datetime.combine(d, datetime.min.time())
+            m = (t - day0).total_seconds() / 60  # minutes into day d; outside 0..1440 on other days
+            spans = self.spans_on(d)
+            if forward:
+                for s, f in spans:
+                    if s <= m < f or (inclusive and m == f):
+                        return t
+                    if s > m:
+                        return day0 + timedelta(minutes=s)
+                d += timedelta(days=1)
+            else:
+                for s, f in reversed(spans):
+                    if s < m <= f or (inclusive and m == s):
+                        return t
+                    if f < m:
+                        return day0 + timedelta(minutes=f)
+                d -= timedelta(days=1)
+        return t
+
 
 # P6's "24 Hour" calendar: every minute of every day is working time.
 ALL_HOURS = WorkCalendar({str(d): [{"start": "00:00", "finish": "00:00"}] for d in range(1, 8)}, [])

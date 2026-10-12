@@ -69,3 +69,52 @@ def test_add_then_measure_round_trips(cal):
     t0 = dt(2026, 3, 30, 10)
     t1 = cal.add_working_hours(t0, 37)
     assert cal.working_hours_between(t0, t1) == 37
+
+
+# ── Snapping: where P6 places a date that logic puts in non-working time ─────
+
+def test_next_work_start_leaves_a_working_instant_alone(cal):
+    assert cal.next_work_start(dt(2026, 3, 9, 10)) == dt(2026, 3, 9, 10)
+    assert cal.next_work_start(dt(2026, 3, 9, 8)) == dt(2026, 3, 9, 8)
+
+
+def test_next_work_start_moves_a_period_end_to_the_next_period(cal):
+    # A start at Friday 16:00 is no work at all: the first working moment is Monday 08:00.
+    assert cal.next_work_start(dt(2026, 3, 6, 16)) == dt(2026, 3, 9, 8)
+    assert cal.next_work_start(dt(2026, 3, 7, 12)) == dt(2026, 3, 9, 8)
+    assert cal.next_work_start(dt(2026, 3, 9, 0)) == dt(2026, 3, 9, 8)
+
+
+def test_next_work_finish_keeps_a_period_end(cal):
+    # A finish at Friday 16:00 is where a day's work ends: it stays.
+    assert cal.next_work_finish(dt(2026, 3, 6, 16)) == dt(2026, 3, 6, 16)
+    # In non-working time, P6 moves a forward-pass finish *forward* to the next start.
+    assert cal.next_work_finish(dt(2026, 3, 6, 17)) == dt(2026, 3, 9, 8)
+    assert cal.next_work_finish(dt(2026, 3, 9, 8)) == dt(2026, 3, 9, 8)
+
+
+def test_prev_work_finish_moves_a_period_start_back(cal):
+    # A late finish at Monday 08:00 means nothing worked on Monday: Friday 16:00.
+    assert cal.prev_work_finish(dt(2026, 3, 9, 8)) == dt(2026, 3, 6, 16)
+    assert cal.prev_work_finish(dt(2026, 3, 8, 12)) == dt(2026, 3, 6, 16)
+    assert cal.prev_work_finish(dt(2026, 3, 9, 16)) == dt(2026, 3, 9, 16)
+    assert cal.prev_work_finish(dt(2026, 3, 9, 10)) == dt(2026, 3, 9, 10)
+
+
+def test_prev_work_start_keeps_a_period_start(cal):
+    assert cal.prev_work_start(dt(2026, 3, 9, 8)) == dt(2026, 3, 9, 8)
+    assert cal.prev_work_start(dt(2026, 3, 8, 12)) == dt(2026, 3, 6, 16)
+
+
+def test_snapping_respects_holidays_and_worked_exceptions(cal):
+    # Friday 3 April is a holiday; Saturday 4 April is worked 08:00-12:00.
+    assert cal.next_work_start(dt(2026, 4, 2, 16)) == dt(2026, 4, 4, 8)
+    assert cal.prev_work_finish(dt(2026, 4, 6, 8)) == dt(2026, 4, 4, 12)
+
+
+def test_snapping_on_a_24_hour_calendar_is_the_identity():
+    from backend.worktime import ALL_HOURS
+    t = dt(2026, 3, 7, 3, 30)
+    assert ALL_HOURS.next_work_start(t) == t
+    assert ALL_HOURS.prev_work_finish(t) == t
+    assert ALL_HOURS.prev_work_finish(dt(2026, 3, 7)) == dt(2026, 3, 7)
