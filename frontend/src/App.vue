@@ -759,7 +759,7 @@ export default defineComponent({
       // The bundled demo schedule (fully synthetic) — fetched from our own static assets
       // and pushed through the exact same upload path as a user file.
       try {
-        const res = await fetch('/sample-schedule.xer')
+        const res = await fetch(import.meta.env.BASE_URL + 'sample-schedule.xer')
         const blob = await res.blob()
         await this.uploadFile(new File([blob], 'sample-schedule.xer'))
       } catch {
