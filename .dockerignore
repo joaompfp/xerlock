@@ -1,0 +1,5 @@
+# The image needs only requirements.txt, backend/ and the built frontend/dist/.
+*
+!requirements.txt
+!backend/*.py
+!frontend/dist/
