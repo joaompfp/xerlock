@@ -7,7 +7,7 @@ import codecs
 import logging
 import os
 import tempfile
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -18,6 +18,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from xerparser.reader import Reader
+
+from backend.worktime import WorkCalendar
 
 logger = logging.getLogger("schedule-app")
 
@@ -62,6 +64,7 @@ class ActivitySummary(BaseModel):
     wbs_path: str
     status: str
     pct_complete: float
+    pct_complete_type: str
     early_start: Optional[str]
     early_end: Optional[str]
     late_start: Optional[str]
@@ -119,6 +122,10 @@ class ProjectSummary(BaseModel):
     has_resources: bool
     has_activity_codes: bool
     activity_code_types: list
+    # P6 scheduling options the computed dates depend on (see schedule_options_for).
+    schedule_options: dict = {}
+    # DCMA check 13; None when it cannot be computed (no data date, finish complete).
+    cpli: Optional[dict] = None
 
 class ScheduleData(BaseModel):
     project: ProjectSummary
@@ -135,6 +142,10 @@ class ScheduleData(BaseModel):
 # (TASKPRED on a 10k-activity file is ~30k rows, which still fits) but bounds the JSON
 # payload; the frontend surfaces `truncated` explicitly so nothing is silently dropped.
 RAW_TABLE_ROW_CAP = 50_000
+
+# A relationship drives its successor when its free float is zero. Dates in a .xer are
+# minute-resolution, so anything within a minute either side is zero.
+DRIVING_TOLERANCE_HRS = 1 / 60
 
 # P6 stores calendar exception dates as day serials with this epoch (Excel-compatible).
 _CAL_EPOCH = date(1899, 12, 30)
@@ -256,37 +267,106 @@ def parse_calendar_data(blob: str):
     return weekdays, exceptions
 
 
-def build_calendars(raw_tables: dict, activities: list):
-    """Calendar register from the raw CALENDAR table (not PyP6XER's objects, so the
-    inspector and viewer agree byte-for-byte with the file)."""
-    tbl = raw_tables.get("CALENDAR")
-    if not tbl or not tbl["rows"]:
+def table_records(raw_tables: dict, name: str):
+    """Rows of one raw table as {field: value} dicts."""
+    tbl = raw_tables.get(name)
+    if not tbl:
         return []
-    idx = {f: n for n, f in enumerate(tbl["fields"])}
-    def cell(row, field):
-        n = idx.get(field)
-        return row[n] if n is not None and n < len(row) else ""
-    assigned = {}
-    for a in activities:
-        assigned[a["clndr_id"]] = assigned.get(a["clndr_id"], 0) + 1
+    return [dict(zip(tbl["fields"], row)) for row in tbl["rows"]]
+
+
+def parse_calendars(raw_tables: dict):
+    """Calendars decoded from the raw CALENDAR table (not PyP6XER's objects, so the
+    inspector and viewer agree byte-for-byte with the file)."""
     out = []
-    for row in tbl["rows"]:
-        cid = cell(row, "clndr_id")
-        weekdays, exceptions = parse_calendar_data(cell(row, "clndr_data"))
+    for row in table_records(raw_tables, "CALENDAR"):
+        weekdays, exceptions = parse_calendar_data(row.get("clndr_data", ""))
         out.append({
-            "clndr_id": cid,
-            "clndr_name": cell(row, "clndr_name"),
-            "clndr_type": cell(row, "clndr_type"),
-            "default_flag": cell(row, "default_flag") == "Y",
-            "day_hr_cnt": float(cell(row, "day_hr_cnt") or 8),
-            "week_hr_cnt": float(cell(row, "week_hr_cnt") or 40),
-            "assigned_count": assigned.get(cid, 0),
+            "clndr_id": row.get("clndr_id", ""),
+            "clndr_name": row.get("clndr_name", ""),
+            "clndr_type": row.get("clndr_type", ""),
+            "default_flag": row.get("default_flag") == "Y",
+            "day_hr_cnt": float(row.get("day_hr_cnt") or 8),
+            "week_hr_cnt": float(row.get("week_hr_cnt") or 40),
             "weekdays": weekdays,
             "exceptions": exceptions,
         })
+    return out
+
+
+def build_calendars(calendars: list, activities: list):
+    """Calendar register: each calendar with how many activities use it."""
+    assigned = {}
+    for a in activities:
+        assigned[a["clndr_id"]] = assigned.get(a["clndr_id"], 0) + 1
+    out = [{**c, "assigned_count": assigned.get(c["clndr_id"], 0)} for c in calendars]
     # Most-used first; unused resource calendars sink to the bottom.
     out.sort(key=lambda c: -c["assigned_count"])
     return out
+
+def parse_p6_datetime(val):
+    """P6 dates arrive as datetime objects from PyP6XER or 'YYYY-MM-DD HH:MM' strings
+    from the raw tables."""
+    if val is None or isinstance(val, datetime):
+        return val
+    try:
+        return datetime.fromisoformat(str(val).strip())
+    except ValueError:
+        return None
+
+
+def schedule_options_for(raw_tables: dict, proj_id) -> dict:
+    """The scheduling options P6 used for this project. Every computed date, float and
+    critical flag in the file depends on them, so an auditor reads them first
+    (AACE 78R-13, schedule design basis; GAO Schedule Assessment Guide, BP 9)."""
+    pid = str(proj_id)
+    opts = next((r for r in table_records(raw_tables, "SCHEDOPTIONS") if r.get("proj_id") == pid), {})
+    proj = next((r for r in table_records(raw_tables, "PROJECT") if r.get("proj_id") == pid), {})
+    def flag(row, field):
+        v = row.get(field, "")
+        return None if v == "" else v == "Y"
+    try:
+        crit_hrs = float(proj.get("critical_drtn_hr_cnt") or 0)
+    except ValueError:
+        crit_hrs = 0.0
+    return {
+        "present": bool(opts),
+        "retained_logic": flag(opts, "sched_retained_logic"),
+        "progress_override": flag(opts, "sched_progress_override"),
+        "float_type": opts.get("sched_float_type", ""),
+        "lag_calendar": opts.get("sched_calendar_on_relationship_lag", "") or "rcal_Predecessor",
+        "open_ends_critical": flag(opts, "sched_open_critical_flag"),
+        "use_expected_finish": flag(opts, "sched_use_expect_end_flag"),
+        "float_to_project_finish": flag(opts, "sched_use_project_end_date_for_float"),
+        "external_relationships": opts.get("sched_outer_depend_type", ""),
+        "critical_type": proj.get("critical_path_type", "") or "CT_TotFloat",
+        "critical_float_hrs": crit_hrs,
+    }
+
+
+def percent_complete(task: dict, units: Optional[tuple]) -> float:
+    """Activity % complete on the basis the activity itself declares (complete_pct_type),
+    as P6 computes it. Reading phys_complete_pct regardless reports 0% (or a stale
+    figure) for every duration- and units-progressed activity."""
+    kind = task.get("complete_pct_type", "")
+    status = task.get("status_code", "")
+    if kind == "CP_Drtn":
+        if status == "TK_Complete":
+            return 100.0
+        od = safe_float(_num(task.get("target_drtn_hr_cnt")))
+        rd = safe_float(_num(task.get("remain_drtn_hr_cnt")))
+        return round(min(100.0, max(0.0, 100 * (od - rd) / od)), 1) if od > 0 else 0.0
+    if kind == "CP_Units" and units and units[1] > 0:
+        return round(min(100.0, 100 * units[0] / units[1]), 1)
+    return safe_float(_num(task.get("phys_complete_pct")))
+
+
+def _num(v):
+    try:
+        return float(v) if v not in (None, "") else None
+    except ValueError:
+        return None
+
 
 def safe_float(val, default=0.0):
     """Convert to float, handling None and falsy 0.0 correctly."""
@@ -310,6 +390,7 @@ def parse_xer(filepath: str) -> ScheduleData:
     except UnicodeDecodeError:
         raw_text = raw_bytes.decode("cp1252", errors="replace")
     raw_tables, ermhdr = parse_raw_tables(raw_text)
+    calendars = parse_calendars(raw_tables)
 
     reader = Reader(filepath)
     # Deliberately single-project: this is a one-file, one-programme review tool. When an
@@ -478,105 +559,126 @@ def parse_xer(filepath: str) -> ScheduleData:
                 "lag_hrs": p["lag_hrs"],
             })
 
-    # "Longest Path" (P6's alternate critical-activity definition): trace backward
-    # from the true finish driver(s) through only the *driving* predecessor
-    # relationship(s) at each step — the link(s) whose implied date actually equals
-    # the successor's computed early date. This is different from (and usually a
-    # strict subset of) plain TF=0: a schedule can have many zero-float activities
-    # that aren't actually connected to what's driving the finish date (e.g. they
-    # carry their own explicit constraint), while Longest Path only follows the
-    # unbroken logic chain. Handles multiple parallel/converging critical chains
-    # correctly, unlike a single backward trace from one arbitrary start point.
+    # Driving relationships, the way P6 defines them: a link drives its successor when
+    # its *relationship free float* is zero — the successor's date sits exactly where
+    # the link (plus its lag) puts it, measured in working time. Measured in clock time
+    # instead, an ordinary Friday-to-Monday FS link shows a 64-hour "gap", nothing is
+    # ever exactly driving, and picking the closest predecessor marks links driving
+    # that P6 does not (an activity held by a constraint or by the data date has no
+    # driving predecessor at all, and the trace must stop there).
+    #   lag:  applied on the calendar the project's scheduling options name
+    #         (SCHEDOPTIONS.sched_calendar_on_relationship_lag);
+    #   gap:  measured on the successor's calendar, since P6 places the successor at
+    #         the first working moment on its own calendar after the link allows.
     act_lookup = {a.task_id: a for a in project.activities}
-    # A small epsilon on top of the closest gap, not a fixed absolute tolerance:
-    # predecessor/successor calendars routinely differ (a 7-day milestone calendar
-    # reacting to a 5-day construction calendar, working-hour offsets, etc.), which
-    # can put even the true driving link a full calendar day or more away from an
-    # exact date match. Picking whichever predecessor(s) come closest to explaining
-    # the successor's computed date is robust to that; a fixed ~1hr tolerance is not
-    # — it silently produces zero driving predecessors on any link crossing a
-    # calendar boundary, truncating the backward trace after a single step.
-    DRIVING_EPSILON_HRS = 1.0
+    sched_options = schedule_options_for(raw_tables, project.proj_id)
+    work_cals = {c["clndr_id"]: WorkCalendar(c["weekdays"], c["exceptions"]) for c in calendars}
+    default_cal = next((work_cals[c["clndr_id"]] for c in calendars if c["default_flag"]), None)
+    all_hours = WorkCalendar({str(d): [{"start": "00:00", "finish": "00:00"}] for d in range(1, 8)}, [])
 
-    def implied_date(pred_a, link_type, lag_hrs):
-        lag = timedelta(hours=lag_hrs)
-        if link_type == "PR_FS":
-            return pred_a.early_end_date, "start", lag
-        if link_type == "PR_SS":
-            return pred_a.early_start_date, "start", lag
-        if link_type == "PR_FF":
-            return pred_a.early_end_date, "finish", lag
-        if link_type == "PR_SF":
-            return pred_a.early_start_date, "finish", lag
-        return None, None, lag
+    def cal_of(a):
+        return work_cals.get(str(a.clndr_id)) or default_cal or all_hours
 
-    def driving_gap_hrs(succ_a, pred_a, link_type, lag_hrs):
-        base, which, lag = implied_date(pred_a, link_type, lag_hrs)
-        if base is None:
+    lag_basis = sched_options.get("lag_calendar", "rcal_Predecessor")
+
+    def lag_cal(pred_a, succ_a):
+        if lag_basis == "rcal_Successor":
+            return cal_of(succ_a)
+        if lag_basis == "rcal_24Hour":
+            return all_hours
+        if lag_basis == "rcal_ProjDefault":
+            return default_cal or cal_of(pred_a)
+        return cal_of(pred_a)
+
+    def relationship_free_float_hrs(succ_a, pred_a, link_type, lag_hrs):
+        """Working hours between where the link puts the successor and where it is.
+        None when either date is missing or the link type is unknown."""
+        ends = {
+            "PR_FS": (pred_a.early_end_date, succ_a.early_start_date),
+            "PR_SS": (pred_a.early_start_date, succ_a.early_start_date),
+            "PR_FF": (pred_a.early_end_date, succ_a.early_end_date),
+            "PR_SF": (pred_a.early_start_date, succ_a.early_end_date),
+        }.get(link_type)
+        if not ends or None in ends:
             return None
-        actual = succ_a.early_start_date if which == "start" else succ_a.early_end_date
-        if actual is None:
-            return None
-        # Only a predecessor whose implied date is at or before the successor's
-        # actual date can be driving it forward; one implying a later date than
-        # what's observed isn't consistent with driving this particular link.
-        gap = ((actual - base) - lag).total_seconds() / 3600
-        return gap if gap >= -DRIVING_EPSILON_HRS else None
+        implied = lag_cal(pred_a, succ_a).add_working_hours(ends[0], lag_hrs)
+        return cal_of(succ_a).working_hours_between(implied, ends[1])
 
-    end_activities = [
-        a for a in project.activities
-        if not succ_map.get(a.task_id) and a.early_end_date
-    ]
+    for a in project.activities:
+        for p in pred_map.get(a.task_id, []):
+            pred_a = act_lookup.get(p["task_id"])
+            rff = relationship_free_float_hrs(a, pred_a, p["type"], p["lag_hrs"]) if pred_a else None
+            p["free_float_hrs"] = None if rff is None else round(rff, 2)
+            p["driving"] = rff is not None and abs(rff) <= DRIVING_TOLERANCE_HRS
+    # Mirror onto the successor lists so both directions of the panel carry the flag.
+    for tid, succs in succ_map.items():
+        for s in succs:
+            s["driving"] = False
+            s["free_float_hrs"] = None
+            for p in pred_map.get(s["task_id"], []):
+                if p["task_id"] == tid and p["type"] == s["type"] and p["lag_hrs"] == s["lag_hrs"]:
+                    s["driving"] = p["driving"]
+                    s["free_float_hrs"] = p["free_float_hrs"]
+                    break
+
+    # Longest Path (P6's alternate critical definition, AACE 49R-06's preferred one):
+    # from the activity finishing last, walk backward through driving links only. The
+    # chain ends where no link drives — at the project start, or at an activity held
+    # by a constraint or the data date. Computed independently of P6's own stored flag
+    # (driving_path_flag) so the two can be cross-checked: a disagreement means either
+    # this trace is wrong or the schedule was not recalculated after its last edit.
+    finish_activity = max(
+        (a for a in project.activities if not succ_map.get(a.task_id) and a.early_end_date),
+        key=lambda a: a.early_end_date,
+        default=None,
+    )
     longest_path_ids = set()
-    if end_activities:
-        min_tf = min(safe_float_or(a.total_float_hr_cnt) for a in end_activities)
-        stack = [a.task_id for a in end_activities if safe_float_or(a.total_float_hr_cnt) == min_tf]
+    if finish_activity:
+        finish_end = finish_activity.early_end_date
+        stack = [a.task_id for a in project.activities
+                 if not succ_map.get(a.task_id) and a.early_end_date == finish_end]
         while stack:
             tid = stack.pop()
             if tid in longest_path_ids:
                 continue
             longest_path_ids.add(tid)
-            succ_a = act_lookup.get(tid)
-            if not succ_a:
-                continue
-            gaps = []
-            for p in pred_map.get(tid, []):
-                pred_a = act_lookup.get(p["task_id"])
-                if not pred_a:
-                    continue
-                gap = driving_gap_hrs(succ_a, pred_a, p["type"], p["lag_hrs"])
-                if gap is not None:
-                    gaps.append((gap, p["task_id"]))
-            if gaps:
-                min_gap = min(g for g, _ in gaps)
-                for gap, ptid in gaps:
-                    if gap <= min_gap + DRIVING_EPSILON_HRS:
-                        stack.append(ptid)
+            stack.extend(p["task_id"] for p in pred_map.get(tid, []) if p["driving"])
 
-    # Annotate every relationship with its driving flag, using the same closest-gap rule
-    # as the longest-path trace: among a successor's predecessors, the one(s) whose
-    # implied date best explains the successor's computed early date are driving it.
-    for a in project.activities:
-        preds = pred_map.get(a.task_id, [])
-        gaps = []
-        for p in preds:
-            pred_a = act_lookup.get(p["task_id"])
-            gaps.append(driving_gap_hrs(a, pred_a, p["type"], p["lag_hrs"]) if pred_a else None)
-        valid = [g for g in gaps if g is not None]
-        min_gap = min(valid) if valid else None
-        for p, g in zip(preds, gaps):
-            p["driving"] = g is not None and g <= min_gap + DRIVING_EPSILON_HRS
-    # Mirror onto the successor lists so both directions of the panel carry the flag.
-    for tid, succs in succ_map.items():
-        for s in succs:
-            s["driving"] = False
-            for p in pred_map.get(s["task_id"], []):
-                if p["task_id"] == tid and p["type"] == s["type"] and p["lag_hrs"] == s["lag_hrs"]:
-                    s["driving"] = p["driving"]
-                    break
+    # Critical Path Length Index (DCMA check 13): (CPL + TF) / CPL, where CPL is the
+    # working time from the data date to the project finish and TF the finish's total
+    # float. Below 0.95 the remaining path must be compressed to make the date.
+    cpli = None
+    data_date = parse_p6_datetime(project.last_recalc_date)
+    if finish_activity and data_date and finish_activity.total_float_hr_cnt is not None:
+        cpl_hrs = cal_of(finish_activity).working_hours_between(data_date, finish_activity.early_end_date)
+        if cpl_hrs > 0:
+            tf_hrs = float(finish_activity.total_float_hr_cnt)
+            cpli = {
+                "value": round((cpl_hrs + tf_hrs) / cpl_hrs, 3),
+                "cpl_hrs": round(cpl_hrs, 1),
+                "tf_hrs": tf_hrs,
+                "finish_task_id": finish_activity.task_id,
+            }
 
-    # Build activities list. is_critical uses the standard TF=0 definition (every
-    # zero-float activity); is_longest_path uses the driving-chain trace above.
+    # Critical, as this project defines it (PROJECT.critical_path_type): either total
+    # float at or below the project's own threshold (critical_drtn_hr_cnt — P6's
+    # default is 0, but contracts often set it higher), or P6's Longest Path.
+    crit_threshold = sched_options["critical_float_hrs"]
+    p6_flags_present = any(a.driving_path_flag == "Y" for a in project.activities)
+
+    def critical(a, tf):
+        if sched_options["critical_type"] == "CT_DrivPath":
+            return (a.driving_path_flag == "Y") if p6_flags_present else a.task_id in longest_path_ids
+        return tf is not None and tf <= crit_threshold
+
+    task_rows = {r.get("task_id"): r for r in table_records(raw_tables, "TASK")}
+    units_done = {}
+    for r in table_records(raw_tables, "TASKRSRC"):
+        act = sum(safe_float(_num(r.get(f))) for f in ("act_reg_qty", "act_ot_qty"))
+        rem = safe_float(_num(r.get("remain_qty")))
+        d, t = units_done.get(r.get("task_id"), (0.0, 0.0))
+        units_done[r.get("task_id")] = (d + act, t + act + rem)
+
     activities = []
     wbs_act_count = {}
     for a in project.activities:
@@ -594,7 +696,8 @@ def parse_xer(filepath: str) -> ScheduleData:
             "wbs_id": a.wbs_id,
             "wbs_path": wbs_path_for(a.wbs_id),
             "status": a.status_code or "",
-            "pct_complete": safe_float(a.phys_complete_pct),
+            "pct_complete": percent_complete(task_rows.get(str(a.task_id), {}), units_done.get(str(a.task_id))),
+            "pct_complete_type": task_rows.get(str(a.task_id), {}).get("complete_pct_type", ""),
             "early_start": es,
             "early_end": ee,
             "late_start": ls,
@@ -609,10 +712,9 @@ def parse_xer(filepath: str) -> ScheduleData:
             "calendar_hrs_per_day": cal_hrs_dict.get(a.clndr_id, 8.0),
             "predecessors": pred_map.get(a.task_id, []),
             "successors": succ_map.get(a.task_id, []),
-            # Standard planning convention: the critical path is float <= 0, not just == 0.
-            # Activities already behind an imposed date (negative float) are critical too —
-            # is_negative_float lets the frontend give them a visually distinct treatment.
-            "is_critical": tf is not None and tf <= 0,
+            # Negative float is critical too (it is below any threshold);
+            # is_negative_float lets the frontend give it a visually distinct treatment.
+            "is_critical": critical(a, tf),
             "is_longest_path": a.task_id in longest_path_ids,
             "is_negative_float": tf is not None and tf < 0,
             "driving_path_flag": a.driving_path_flag == "Y",
@@ -682,11 +784,13 @@ def parse_xer(filepath: str) -> ScheduleData:
             has_resources=has_resources,
             has_activity_codes=len(activity_code_types) > 0,
             activity_code_types=activity_code_types,
+            schedule_options=sched_options,
+            cpli=cpli,
         ),
         wbs_tree=wbs_tree,
         activities=activities,
         warnings=warnings,
-        calendars=build_calendars(raw_tables, activities),
+        calendars=build_calendars(calendars, activities),
         raw_tables=raw_tables,
         ermhdr=ermhdr,
     )

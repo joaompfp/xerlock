@@ -8,7 +8,7 @@ including the nested-group shape that once silently produced empty weekdays.
 
 from datetime import date
 
-from backend.main import parse_calendar_data, build_calendars
+from backend.main import parse_calendar_data, parse_calendars
 
 # The real shape P6 emits: a params group, then a *children group* holding nodes.
 BLOB = (
@@ -107,4 +107,4 @@ def test_calendar_assignment_counts_match_activities(schedule):
 
 
 def test_build_calendars_without_a_calendar_table():
-    assert build_calendars({}, []) == []
+    assert parse_calendars({}) == []
