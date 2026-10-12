@@ -12,21 +12,21 @@
   "total_not_started": 18,
   "pct_complete": 12.5,
   "earliest_start": "2026-01-21 08:00:00",
-  "latest_end": "2026-09-09 08:00:00",
+  "latest_end": "2026-09-08 16:00:00",
   "data_date": "2026-03-02 08:00",
   "has_resources": false,
   "has_activity_codes": false,
   "activity_code_types": [],
   "schedule_options": {
-   "present": false,
-   "retained_logic": null,
-   "progress_override": null,
-   "float_type": "",
+   "present": true,
+   "retained_logic": false,
+   "progress_override": true,
+   "float_type": "FT_FF",
    "lag_calendar": "rcal_Predecessor",
-   "open_ends_critical": null,
-   "use_expected_finish": null,
-   "float_to_project_finish": null,
-   "external_relationships": "",
+   "open_ends_critical": false,
+   "use_expected_finish": false,
+   "float_to_project_finish": true,
+   "external_relationships": "SD_Both",
    "critical_type": "CT_TotFloat",
    "critical_float_hrs": 0.0
   },
@@ -35,6 +35,47 @@
    "cpl_hrs": 1080.0,
    "tf_hrs": 0.0,
    "finish_task_id": 24
+  },
+  "recalculation": {
+   "supported": true,
+   "reason": null,
+   "options": {
+    "progress_mode": "override",
+    "float_type": "FT_FF",
+    "lag_calendar": "rcal_Predecessor",
+    "delay_days": 600
+   },
+   "compared": 21,
+   "excluded": {
+    "complete": 3,
+    "wbs_summary": 0
+   },
+   "differing": 0,
+   "by_field": {
+    "es": 0,
+    "ef": 0,
+    "ls": 0,
+    "lf": 0,
+    "tf": 0,
+    "ff": 0
+   },
+   "differences": [],
+   "truncated": false
+  },
+  "critical_path_test": {
+   "passed": true,
+   "exact": true,
+   "delay_days": 600,
+   "delay_hrs": 4800.0,
+   "tolerance_hrs": 0.02,
+   "calendars_uniform": true,
+   "delayed_task_id": 9,
+   "finish_task_id": 24,
+   "finish_before": "2026-09-08 16:00",
+   "finish_after": "2028-12-27 16:00",
+   "expected_delta_hrs": 4800.0,
+   "finish_delta_hrs": 4800.0,
+   "absorbed_by_task_id": null
   }
  },
  "activities": [
@@ -1365,10 +1406,10 @@
    "status": "TK_NotStart",
    "pct_complete": 0.0,
    "pct_complete_type": "CP_Phys",
-   "early_start": "2026-09-09 08:00:00",
-   "early_end": "2026-09-09 08:00:00",
-   "late_start": "2026-09-09 08:00:00",
-   "late_end": "2026-09-09 08:00:00",
+   "early_start": "2026-09-08 16:00:00",
+   "early_end": "2026-09-08 16:00:00",
+   "late_start": "2026-09-08 16:00:00",
+   "late_end": "2026-09-08 16:00:00",
    "total_float_hrs": 0.0,
    "free_float_hrs": 0.0,
    "duration_hrs": 0.0,

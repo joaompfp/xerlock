@@ -25,7 +25,7 @@
             <td class="cfg-source">{{ def.source }}</td>
             <td>
               {{ def.label }}
-              <span v-if="!availability[def.key]" class="cfg-na">— {{ def.naReason || 'not checkable in this file' }}</span>
+              <span v-if="!availability[def.key]" class="cfg-na">— {{ naReasons[def.key] || def.naReason || 'not checkable in this file' }}</span>
             </td>
             <td>
               <template v-if="def.paramLabel">
@@ -100,7 +100,7 @@
       </div>
 
       <p v-for="c in excludedChecks" :key="c.key" class="hc-footnote">
-        {{ c.source }} {{ c.label }} — {{ c.naReason || 'not checkable in this file' }}
+        {{ c.source }} {{ c.label }} — {{ naReasons[c.key] || c.naReason || 'not checkable in this file' }}
       </p>
     </div>
 
@@ -404,6 +404,79 @@
       </div>
     </section>
 
+    <!-- Recalculation: the CPM engine's reproduction of P6's dates and float -->
+    <section class="health-section" v-if="recalculation" ref="sec-recalc">
+      <button class="section-head" @click="toggle('recalc')">
+        <span class="section-title">Recalculation <em v-if="recalculation.supported" :class="{ pass: recalcDifferences.length === 0 }">({{ recalculation.differing }})</em><em v-else>(—)</em></span>
+        <span class="section-hint">The schedule rescheduled in memory from its own logic, durations, calendars, constraints, progress and options, against the dates and float P6 stored — a difference means an edit without a reschedule, or a feature the engine does not model</span>
+        <span class="chevron" :class="{ open: expanded.recalc }">&rsaquo;</span>
+      </button>
+      <div v-if="expanded.recalc" class="section-body">
+        <p v-if="!recalculation.supported" class="section-note">Not recalculated: {{ recalculation.reason }}. The Critical Path Test is withheld.</p>
+        <template v-else>
+          <p class="section-note">
+            {{ recalculation.compared }} activities compared on early and late dates, total and free float
+            ({{ recalculation.excluded.complete }} completed{{ recalculation.excluded.wbs_summary ? ', ' + recalculation.excluded.wbs_summary + ' WBS summaries' : '' }} excluded: P6 computes no remaining dates or float for them).
+            Engine settings from the file: {{ progressModeLabel }}, {{ floatTypeLabel }}, lag on the {{ lagCalendarLabel }} calendar.
+          </p>
+          <div v-if="recalcDifferences.length === 0" class="empty-state">✓ Every recalculated date and float matches P6's stored value to the minute.</div>
+          <template v-else>
+            <div class="rel-mix">
+              <div v-for="f in recalcFieldOrder" :key="f" class="rel-mix-item">
+                <strong>{{ recalculation.by_field[f] || 0 }}</strong>
+                <span>{{ recalcFieldLabels[f] }}</span>
+              </div>
+            </div>
+            <p v-if="recalculation.truncated" class="section-note">Showing the first {{ recalcDifferences.length }} differences.</p>
+            <table class="health-table">
+              <thead><tr><th>Code</th><th>Activity</th><th>Field</th><th class="num">Recalculated</th><th class="num">P6 stored</th><th class="num">Δ</th><th class="tg-th"></th></tr></thead>
+              <tbody>
+                <tr v-for="(d, i) in recalcDifferences" :key="i" class="jump-row" title="Show details" @click="openDetail(d.activity.task_id)">
+                  <td class="code">{{ d.activity.task_code }}</td>
+                  <td class="name-cell">{{ d.activity.task_name }}</td>
+                  <td>{{ recalcFieldLabels[d.field] || d.field }}</td>
+                  <td class="num-cell">{{ formatRecalcValue(d.field, d.computed, d.activity) }}</td>
+                  <td class="num-cell">{{ formatRecalcValue(d.field, d.stored, d.activity) }}</td>
+                  <td class="num-cell" :title="isDateField(d.field) ? 'Clock hours' : 'Working hours'">{{ d.delta_hrs == null ? '—' : (d.delta_hrs > 0 ? '+' : '') + d.delta_hrs + 'h' }}</td>
+                  <td class="tg-cell"><button class="to-gantt" title="Show in Gantt" @click.stop="$emit('jump', d.activity.task_id)">↗</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </template>
+        </template>
+      </div>
+    </section>
+
+    <!-- DCMA 12: Critical Path Test, only on a file the recalculation reproduces -->
+    <section class="health-section" v-if="criticalPathTest" ref="sec-cpt">
+      <button class="section-head" @click="toggle('cpt')">
+        <span class="section-title">Critical Path Test <em :class="{ pass: criticalPathTest.passed }">({{ criticalPathTest.passed ? 'pass' : 'fail' }})</em></span>
+        <span class="section-hint">{{ criticalPathTest.delay_days }} working days added to the first Longest Path activity with work left, then rescheduled: the project finish should move by the same amount (DCMA 12)</span>
+        <span class="chevron" :class="{ open: expanded.cpt }">&rsaquo;</span>
+      </button>
+      <div v-if="expanded.cpt" class="section-body">
+        <div class="cpt-card" :class="criticalPathTest.passed ? 'cpt-pass' : 'cpt-fail'">
+          <div class="cpt-verdict">{{ criticalPathTest.passed ? 'PASS' : 'FAIL' }}</div>
+          <dl class="cpt-facts">
+            <dt>Delayed</dt>
+            <dd><span class="code jump-code" @click="openDetail(criticalPathTest.delayed_task_id)">{{ codeOf(criticalPathTest.delayed_task_id) }}</span> {{ predOf(criticalPathTest.delayed_task_id)?.task_name }} — +{{ criticalPathTest.delay_days }} working days on its calendar</dd>
+            <dt>Project finish</dt>
+            <dd><span class="code jump-code" @click="openDetail(criticalPathTest.finish_task_id)">{{ codeOf(criticalPathTest.finish_task_id) }}</span> {{ predOf(criticalPathTest.finish_task_id)?.task_name }}: {{ formatDate(criticalPathTest.finish_before) }} → {{ formatDate(criticalPathTest.finish_after) }}</dd>
+            <dt>Finish moved</dt>
+            <dd>
+              {{ cptDays(criticalPathTest.finish_delta_hrs) }} working days, expected {{ cptDays(criticalPathTest.expected_delta_hrs) }}
+              <span v-if="criticalPathTest.exact"> — exact</span>
+              <span v-else-if="!criticalPathTest.calendars_uniform"> — calendars differ along the path, so up to {{ cptDays(criticalPathTest.tolerance_hrs) }} days of calendar re-reading is allowed</span>
+            </dd>
+            <template v-if="!criticalPathTest.passed && criticalPathTest.absorbed_by_task_id != null">
+              <dt>Absorbed at</dt>
+              <dd><span class="code jump-code" @click="openDetail(criticalPathTest.absorbed_by_task_id)">{{ codeOf(criticalPathTest.absorbed_by_task_id) }}</span> {{ predOf(criticalPathTest.absorbed_by_task_id)?.task_name }} — the first activity along the path whose own finish moved less than the delay: look for a constraint, or a successor tied only by an SS link</dd>
+            </template>
+          </dl>
+        </div>
+      </div>
+    </section>
+
     <!-- Out-of-sequence progress -->
     <section class="health-section" ref="sec-oos">
       <button class="section-head" @click="toggle('oos')">
@@ -479,7 +552,11 @@ import type { Annotations } from '../utils/annotations'
 
 type Checks = ReturnType<typeof runChecks>
 type SectionKey = 'openEnds' | 'rel' | 'constraints' | 'alap' | 'negfloat' | 'highfloat' | 'invdates'
-  | 'missed' | 'highdur' | 'loe' | 'driving' | 'oos' | 'resources'
+  | 'missed' | 'highdur' | 'loe' | 'driving' | 'recalc' | 'cpt' | 'oos' | 'resources'
+
+const RECALC_FIELD_LABELS: Record<string, string> = {
+  es: 'Early start', ef: 'Early finish', ls: 'Late start', lf: 'Late finish', tf: 'Total float', ff: 'Free float',
+}
 
 interface ScorecardItem {
   key: CheckKey
@@ -529,6 +606,8 @@ export default defineComponent({
         highdur: false,
         loe: false,
         driving: false,
+        recalc: false,
+        cpt: true,
         oos: false,
         resources: false,
       } as Record<SectionKey, boolean>,
@@ -539,6 +618,8 @@ export default defineComponent({
       cstrLabels: CSTR_LABELS,
       relTypeLabels: REL_TYPE_LABELS,
       relTypeOrder: ['PR_FS', 'PR_SS', 'PR_FF', 'PR_SF'],
+      recalcFieldLabels: RECALC_FIELD_LABELS,
+      recalcFieldOrder: ['es', 'ef', 'ls', 'lf', 'tf', 'ff'],
     }
   },
   watch: {
@@ -607,7 +688,24 @@ export default defineComponent({
     drivingMismatchList(): Checks['drivingMismatchList'] { return this.checks.drivingMismatchList },
     outOfSequenceList(): Checks['outOfSequenceList'] { return this.checks.outOfSequenceList },
     noResourceList(): Checks['noResourceList'] { return this.checks.noResourceList },
+    recalculation(): Checks['recalculation'] { return this.checks.recalculation },
+    recalcDifferences(): Checks['recalcDifferences'] { return this.checks.recalcDifferences },
+    criticalPathTest(): Checks['criticalPathTest'] { return this.checks.criticalPathTest },
+    naReasons(): Checks['naReasons'] { return this.checks.naReasons },
     availability(): Checks['availability'] { return this.checks.availability },
+    // The engine's reading of the file's options, in the words the options strip uses.
+    progressModeLabel(): string {
+      const m = this.recalculation?.options.progress_mode
+      return m === 'override' ? 'Progress Override' : m === 'actual' ? 'Actual Dates' : 'Retained Logic'
+    },
+    floatTypeLabel(): string {
+      const t = this.recalculation?.options.float_type
+      return t === 'FT_SF' ? 'start float' : t === 'FT_FF' ? 'finish float' : 'smallest float'
+    },
+    lagCalendarLabel(): string {
+      const c = this.recalculation?.options.lag_calendar
+      return c === 'rcal_Successor' ? 'successor' : c === 'rcal_24Hour' ? '24-hour' : c === 'rcal_ProjDefault' ? 'project default' : 'predecessor'
+    },
     checkResults(): Record<CheckKey, CheckResult> { return this.checks.results },
     includedDefs(): CheckDef[] {
       return CHECK_DEFS.filter(d => this.checkResults[d.key].included)
@@ -697,6 +795,19 @@ export default defineComponent({
     },
     resetConfig() {
       this.cfg = defaultConfig()
+    },
+    isDateField(field: string): boolean {
+      return field === 'es' || field === 'ef' || field === 'ls' || field === 'lf'
+    },
+    formatRecalcValue(field: string, value: string | number | null, a: Activity): string {
+      if (value == null) return '—'
+      return this.isDateField(field) ? formatDate(value) : formatFloat(Number(value), a.calendar_hrs_per_day)
+    },
+    // CPT figures are working hours on the delayed activity's calendar.
+    cptDays(hrs: number): string {
+      const cal = this.criticalPathTest ? this.predOf(this.criticalPathTest.delayed_task_id)?.calendar_hrs_per_day : 8
+      const d = hrs / (cal || 8)
+      return String(Number.isInteger(d) ? d : Math.round(d * 10) / 10)
     },
   },
 })
@@ -797,6 +908,16 @@ export default defineComponent({
 .issue-severe { background: var(--crit); color: var(--on-solid); }
 .issue-warn { background: var(--near-tint); color: var(--near); }
 .cfg-source { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); white-space: nowrap; }
+.cpt-card { display: flex; gap: var(--space-5); align-items: flex-start; border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); }
+.cpt-pass { border-color: var(--ok); }
+.cpt-fail { border-color: var(--crit); background: var(--crit-soft); }
+.cpt-verdict { font-family: var(--font-mono); font-size: 23px; font-weight: 800; line-height: 1.1; }
+.cpt-pass .cpt-verdict { color: var(--ok); }
+.cpt-fail .cpt-verdict { color: var(--crit); }
+.cpt-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-4); margin: 0; font: var(--text-small); }
+.cpt-facts dt { font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); padding-top: 3px; }
+.cpt-facts dd { margin: 0; color: var(--ink); }
+.jump-code { cursor: pointer; }
 .hc-options { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-4); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line-soft); font: var(--text-small); }
 .hc-options .hc-group-label { margin-bottom: 0; }
 .hc-opt { color: var(--ink-3); }

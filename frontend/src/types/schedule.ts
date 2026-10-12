@@ -91,6 +91,51 @@ export interface Cpli {
   finish_task_id: number
 }
 
+/** One field on one activity where the recalculation and P6's stored value differ. */
+export interface RecalcDifference {
+  task_id: number
+  /** es, ef, ls, lf (dates) or tf, ff (hours). */
+  field: string
+  computed: string | number | null
+  stored: string | number | null
+  /** computed minus stored, in clock hours for dates and working hours for float. */
+  delta_hrs: number | null
+}
+
+/** The CPM engine's reproduction of P6's dates and float (backend/recalc.py). */
+export interface Recalculation {
+  /** False when the engine refuses the file; `reason` says why. */
+  supported: boolean
+  reason: string | null
+  options: { progress_mode: string; float_type: string; lag_calendar: string; delay_days: number }
+  compared: number
+  excluded: { complete: number; wbs_summary: number }
+  differing: number
+  by_field: Record<string, number>
+  differences: RecalcDifference[]
+  truncated: boolean
+}
+
+/** DCMA 12, reported only when the recalculation reproduces P6 exactly. */
+export interface CriticalPathTest {
+  passed: boolean
+  /** The finish moved by the delay to the minute. */
+  exact: boolean
+  delay_days: number
+  delay_hrs: number
+  tolerance_hrs: number
+  /** Every activity from the delayed one to the finish shares its calendar. */
+  calendars_uniform: boolean
+  delayed_task_id: number
+  finish_task_id: number
+  finish_before: P6Date
+  finish_after: P6Date
+  expected_delta_hrs: number
+  /** Movement of the finish, in working hours on the delayed activity's calendar. */
+  finish_delta_hrs: number
+  absorbed_by_task_id: number | null
+}
+
 export interface ProjectSummary {
   proj_short_name: string
   total_activities: number
@@ -112,6 +157,8 @@ export interface ProjectSummary {
   activity_code_types: string[]
   schedule_options?: ScheduleOptions | Record<string, never>
   cpli?: Cpli | null
+  recalculation?: Recalculation | null
+  critical_path_test?: CriticalPathTest | null
 }
 
 export interface WbsNode {
