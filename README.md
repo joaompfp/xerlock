@@ -127,7 +127,7 @@ same file ships in [`examples/sample-schedule.xer`](examples/sample-schedule.xer
 └────────────┘  parsed JSON   └──────────────────┘
 ```
 
-- **Backend** (`backend/main.py`): FastAPI + [PyP6XER](https://github.com/HotaOsman/PyP6XER).
+- **Backend** (`backend/main.py`): FastAPI + [PyP6XER](https://pypi.org/project/PyP6XER/).
   One endpoint (`POST /api/upload`) parses the `.xer` in memory and returns the full schedule as
   JSON - activities with float/constraints/actuals/codes, the WBS tree, and project stats
   including a longest-path trace. **Nothing is persisted server-side**; files are parsed and
