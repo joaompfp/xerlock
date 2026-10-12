@@ -188,9 +188,20 @@ additive or subtractive). It is the evidence-gathering step those methods start 
   Status bands: on track ≤ 0, watch 1–10, at risk > 10. The bands are XERlock's convention.
 - **Look-ahead**: incomplete activities whose early dates overlap the window from the data
   date.
-- **S-curve**: the cumulative *count* of activities planned to finish (planned dates) and
-  actually finished (actual dates), by month. The curve is unweighted (not by cost,
-  hours or duration) and not baselined, and the chart says so.
+- **S-curve** (`frontend/src/utils/sCurve.js`): cumulative share of the programme's total
+  original duration, in working days (hours / the activity's hours per day, so calendars of
+  different lengths weigh the same per day). Task and resource-dependent activities only;
+  milestones carry no duration and level of effort would count the work it spans twice.
+  - *Planned*: each activity's original duration spread linearly between its P6 planned
+    start and finish (`target_start_date`, `target_end_date`). Not a baseline.
+  - *Earned*: original less remaining duration (P6's duration % complete basis; the full
+    original once complete), spread from actual start to actual finish, or to the data
+    date while in progress. Plotted up to the data date.
+  - *Forecast*: earned at the data date plus each activity's remaining duration spread
+    over its remaining early dates. Ends above 100% when remaining estimates exceed
+    original durations, which is growth worth seeing, not an error.
+  - Spreading is linear in calendar time, not working time. At monthly resolution the
+    difference is small, and the curve does not depend on calendar decoding.
 
 ## Not done
 

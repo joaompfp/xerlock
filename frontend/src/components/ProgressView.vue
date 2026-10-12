@@ -64,30 +64,35 @@
     <section class="progress-section">
       <div class="section-head-static">
         <span class="section-title">Progress S-Curve</span>
-        <span class="section-hint">Cumulative % of activities planned to finish (target dates) vs actually finished (actual dates)</span>
+        <span class="section-hint">Cumulative % of the programme's original duration (working days): planned, earned (original less remaining) and forecast (remaining work on its early dates)</span>
       </div>
       <div class="section-body">
-        <p class="section-note">"Planned" uses this file's current target dates, not a locked baseline — re-upload an earlier snapshot and compare visually if you need a true baseline trend.</p>
-        <div v-if="sCurve.months.length < 2" class="empty-state warn">Not enough date data to draw a trend.</div>
+        <p class="section-note">
+          Weighted by duration across {{ curve ? curve.totalDays : 0 }} working days of task work; milestones and level of effort excluded.
+          "Planned" uses this file's P6 planned dates, not a locked baseline.
+          <template v-if="curve && curve.skipped">{{ curve.skipped }} activities without planned dates are left out of the planned line.</template>
+        </p>
+        <div v-if="!curve || curve.points.length < 2" class="empty-state warn">Not enough date data to draw a trend.</div>
         <svg v-else :viewBox="`0 0 ${chartW} ${chartH}`" class="scurve-svg">
           <!-- Two gridlines, not six: 0% and 100% are the only ones that carry meaning.
                Everything else was chart furniture competing with the data. -->
           <line v-for="g in [0, 100]" :key="'g'+g" :x1="padL" :x2="chartW - padR" :y1="yFor(g)" :y2="yFor(g)" class="grid-line" />
           <text v-for="g in [0, 100]" :key="'gl'+g" :x="padL - 6" :y="yFor(g) + 3" class="axis-label" text-anchor="end">{{ g }}%</text>
-          <template v-for="(m, i) in sCurve.months" :key="'ml'+i">
-            <text v-if="i % monthLabelStep === 0" :x="xFor(i)" :y="chartH - 6" class="axis-label" text-anchor="middle">{{ monthLabel(m) }}</text>
-          </template>
+          <text v-for="m in monthTicks" :key="'ml'+m.t" :x="xFor(m.t)" :y="chartH - 6" class="axis-label" text-anchor="middle">{{ monthLabel(m.t) }}</text>
           <!-- The shortfall is the shape between the lines, so it reads without
                subtracting two numbers. -->
           <path v-if="gapPath" :d="gapPath" class="curve-gap" />
-          <path :d="pathFor(sCurve.planned)" class="curve-planned" />
-          <path :d="pathFor(sCurve.actual)" class="curve-actual" />
-          <line v-if="dataDateX != null" :x1="dataDateX" :x2="dataDateX" :y1="padT" :y2="chartH - padB" class="data-date-line" />
-          <text v-if="dataDateX != null" :x="dataDateX" :y="padT - 4" class="axis-label data-date-label" text-anchor="middle">{{ dataDateCallout }}</text>
+          <path :d="pathOf('planned')" class="curve-planned" />
+          <path :d="pathOf('forecast')" class="curve-forecast" />
+          <path :d="pathOf('actual')" class="curve-actual" />
+          <line v-if="ddPoint" :x1="xFor(ddPoint.t)" :x2="xFor(ddPoint.t)" :y1="padT" :y2="chartH - padB" class="data-date-line" />
+          <text v-if="ddPoint" :x="xFor(ddPoint.t)" :y="padT - 4" class="axis-label data-date-label" text-anchor="middle">data date · {{ Math.round(ddPoint.actual) }}% earned vs {{ Math.round(ddPoint.planned) }}% planned</text>
           <!-- Series named at the end of their own line, in their own colour: no legend
                to look away to and match up. -->
-          <text v-if="endLabels" :x="endLabels.x" :y="endLabels.plannedY" class="series-label series-planned">Planned {{ endLabels.plannedPct }}%</text>
-          <text v-if="endLabels" :x="endLabels.x" :y="endLabels.actualY" class="series-label series-actual">Actual {{ endLabels.actualPct }}%</text>
+          <template v-if="endLabels">
+            <text :x="endLabels.x" :y="endLabels.plannedY" class="series-label series-planned">Planned</text>
+            <text :x="endLabels.x" :y="endLabels.forecastY" class="series-label series-forecast">Forecast {{ endLabels.forecastPct }}%</text>
+          </template>
         </svg>
       </div>
     </section>
@@ -97,6 +102,7 @@
 <script>
 import { formatDate, formatHours, formatFloat, isMilestone } from '../utils/format'
 import { displayEnd } from '../utils/p6'
+import { durationSCurve } from '../utils/sCurve'
 
 const STATUS_LABELS = { achieved: 'Achieved', 'on-track': 'On track', watch: 'Watch', 'at-risk': 'At risk', unknown: 'Unknown' }
 
@@ -113,7 +119,7 @@ export default {
       chartW: 900,
       chartH: 280,
       padL: 44,
-      padR: 16,
+      padR: 96,
       padT: 24,
       padB: 26,
     }
@@ -157,90 +163,48 @@ export default {
         })
         .sort((a, b) => new Date(a.early_start) - new Date(b.early_start))
     },
-    sCurve() {
-      const acts = this.data.activities
-      const dates = []
-      for (const a of acts) {
-        const t = a.target_end || a.target_start
-        if (t) dates.push(new Date(t))
-        if (a.early_end) dates.push(new Date(a.early_end))
-      }
-      if (dates.length < 2) return { months: [], planned: [], actual: [] }
-      let minD = new Date(Math.min(...dates))
-      let maxD = new Date(Math.max(...dates))
-      minD = new Date(minD.getFullYear(), minD.getMonth(), 1)
-      maxD = new Date(maxD.getFullYear(), maxD.getMonth() + 1, 1)
-      const months = []
-      let cur = new Date(minD)
-      let guard = 0
-      while (cur <= maxD && guard < 240) {
-        months.push(new Date(cur))
-        cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
-        guard++
-      }
-      const total = acts.length || 1
-      const planned = months.map(m => {
-        const n = acts.filter(a => {
-          const t = a.target_end || a.target_start
-          return t && new Date(t) <= m
-        }).length
-        return Math.round((1000 * n) / total) / 10
-      })
-      const actual = months.map(m => {
-        const n = acts.filter(a => a.act_end && new Date(a.act_end) <= m).length
-        return Math.round((1000 * n) / total) / 10
-      })
-      return { months, planned, actual, minD, maxD }
+    curve() {
+      return durationSCurve(this.data.activities, this.data.project.data_date)
     },
-    monthLabelStep() {
-      const n = this.sCurve.months.length
-      return n > 18 ? 3 : n > 9 ? 2 : 1
+    // Forecast growth (remaining above original) can run past 100%; keep it on the chart.
+    yMax() {
+      if (!this.curve) return 100
+      return Math.max(100, ...this.curve.points.map(p => p.forecast ?? 0))
     },
-    // Shortfall band: the area between planned and actual up to the data date.
+    tRange() {
+      const pts = this.curve?.points || []
+      return pts.length ? [pts[0].t, pts[pts.length - 1].t] : [0, 1]
+    },
+    monthTicks() {
+      const months = (this.curve?.points || []).filter(p => { const d = new Date(p.t); return d.getDate() === 1 && d.getHours() === 0 })
+      const step = months.length > 18 ? 3 : months.length > 9 ? 2 : 1
+      return months.filter((_, i) => i % step === 0)
+    },
+    ddPoint() {
+      const c = this.curve
+      return c && c.dataDate != null ? c.points.find(p => p.t === c.dataDate) : null
+    },
+    // Shortfall band: between planned and earned, up to the data date.
     gapPath() {
-      const pl = this.sCurve.planned, ac = this.sCurve.actual
-      if (!pl || pl.length < 2) return null
-      const up = pl.map((v, i) => `${this.xFor(i)},${this.yFor(v)}`)
-      const down = ac.map((v, i) => `${this.xFor(i)},${this.yFor(v)}`).reverse()
+      const pts = (this.curve?.points || []).filter(p => p.actual != null)
+      if (pts.length < 2) return null
+      const up = pts.map(p => `${this.xFor(p.t)},${this.yFor(p.planned)}`)
+      const down = pts.map(p => `${this.xFor(p.t)},${this.yFor(p.actual)}`).reverse()
       return `M ${up.join(' L ')} L ${down.join(' L ')} Z`
     },
     endLabels() {
-      const pl = this.sCurve.planned, ac = this.sCurve.actual
-      if (!pl || pl.length < 2) return null
-      const i = pl.length - 1
-      const plannedY = this.yFor(pl[i]), actualY = this.yFor(ac[i])
+      const pts = this.curve?.points
+      if (!pts || pts.length < 2) return null
+      const last = pts[pts.length - 1]
+      const plannedY = this.yFor(last.planned)
+      const forecastY = this.yFor(last.forecast ?? last.planned)
+      const close = Math.abs(plannedY - forecastY) < 12
       return {
-        x: this.xFor(i) + 6,
-        // nudge apart when the two lines land on top of each other
-        plannedY: Math.abs(plannedY - actualY) < 12 ? plannedY - 6 : plannedY + 3,
-        actualY: Math.abs(plannedY - actualY) < 12 ? actualY + 12 : actualY + 3,
-        plannedPct: Math.round(pl[i]),
-        actualPct: Math.round(ac[i]),
+        x: this.xFor(last.t) + 6,
+        plannedY: close ? Math.min(plannedY, forecastY) - 3 : plannedY + 3,
+        forecastY: close ? Math.max(plannedY, forecastY) + 11 : forecastY + 3,
+        forecastPct: Math.round(last.forecast ?? last.planned),
       }
-    },
-    // Stated where the line is, not left for the reader to compute.
-    dataDateCallout() {
-      const i = this.dataDateIndex
-      if (i == null) return 'data date'
-      const pl = Math.round(this.sCurve.planned[i]), ac = Math.round(this.sCurve.actual[i])
-      return `data date · ${ac}% actual vs ${pl}% planned`
-    },
-    dataDateIndex() {
-      const dd = this.dataDateObj
-      const ms = this.sCurve.months
-      if (!dd || !ms || ms.length < 2) return null
-      let best = 0
-      for (let i = 0; i < ms.length; i++) if (new Date(ms[i]) <= dd) best = i
-      return best
-    },
-    dataDateX() {
-      const { minD, maxD } = this.sCurve
-      const dd = this.dataDateObj
-      if (!minD || !maxD || !dd) return null
-      const total = maxD - minD
-      if (total <= 0) return null
-      const frac = (dd - minD) / total
-      return this.padL + frac * (this.chartW - this.padL - this.padR)
     },
   },
   methods: {
@@ -252,20 +216,20 @@ export default {
       if (m.status === 'watch') return 'lag-warn'
       return ''
     },
-    xFor(i) {
-      const n = this.sCurve.months.length
-      if (n < 2) return this.padL
-      return this.padL + (i * (this.chartW - this.padL - this.padR)) / (n - 1)
+    xFor(t) {
+      const [t0, t1] = this.tRange
+      return this.padL + ((t - t0) / Math.max(1, t1 - t0)) * (this.chartW - this.padL - this.padR)
     },
     yFor(pct) {
-      return this.padT + (this.chartH - this.padT - this.padB) * (1 - pct / 100)
+      return this.padT + (this.chartH - this.padT - this.padB) * (1 - pct / this.yMax)
     },
-    pathFor(values) {
-      if (!values || values.length < 2) return ''
-      return values.map((v, i) => (i === 0 ? 'M' : 'L') + this.xFor(i).toFixed(1) + ',' + this.yFor(v).toFixed(1)).join(' ')
+    pathOf(key) {
+      const pts = (this.curve?.points || []).filter(p => p[key] != null)
+      if (pts.length < 2) return ''
+      return pts.map((p, i) => (i === 0 ? 'M' : 'L') + this.xFor(p.t).toFixed(1) + ',' + this.yFor(p[key]).toFixed(1)).join(' ')
     },
-    monthLabel(d) {
-      return d.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
+    monthLabel(t) {
+      return new Date(t).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
     },
   },
 }
@@ -315,6 +279,8 @@ export default {
 .axis-label { font: var(--text-micro); fill: var(--gray-700); font-family: var(--font-mono); }
 .data-date-line { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 4 3; }
 .data-date-label { fill: var(--ink); font-weight: 600; }
+.curve-forecast { fill: none; stroke: var(--crit); stroke-width: 2; stroke-dasharray: 5 4; }
+.series-forecast { fill: var(--crit); }
 .curve-planned { fill: none; stroke: var(--ink-3); stroke-width: 2; }
 .curve-actual { fill: none; stroke: var(--crit); stroke-width: 3; }
 .curve-gap { fill: var(--crit-soft); stroke: none; }
