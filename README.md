@@ -11,12 +11,24 @@ your own infrastructure.
 The name is the promise: XERlock is **locked read-only**. It never modifies, never re-saves, and
 never stores your `.xer` - files are parsed in memory and discarded.
 
+It is also, you will have noticed, a detective. Every programme arrives with a story - "the
+critical path runs through commissioning", "we are on track for practical completion" - and
+the clues are all in the file: a lag doing the work of a missing activity, a holiday quietly
+removed from a calendar, an actual date that moved between two updates, a constraint
+propping up a finish date. XERlock doesn't take the narrative's word for it. It reads the
+evidence and shows its working. *Elementary* - though, unlike the original, it cites its
+sources: every calculation is documented against the standard it follows in
+[docs/METHODOLOGY.md](docs/METHODOLOGY.md).
+
 **Try it locally** - one click loads a sample data-centre fit-out, or
 upload your own `.xer` (parsed in memory, never stored).
 
-Built for project controls professionals: the checks, terminology, and defaults follow how
-schedules actually get reviewed (total float severity bands, longest-path vs TF≤0 critical basis,
-open-end detection, lag/lead audits, out-of-sequence progress).
+Built for project controls professionals: the checks follow the DCMA 14-Point Assessment, the
+critical path follows P6's own definitions (AACE 49R-06), and every computed figure is either
+P6's own value read from the file or recomputed in working time and cross-checked against it.
+The recomputed Longest Path matches P6's on every activity of the real submissions it was
+developed against. [docs/METHODOLOGY.md](docs/METHODOLOGY.md) gives each figure's definition,
+source standard, `.xer` fields, and known deviations.
 
 ![Gantt chart](docs/screenshots/gantt.png)
 *Critical-path links drawn above the bars - logic never hides behind unrelated activities. Chain
@@ -34,7 +46,9 @@ meaning. Works down to a phone, where the sidebar slides over from a hamburger.
   colour-coded by the same severity bands as the bars
 - Continuous zoom (presets + Ctrl/scroll), drag-pan, fit-to-width, resizable activity column
 - Critical-path link overlay drawn *above* bars so logic never hides behind unrelated activities
-- Two critical-basis modes: TF ≤ 0 or Longest Path (driving-chain trace from the finish)
+- Two critical-basis modes: total float at or below the project's own critical threshold, or
+  Longest Path - traced through driving links, where a link drives when its relationship free
+  float is zero in working time, exactly as P6 defines it
 - Progress line, today + data-date markers, weekend shading, filter bar (text/status/critical/
   activity codes/date window with 4- and 8-week look-ahead presets from the data date)
 - Float tails: a dashed line off each bar end, proportional to total float, so slack is visible
@@ -43,7 +57,8 @@ meaning. Works down to a phone, where the sidebar slides over from a hamburger.
   baseline position - slips read as horizontal offsets, right in the Gantt
 - Docked detail panel (it does not cover the chart): stat tiles, and a **driving chain** showing
   the driving predecessor, this activity, and the driving successor with the link type and lag
-  per hop - click a node to walk the chain. What is not driving sits in collapsed lists
+  per hop - click a node to walk the chain. What is not driving sits in collapsed lists, each
+  link with its relationship free float, so every "driving" label can be checked by hand
 - Print-friendly export
 
 **Critical Path** - activity-on-node network diagram
@@ -54,19 +69,25 @@ meaning. Works down to a phone, where the sidebar slides over from a hamburger.
   sequence; link type and lag are labelled on each edge (`FS`, `SS +5d`)
 - Pan/zoom canvas with the same docked detail panel and jump navigation
 
-**Health Check** - configurable DCMA-14-inspired logic & quality scorecard
+**Health Check** - the DCMA 14-Point Assessment, plus checks of XERlock's own
 ![Health check](docs/screenshots/health-check.png)
-- 15 checks: open ends, leads, large lags, FS-relationship mix, hard constraints,
-  **ALAP constraints** (flagging which of them sit on the critical path), negative float,
-  high float, invalid dates vs the data date, missed tasks (BEI against the current plan),
-  high-duration activities, out-of-sequence progress, LOE-on-critical-path anomalies,
-  driving-path cross-check against P6's own flag, missing resource assignments
-- Failures are cards in the state colour, passes collapse into a quiet pill strip and
-  un-checkable items are a footnote, so what needs attention reads pre-attentively
-- **Configurable**: per-check include/exclude, thresholds, targets, and weights (contracts differ)
-  roll up into a weighted overall score; your settings persist in the browser
-- Honest by design: checks that can't run on a given file are labeled as such and never
-  counted toward the score
+- DCMA 01-11 and 13 to their published definitions and populations (incomplete work,
+  excluding level-of-effort and WBS summaries): logic and dangling ends, leads, lags,
+  relationship types, hard constraints, high and negative float, high duration, invalid
+  dates, resources, missed tasks, and the **CPLI** computed in working time
+- DCMA 12 (Critical Path Test) is listed as not performed, with the reason: it requires
+  rescheduling, and XERlock reads P6's results rather than recomputing them
+- Plus: out-of-sequence progress on FS, SS and FF links, ALAP constraints on the critical
+  path, LOE on the critical path, and a **driving path cross-check** - P6's stored Longest
+  Path against the one recomputed from the file's dates, which exposes a schedule that was
+  edited and not recalculated
+- **P6 scheduling options** shown first (Retained Logic vs Progress Override, float type,
+  lag calendar, critical definition, expected finish dates): every date depends on them
+- Every check names its source; failures are cards in the state colour, passes collapse into
+  a quiet pill strip, and un-checkable items are a footnote with the reason
+- **Configurable**: per-check include/exclude, thresholds, targets, and weights (contracts
+  differ), defaulting to DCMA's; the weighted score is labelled as XERlock's roll-up, not a
+  DCMA figure
 - Every finding is one click away from the activity in the Gantt
 
 **Progress** - status-date-anchored monitoring
@@ -101,6 +122,8 @@ meaning. Works down to a phone, where the sidebar slides over from a hamburger.
   movers - tables below for drill-down
 - Date slips, duration edits, float erosion, critical-path churn (with a stability score),
   logic changes, added/removed activities
+- **Forensic checks**: actual dates that moved or vanished between updates (as-built history
+  should not change), and constraints added, removed or re-dated
 - **Snapshot register**: save the current parse in the browser (IndexedDB) and diff
   against it next month - no need to keep old `.xer` files at hand; nothing leaves
   the browser
@@ -186,10 +209,11 @@ pip install -r requirements-dev.txt && pytest        # backend: parser, calendar
 cd frontend && npm install && npm run test:run       # frontend: pure utils, geometry
 ```
 
-The backend suite pins the numerically load-bearing behaviour — longest-path trace,
-driving-relationship flags, float/day conversion, the display-date convention, calendar
-exception decoding — plus the API contract, including that no uploaded file survives the
-request. Both suites run on every push (`.github/workflows/test.yml`).
+The backend suite pins the numerically load-bearing behaviour - working-time arithmetic on P6
+calendars, the driving rule and its agreement with P6's own Longest Path, the CPLI hand
+calculation, % complete per P6 type, float/day conversion, the display-date convention,
+calendar exception decoding - plus the API contract, including that no uploaded file survives
+the request. The frontend suite tests each health-check rule on a minimal synthetic schedule. Both suites run on every push (`.github/workflows/test.yml`).
 
 ## Development notes
 
