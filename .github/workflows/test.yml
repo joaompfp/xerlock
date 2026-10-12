@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# Least privilege: the jobs only check out and test the code. Without this block the
+# token inherits the repository default, which may include write access.
+permissions:
+  contents: read
+
 jobs:
   backend:
     runs-on: ubuntu-latest
