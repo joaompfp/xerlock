@@ -1,3 +1,5 @@
+<img src="docs/logo.svg" width="72" alt="XERlock: a magnifying glass whose lens is a padlock, with schedule bars inside" align="left">
+
 # XERlock
 
 ![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue) ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB) ![Vue 3](https://img.shields.io/badge/vue-3-42b883) ![Self-hosted](https://img.shields.io/badge/self--hosted-yes-8250df)

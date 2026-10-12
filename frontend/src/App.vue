@@ -68,8 +68,14 @@
       <aside class="sidebar" :class="{ open: navOpen }" id="app-sidebar">
         <div class="sb-brand">
           <a class="sb-logo" href="https://github.com/joaompfp/xerlock" target="_blank" rel="noopener" title="XERlock on GitHub">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="1.8">
-              <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M9 3v18" /><path d="M7 12l2 2 4-4" />
+            <!-- The mark (public/favicon.svg) drawn with theme tokens so it re-colours with the app. -->
+            <svg class="xl-mark" width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+              <path d="M9.6 10V6.6a4.4 4.4 0 0 1 8.8 0V10" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
+              <circle cx="14" cy="17" r="8.4" stroke="currentColor" stroke-width="2.6" fill="var(--nav)" />
+              <path d="M20.2 23.2l7 7" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" />
+              <rect x="8.4" y="12.6" width="6.4" height="2.4" rx="1.2" fill="var(--accent)" />
+              <rect x="11" y="15.8" width="6.4" height="2.4" rx="1.2" fill="var(--accent)" />
+              <rect x="13.6" y="19" width="5.6" height="2.4" rx="1.2" fill="var(--crit)" />
             </svg>
             <span>XERlock</span>
           </a>
@@ -1308,7 +1314,7 @@ th.num { text-align: right !important; }
 }
 .sb-brand { display: flex; align-items: center; gap: var(--space-2); padding: 18px var(--space-4) var(--space-3); }
 .sb-logo { display: flex; align-items: center; gap: var(--space-2); color: var(--nav-ink); text-decoration: none; font-size: 16px; font-weight: 700; }
-.sb-logo svg { color: var(--accent); flex: none; }
+.sb-logo svg { color: var(--nav-ink); flex: none; }
 .sb-readonly { margin-left: auto; font-family: var(--font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--nav-ink-3); border: 1px solid var(--nav-line); border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
 
 .sb-project { padding: 0 var(--space-4) var(--space-3); border-bottom: 1px solid var(--nav-line); }
