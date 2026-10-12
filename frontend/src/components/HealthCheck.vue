@@ -2,11 +2,11 @@
   <div class="health-wrap">
     <div class="view-bar">
       <div class="strip-title">
-        <span class="strip-sub">{{ data.activities.length }} activities &middot; DCMA-14-inspired logic &amp; quality checks</span>
+        <span class="strip-sub">{{ data.activities.length }} activities &middot; DCMA 14-Point Assessment checks, plus XERlock's own &middot; see the methodology for every definition</span>
       </div>
       <div class="strip-score">
         <span class="score-num" :class="scoreClass">{{ weightedScore }}%</span>
-        <span class="score-detail">{{ passCount }}/{{ includedCount }} checks pass &middot; weighted</span>
+        <span class="score-detail" title="Weighted share of included checks that pass. This roll-up is XERlock's; DCMA defines pass/fail per metric, not a composite score.">{{ passCount }}/{{ includedCount }} checks pass &middot; weighted</span>
         <button class="cfg-btn" :class="{ active: showConfig }" @click="showConfig = !showConfig">⚙ Configure</button>
       </div>
     </div>
@@ -15,16 +15,17 @@
     <div v-if="showConfig" class="cfg-panel">
       <table class="cfg-table">
         <thead>
-          <tr><th>Include</th><th>Check</th><th>Threshold</th><th>Target</th><th>Weight</th></tr>
+          <tr><th>Include</th><th>Source</th><th>Check</th><th>Threshold</th><th>Target</th><th>Weight</th></tr>
         </thead>
         <tbody>
           <tr v-for="def in checkDefs" :key="def.key" :class="{ 'cfg-off': !cfg[def.key].enabled || !availability[def.key] }">
             <td>
               <input type="checkbox" v-model="cfg[def.key].enabled" :disabled="!availability[def.key]" />
             </td>
+            <td class="cfg-source">{{ def.source }}</td>
             <td>
               {{ def.label }}
-              <span v-if="!availability[def.key]" class="cfg-na">— not checkable in this file</span>
+              <span v-if="!availability[def.key]" class="cfg-na">— {{ def.naReason || 'not checkable in this file' }}</span>
             </td>
             <td>
               <template v-if="def.paramLabel">
@@ -45,7 +46,7 @@
         </tbody>
       </table>
       <div class="cfg-actions">
-        <span class="cfg-note">Targets and weights are yours to set — contracts differ. The score is the weighted share of passing checks; excluded or un-checkable items never count toward it.</span>
+        <span class="cfg-note">Targets and weights are yours to set — contracts differ. Defaults are DCMA's. The score is the weighted share of passing checks — XERlock's roll-up, not a DCMA figure; excluded or un-checkable items never count toward it.</span>
         <button class="cfg-reset" @click="resetConfig">Reset to defaults</button>
       </div>
     </div>
@@ -53,6 +54,18 @@
     <!-- Unequal weight for unequal news: the failures are cards in the state colour,
          the passes collapse to a quiet strip, and what can't be checked is a footnote.
          Colour covers a small fraction of the view, so failures are pre-attentive. -->
+    <!-- The settings every computed date depends on. Read before trusting any of them. -->
+    <div v-if="schedOpts.present" class="hc-options">
+      <span class="hc-group-label">P6 scheduling options</span>
+      <span v-for="o in schedOptionRows" :key="o.label" class="hc-opt" :class="{ warn: o.warn }" :title="o.warn || ''">
+        {{ o.label }} <b>{{ o.value }}</b>
+      </span>
+    </div>
+    <div v-else class="hc-options">
+      <span class="hc-group-label">P6 scheduling options</span>
+      <span class="hc-opt">Not in this export (no SCHEDOPTIONS table) — P6 defaults assumed: lag on the predecessor's calendar, critical at TF ≤ {{ formatFloat(schedOpts.critical_float_hrs || 0, 8) }}</span>
+    </div>
+
     <div class="hc-results">
       <template v-if="failingChecks.length">
         <div class="hc-group-label">Failing ({{ failingChecks.length }})</div>
@@ -86,8 +99,8 @@
         </button>
       </div>
 
-      <p v-if="excludedChecks.length" class="hc-footnote">
-        {{ excludedChecks.map(c => c.label).join(', ') }} — not checkable in this file
+      <p v-for="c in excludedChecks" :key="c.key" class="hc-footnote">
+        {{ c.source }} {{ c.label }} — {{ c.naReason || 'not checkable in this file' }}
       </p>
     </div>
 
@@ -95,7 +108,7 @@
     <section class="health-section" ref="sec-openEnds">
       <button class="section-head" @click="toggle('openEnds')">
         <span class="section-title">Open Ends <em :class="{ pass: openEnds.length === 0 }">({{ openEnds.length }})</em></span>
-        <span class="section-hint">Activities missing a driving predecessor or successor — can float freely with no network effect</span>
+        <span class="section-hint">Incomplete activities whose start or finish is not tied into the logic — they can move without moving anything (DCMA 01; dangling ends per GAO). The project start and finish milestones are exempt</span>
         <span class="chevron" :class="{ open: expanded.openEnds }">&rsaquo;</span>
       </button>
       <div v-if="expanded.openEnds" class="section-body">
@@ -106,7 +119,7 @@
             <tr v-for="a in openEnds" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
-              <td><span class="issue-badge" :class="a.bothOpen ? 'issue-severe' : 'issue-warn'">{{ a.bothOpen ? 'Fully dangling' : (a.openStart ? 'Open start' : 'Open finish') }}</span></td>
+              <td><span class="issue-badge" :class="a.bothOpen ? 'issue-severe' : 'issue-warn'">{{ a.bothOpen ? 'Both ends open' : (a.openStart ? (a.dangling ? 'Dangling start (FF/SF only)' : 'No predecessor') : (a.dangling ? 'Dangling finish (SS/SF only)' : 'No successor')) }}</span></td>
               <td class="wbs-cell">{{ a.wbs_path }}</td>
             <td class="tg-cell"><button class="to-gantt" title="Show in Gantt" @click.stop="$emit('jump', a.task_id)">↗</button></td></tr>
           </tbody>
@@ -118,7 +131,7 @@
     <section class="health-section" ref="sec-rel">
       <button class="section-head" @click="toggle('rel')">
         <span class="section-title">Relationship &amp; Lag Audit <em>({{ relationshipStats.leads.length + relationshipStats.bigLags.length }})</em></span>
-        <span class="section-hint">FS/SS/FF/SF mix, negative lags ("leads"), and lags over {{ cfg.lags.param }} working days</span>
+        <span class="section-hint">FS/SS/FF/SF mix, negative lags ("leads"), and lags{{ cfg.lags.param ? ' over ' + cfg.lags.param + ' working days' : '' }} — on links into incomplete work (DCMA 02–04)</span>
         <span class="chevron" :class="{ open: expanded.rel }">&rsaquo;</span>
       </button>
       <div v-if="expanded.rel" class="section-body">
@@ -128,7 +141,7 @@
             <span>{{ relTypeLabels[t] }} ({{ relationshipStats.total ? Math.round(100 * (relationshipStats.counts[t] || 0) / relationshipStats.total) : 0 }}%)</span>
           </div>
         </div>
-        <p class="section-note" v-if="relationshipStats.total">Industry rule of thumb: &ge;90% of relationships should be Finish-to-Start. This schedule is {{ relationshipStats.pctFs }}% FS.</p>
+        <p class="section-note" v-if="relationshipStats.total">DCMA 04: &ge;90% of relationships should be Finish-to-Start. This schedule is {{ relationshipStats.pctFs }}% FS.</p>
 
         <h4 v-if="relationshipStats.leads.length">Negative lag ("leads") — {{ relationshipStats.leads.length }}</h4>
         <table v-if="relationshipStats.leads.length" class="health-table">
@@ -148,7 +161,7 @@
           </tbody>
         </table>
 
-        <h4 v-if="relationshipStats.bigLags.length">Large lag (&gt;{{ cfg.lags.param }} working days) — {{ relationshipStats.bigLags.length }}</h4>
+        <h4 v-if="relationshipStats.bigLags.length">Lags{{ cfg.lags.param ? ' over ' + cfg.lags.param + ' working days' : '' }} — {{ relationshipStats.bigLags.length }}</h4>
         <table v-if="relationshipStats.bigLags.length" class="health-table">
           <thead><tr><th>Predecessor</th><th class="num">Finish</th><th class="num">Dur</th><th>Type</th><th class="num">Lag</th><th>Successor</th><th class="num">Start</th><th class="num">Dur</th><th class="tg-th"></th></tr></thead>
           <tbody>
@@ -298,7 +311,7 @@
     <section class="health-section" v-if="availability.missed" ref="sec-missed">
       <button class="section-head" @click="toggle('missed')">
         <span class="section-title">Missed Tasks <em>({{ missedTasksList.length }})</em></span>
-        <span class="section-hint">Should have finished by the data date (per the schedule's own planned dates) but haven't — no baseline in a .xer, so this is BEI against the current plan</span>
+        <span class="section-hint">Planned to finish by the data date but still open, or finished late (DCMA 11). Measured against P6's Planned Finish, not a baseline — a single .xer carries none</span>
         <span class="chevron" :class="{ open: expanded.missed }">&rsaquo;</span>
       </button>
       <div v-if="expanded.missed" class="section-body">
@@ -311,7 +324,7 @@
               <td class="name-cell">{{ a.task_name }}</td>
               <td class="num-cell">{{ formatDate(a.target_end) }}</td>
               <td class="num-cell">{{ formatDate(a.act_end || a.early_end) }}</td>
-              <td>{{ a.status === 'TK_Active' ? 'In progress' : 'Not started' }}</td>
+              <td>{{ a.status === 'TK_Complete' ? 'Finished late' : a.status === 'TK_Active' ? 'In progress' : 'Not started' }}</td>
             <td class="tg-cell"><button class="to-gantt" title="Show in Gantt" @click.stop="$emit('jump', a.task_id)">↗</button></td></tr>
           </tbody>
         </table>
@@ -372,11 +385,11 @@
     <section class="health-section" v-if="drivingPathAvailable" ref="sec-driving">
       <button class="section-head" @click="toggle('driving')">
         <span class="section-title">Driving Path Cross-Check <em>({{ drivingMismatchList.length }})</em></span>
-        <span class="section-hint">Where P6's own driving-path flag disagrees with this app's computed longest path</span>
+        <span class="section-hint">Where P6's stored Longest Path flag disagrees with the path recomputed from the file's own dates — a sign the schedule was not recalculated after its last edit</span>
         <span class="chevron" :class="{ open: expanded.driving }">&rsaquo;</span>
       </button>
       <div v-if="expanded.driving" class="section-body">
-        <div v-if="drivingMismatchList.length === 0" class="empty-state">No discrepancies — computed longest path matches P6's driving path flag.</div>
+        <div v-if="drivingMismatchList.length === 0" class="empty-state">✓ The recomputed Longest Path matches P6's own flag on every activity.</div>
         <table v-else class="health-table">
           <thead><tr><th>Code</th><th>Activity</th><th>P6 driving?</th><th>App longest path?</th><th class="tg-th"></th></tr></thead>
           <tbody>
@@ -395,19 +408,20 @@
     <section class="health-section" ref="sec-oos">
       <button class="section-head" @click="toggle('oos')">
         <span class="section-title">Out-of-Sequence Progress <em>({{ outOfSequenceList.length }})</em></span>
-        <span class="section-hint">Activities progressed before their Finish-to-Start predecessor actually finished</span>
+        <span class="section-hint">Progress the logic says could not have happened yet: started before an FS predecessor finished or an SS predecessor started, or finished before an FF predecessor finished</span>
         <span class="chevron" :class="{ open: expanded.oos }">&rsaquo;</span>
       </button>
       <div v-if="expanded.oos" class="section-body">
         <div v-if="outOfSequenceList.length === 0" class="empty-state">✓ All recorded progress respects the network logic.</div>
         <table v-else class="health-table">
-          <thead><tr><th>Activity</th><th class="num">Started</th><th>Predecessor</th><th class="num">Predecessor finished</th><th class="tg-th"></th></tr></thead>
+          <thead><tr><th>Activity</th><th>Link</th><th>What happened</th><th>Predecessor</th><th class="num">Predecessor date</th><th class="tg-th"></th></tr></thead>
           <tbody>
             <tr v-for="(r, i) in outOfSequenceList" :key="i" class="jump-row" title="Show details" @click="openDetail(r.activity.task_id)">
               <td><span class="code">{{ r.activity.task_code }}</span><span class="tbl-name">{{ r.activity.task_name }}</span></td>
-              <td class="num-cell">{{ formatDate(r.activity.act_start) }}</td>
+              <td>{{ relTypeLabels[r.type] }}</td>
+              <td>{{ r.what }}</td>
               <td><span class="code">{{ r.predecessor.task_code }}</span><span class="tbl-name">{{ r.predecessor.task_name }}</span></td>
-              <td class="num-cell">{{ r.predecessor.act_end ? formatDate(r.predecessor.act_end) : 'Not finished' }}</td>
+              <td class="num-cell">{{ r.predDate ? formatDate(r.predDate) : 'Not yet' }}</td>
               <td class="tg-cell"><button class="to-gantt" title="Show in Gantt" @click.stop="$emit('jump', r.activity.task_id)">↗</button></td>
             </tr>
           </tbody>
@@ -530,6 +544,27 @@ export default {
       const m = new Map()
       for (const a of this.data.activities) m.set(a.task_id, a)
       return m
+    },
+    schedOpts() {
+      return this.data.project.schedule_options || {}
+    },
+    // Each option with the reason it deserves a second look, where it does.
+    schedOptionRows() {
+      const o = this.schedOpts
+      const yn = v => (v == null ? '—' : v ? 'Yes' : 'No')
+      const critical = o.critical_type === 'CT_DrivPath'
+        ? 'Longest Path'
+        : `TF ≤ ${formatFloat(o.critical_float_hrs, 8)}`
+      return [
+        { label: 'Out-of-sequence progress', value: o.progress_override ? 'Progress Override' : o.retained_logic ? 'Retained Logic' : 'Actual Dates',
+          warn: o.progress_override ? 'Progress Override lets out-of-sequence work ignore its predecessors; Retained Logic is the conservative setting' : '' },
+        { label: 'Critical', value: critical },
+        { label: 'Total float as', value: { FT_FF: 'Finish float', FT_SF: 'Start float', FT_SmallestFloat: 'Smallest' }[o.float_type] || o.float_type || '—' },
+        { label: 'Lag calendar', value: { rcal_Predecessor: 'Predecessor', rcal_Successor: 'Successor', rcal_24Hour: '24-hour', rcal_ProjDefault: 'Project default' }[o.lag_calendar] || o.lag_calendar },
+        { label: 'Open ends critical', value: yn(o.open_ends_critical) },
+        { label: 'Expected finish dates', value: yn(o.use_expected_finish),
+          warn: o.use_expected_finish ? 'Expected Finish lets an entered date set remaining duration instead of the estimate' : '' },
+      ]
     },
     // All check logic lives in utils/healthChecks.js; these are views onto one run.
     checks() {
@@ -679,6 +714,7 @@ export default {
 .hc-pass-pill:hover { border-color: var(--ok); color: var(--ink-2); }
 .hc-pass-pill b { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--ok); }
 .hc-footnote { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); margin-top: var(--space-3); }
+.hc-footnote + .hc-footnote { margin-top: 2px; }
 .scorecard { display: flex; flex-wrap: wrap; gap: 1px; background: var(--gray-300); border-bottom: 1px solid var(--gray-300); }
 .score-item { flex: 1; min-width: 110px; background: var(--white); padding: var(--space-3); text-align: center; }
 .score-item.clickable { cursor: pointer; }
@@ -734,4 +770,10 @@ export default {
 .issue-badge { font: var(--text-micro); padding: 1px 7px; border-radius: var(--radius-sm); font-weight: 600; }
 .issue-severe { background: var(--crit); color: var(--on-solid); }
 .issue-warn { background: var(--near-tint); color: var(--near); }
+.cfg-source { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); white-space: nowrap; }
+.hc-options { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-4); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line-soft); font: var(--text-small); }
+.hc-options .hc-group-label { margin-bottom: 0; }
+.hc-opt { color: var(--ink-3); }
+.hc-opt b { color: var(--ink); font-weight: 600; }
+.hc-opt.warn b { color: var(--near); }
 </style>

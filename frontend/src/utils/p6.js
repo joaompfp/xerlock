@@ -24,8 +24,13 @@ export function cstrLabel(t) {
   return CSTR_LABELS[t] || t || ''
 }
 
-// "Hard" = can override network logic in a way that produces negative float.
-export const HARD_CONSTRAINT_TYPES = new Set(['CS_MANDSTART', 'CS_MANDFIN', 'CS_MSO', 'CS_MEO'])
+// "Hard" = can hold an activity against its logic and so produce negative float. DCMA 05
+// names Must Start/Finish On and Start/Finish No Later Than; in P6 terms that is the two
+// Mandatory constraints, Start/Finish On, and Start/Finish On or Before (P6's names for
+// the "no later than" pair).
+export const HARD_CONSTRAINT_TYPES = new Set([
+  'CS_MANDSTART', 'CS_MANDFIN', 'CS_MSO', 'CS_MEO', 'CS_MSOB', 'CS_MEOB',
+])
 
 // P6 display-date convention: once an activity has started, its actual start IS its start;
 // once complete, its actual finish IS its finish. P6 resets the early dates of finished

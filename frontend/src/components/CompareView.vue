@@ -139,6 +139,55 @@
       </div>
     </section>
 
+    <!-- Actual dates rewritten -->
+    <section class="compare-section">
+      <button class="section-head" @click="toggle('actuals')">
+        <span class="section-title">Actual Dates Changed <em>({{ actualChanges.length }})</em></span>
+        <span class="section-hint">Actuals reported in the baseline that moved or disappeared — recorded history should not change between updates</span>
+        <span class="chevron" :class="{ open: expanded.actuals }">&rsaquo;</span>
+      </button>
+      <div v-if="expanded.actuals" class="section-body">
+        <div v-if="actualChanges.length === 0" class="empty-state">✓ Every actual date in the baseline is unchanged.</div>
+        <table v-else class="compare-table">
+          <thead><tr><th>Code</th><th>Activity</th><th>Field</th><th class="num">Baseline</th><th class="num">Current</th></tr></thead>
+          <tbody>
+            <template v-for="d in actualChanges" :key="d.code">
+              <tr v-for="c in d.changes" :key="d.code + c.label" class="jump-row" title="Show in Gantt" @click="$emit('jump', d.cur.task_id)">
+                <td class="code">{{ d.code }}</td>
+                <td class="name-cell">{{ d.cur.task_name }}</td>
+                <td>{{ c.label }}</td>
+                <td class="num-cell">{{ formatDate(c.was) }}</td>
+                <td class="num-cell lag-neg">{{ c.now ? formatDate(c.now) : 'Removed' }}</td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Constraint changes -->
+    <section class="compare-section">
+      <button class="section-head" @click="toggle('constraints')">
+        <span class="section-title">Constraint Changes <em>({{ constraintChanges.length }})</em></span>
+        <span class="section-hint">Imposed dates added, removed or moved — they change what drives the dates without touching the logic</span>
+        <span class="chevron" :class="{ open: expanded.constraints }">&rsaquo;</span>
+      </button>
+      <div v-if="expanded.constraints" class="section-body">
+        <div v-if="constraintChanges.length === 0" class="empty-state">✓ No constraint changed.</div>
+        <table v-else class="compare-table">
+          <thead><tr><th>Code</th><th>Activity</th><th>Baseline</th><th>Current</th></tr></thead>
+          <tbody>
+            <tr v-for="d in constraintChanges" :key="d.code" class="jump-row" title="Show in Gantt" @click="$emit('jump', d.cur.task_id)">
+              <td class="code">{{ d.code }}</td>
+              <td class="name-cell">{{ d.cur.task_name }}</td>
+              <td>{{ d.base.cstr_type ? cstrLabel(d.base.cstr_type) + ' ' + formatDate(d.base.cstr_date) : '—' }}</td>
+              <td>{{ d.cur.cstr_type ? cstrLabel(d.cur.cstr_type) + ' ' + formatDate(d.cur.cstr_date) : '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- Float erosion -->
     <section class="compare-section">
       <button class="section-head" @click="toggle('float')">
@@ -264,7 +313,8 @@
 
 <script>
 import { formatDate, formatFloat, formatHours, formatLag } from '../utils/format'
-import { REL_TYPE_LABELS, displayStart, displayEnd } from '../utils/p6'
+import { REL_TYPE_LABELS, cstrLabel, displayStart, displayEnd } from '../utils/p6'
+import { actualDateChanges, constraintChanges } from '../utils/compareChecks'
 
 
 export default {
@@ -277,7 +327,7 @@ export default {
   emits: ['jump', 'reset'],
   data() {
     return {
-      expanded: { milestones: true, tornado: true, dates: false, durations: true, float: true, critical: true, logic: false, addrem: false },
+      expanded: { milestones: true, tornado: true, dates: false, durations: true, actuals: true, constraints: true, float: true, critical: true, logic: false, addrem: false },
     }
   },
   computed: {
@@ -373,6 +423,12 @@ export default {
         .map(d => ({ ...d, deltaDays: Math.round(((d.cur.duration_hrs - d.base.duration_hrs) / (d.cur.calendar_hrs_per_day || 8)) * 10) / 10 }))
         .sort((a, b) => Math.abs(b.deltaDays) - Math.abs(a.deltaDays))
     },
+    actualChanges() {
+      return actualDateChanges(this.matched)
+    },
+    constraintChanges() {
+      return constraintChanges(this.matched)
+    },
     floatErosion() {
       return this.matched
         .filter(d => d.cur.total_float_hrs != null && d.base.total_float_hrs != null && d.cur.total_float_hrs < d.base.total_float_hrs)
@@ -431,6 +487,7 @@ export default {
     formatDate,
     formatFloat,
     formatHours,
+    cstrLabel,
     displayStart,
     displayEnd,
     toggle(key) {
