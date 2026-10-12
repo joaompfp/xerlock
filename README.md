@@ -28,8 +28,10 @@ upload your own `.xer` (parsed in memory, never stored).
 Built for project controls professionals: the checks follow the DCMA 14-Point Assessment, the
 critical path follows P6's own definitions (AACE 49R-06), and every computed figure is either
 P6's own value read from the file or recomputed in working time and cross-checked against it.
-The recomputed Longest Path matches P6's on every activity of the real submissions it was
-developed against. [docs/METHODOLOGY.md](docs/METHODOLOGY.md) gives each figure's definition,
+A CPM engine reschedules the whole programme in memory from its own logic, calendars,
+constraints and progress; on the real submissions it was developed against it reproduces every
+early and late date and every float P6 stored, and the recomputed Longest Path matches P6's on
+every activity. [docs/METHODOLOGY.md](docs/METHODOLOGY.md) gives each figure's definition,
 source standard, `.xer` fields, and known deviations.
 
 ![Gantt chart](docs/screenshots/gantt.png)
@@ -77,8 +79,14 @@ meaning. Works down to a phone, where the sidebar slides over from a hamburger.
   excluding level-of-effort and WBS summaries): logic and dangling ends, leads, lags,
   relationship types, hard constraints, high and negative float, high duration, invalid
   dates, resources, missed tasks, and the **CPLI** computed in working time
-- DCMA 12 (Critical Path Test) is listed as not performed, with the reason: it requires
-  rescheduling, and XERlock reads P6's results rather than recomputing them
+- **DCMA 12 (Critical Path Test)**: 600 working days added to the first Longest Path activity
+  with work left, the programme rescheduled in memory, and the project finish expected to move
+  by the same amount; on failure, the activity where the delay was absorbed. Reported only when
+  the **recalculation** reproduces P6's stored dates and float exactly
+- **Recalculation matches P6**: the CPM engine's early/late dates and float against the file's
+  stored values, activity by activity and field by field - a difference means an edit without a
+  reschedule, or a scheduling feature the engine declines to model (resource-dependent
+  activities, cross-project links, multiple float paths; each refusal says why)
 - Plus: out-of-sequence progress on FS, SS and FF links, ALAP constraints on the critical
   path, LOE on the critical path, and a **driving path cross-check** - P6's stored Longest
   Path against the one recomputed from the file's dates, which exposes a schedule that was
@@ -215,8 +223,11 @@ cd frontend && npm install && npm run test:run       # frontend: pure utils, geo
 The backend suite pins the numerically load-bearing behaviour - working-time arithmetic on P6
 calendars, the driving rule and its agreement with P6's own Longest Path, the CPLI hand
 calculation, % complete per P6 type, float/day conversion, the display-date convention,
-calendar exception decoding - plus the API contract, including that no uploaded file survives
-the request. The frontend suite tests each health-check rule on a minimal synthetic schedule. Both suites run on every push (`.github/workflows/test.yml`).
+calendar exception decoding, every CPM engine rule on a minimal network and exact reproduction
+of the sample - plus the API contract, including that no uploaded file survives the request.
+The frontend suite tests each health-check rule on a minimal synthetic schedule. Both suites run
+on every push (`.github/workflows/test.yml`). `scripts/cpm_oracle.py` checks the engine against
+your own P6 exports and prints match counts only, never activity content.
 
 ## Development notes
 
