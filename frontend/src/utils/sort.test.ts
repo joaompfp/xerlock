@@ -1,14 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { compareBy, sortRows } from './sort'
+import { compareBy, sortRows, type SortDir } from './sort'
 
-const byFloat = (dir) => compareBy(a => a.total_float_hrs, dir)
+interface FloatRow { code?: string; total_float_hrs: number | null }
+
+const byFloat = (dir: SortDir) => compareBy((a: FloatRow) => a.total_float_hrs, dir)
 
 describe('unknown values sort last, not as zero', () => {
   // Regression: P6 leaves total float blank on completed activities. The old
   // comparator coerced null to '' — which JS compares as 0 — so on a real
   // 487-activity schedule 65 completed activities landed between the negative
   // and zero float bands, scattered through the critical work a reviewer scans.
-  const rows = [
+  const rows: FloatRow[] = [
     { code: 'done-a', total_float_hrs: null },
     { code: 'neg', total_float_hrs: -8 },
     { code: 'zero', total_float_hrs: 0 },
@@ -28,7 +30,7 @@ describe('unknown values sort last, not as zero', () => {
   })
 
   it('never places an unknown value between two known ones', () => {
-    for (const dir of ['asc', 'desc']) {
+    for (const dir of ['asc', 'desc'] as const) {
       const vals = sortRows(rows, r => r.total_float_hrs, dir).map(r => r.total_float_hrs)
       const firstUnknown = vals.findIndex(v => v == null)
       expect(vals.slice(firstUnknown).every(v => v == null)).toBe(true)

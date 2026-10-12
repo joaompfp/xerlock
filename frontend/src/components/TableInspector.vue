@@ -59,7 +59,7 @@
             </thead>
             <tbody>
               <tr v-for="(row, ri) in pageRows" :key="ri" @click="detailRow = row" title="Show full record" class="ti-row">
-                <td v-for="(f, ci) in table.fields" :key="ci" :title="row[ci]" :class="{ 'ti-sticky': ci === 0 }">{{ row[ci] || '—' }}</td>
+                <td v-for="(_f, ci) in table.fields" :key="ci" :title="row[ci]" :class="{ 'ti-sticky': ci === 0 }">{{ row[ci] || '—' }}</td>
               </tr>
             </tbody>
           </table>
@@ -84,7 +84,8 @@
         </div>
         <table class="ti-record">
           <tbody>
-            <tr v-for="(f, i) in table.fields" :key="f">
+            <!-- table is set whenever detailRow is: rows come from it, and switching tables clears detailRow. -->
+            <tr v-for="(f, i) in table!.fields" :key="f">
               <th>{{ f }}</th>
               <td>{{ detailRow[i] || '—' }}</td>
             </tr>
@@ -95,42 +96,58 @@
   </div>
 </template>
 
-<script>
+<script lang="ts">
+import { defineComponent, type PropType } from 'vue'
+import type { RawTable } from '../types/schedule'
+import type { StoredSchedule } from '../utils/lastFile'
+
 const PAGE_SIZE = 200
 
-export default {
+// utils/snapshots and utils/lastFile drop raw_tables from cached copies and flag it.
+// A schedule restored from browser storage may have had its raw tables dropped to fit.
+type InspectedSchedule = StoredSchedule
+
+// Listener handles kept off data() on purpose: they must not be reactive (and Vue
+// does not proxy `_`-prefixed data keys anyway), so they are assigned onto `this`.
+interface Internals {
+  _onKeydown?: (e: KeyboardEvent) => void
+  _onDocMousedown?: (e: MouseEvent) => void
+}
+const internals = (vm: object): Internals => vm as Internals
+
+export default defineComponent({
   name: 'TableInspector',
   props: {
-    data: { type: Object, required: true },
+    data: { type: Object as PropType<InspectedSchedule>, required: true },
   },
   data() {
     return {
-      selectedName: null,
+      selectedName: null as string | null,
       filter: '',
-      sortCol: null,
+      sortCol: null as number | null,
       sortDir: 1,
       page: 0,
-      detailRow: null,
+      detailRow: null as string[] | null,
     }
   },
   computed: {
-    tables() {
+    tables(): Record<string, RawTable> {
       return this.data.raw_tables || {}
     },
-    omitted() {
+    omitted(): boolean {
       return !!this.data.raw_tables_omitted
     },
-    ermhdr() {
+    ermhdr(): StoredSchedule['ermhdr'] {
       return this.data.ermhdr || {}
     },
-    tableNames() {
+    tableNames(): string[] {
       // Preserve file order (object insertion order) — it mirrors the export sequence.
       return Object.keys(this.tables)
     },
-    table() {
+    table(): RawTable | null {
       return this.selectedName ? this.tables[this.selectedName] : null
     },
-    filteredRows() {
+    filteredRows(): string[][] {
       if (!this.table) return []
       let rows = this.table.rows
       const q = this.filter.trim().toLowerCase()
@@ -152,10 +169,10 @@ export default {
       }
       return rows
     },
-    pageCount() {
+    pageCount(): number {
       return Math.max(1, Math.ceil(this.filteredRows.length / PAGE_SIZE))
     },
-    pageRows() {
+    pageRows(): string[][] {
       const start = Math.min(this.page, this.pageCount - 1) * PAGE_SIZE
       return this.filteredRows.slice(start, start + PAGE_SIZE)
     },
@@ -166,7 +183,7 @@ export default {
     },
     tableNames: {
       immediate: true,
-      handler(names) {
+      handler(names: string[]) {
         if (names.length && (!this.selectedName || !names.includes(this.selectedName))) {
           // TASK is what a reviewer opens first; fall back to the file's first table.
           this.selectedName = names.includes('TASK') ? 'TASK' : names[0]
@@ -175,27 +192,29 @@ export default {
     },
   },
   mounted() {
-    this._onKeydown = e => {
+    const priv = internals(this)
+    priv._onKeydown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && this.detailRow && this.$el.offsetParent !== null) this.detailRow = null
     }
-    window.addEventListener('keydown', this._onKeydown)
-    document.addEventListener('mousedown', this._onDocMousedown = e => {
-      if (this.detailRow && this.$el.offsetParent !== null && !this.$el.contains(e.target)) this.detailRow = null
+    window.addEventListener('keydown', priv._onKeydown)
+    document.addEventListener('mousedown', priv._onDocMousedown = (e: MouseEvent) => {
+      if (this.detailRow && this.$el.offsetParent !== null && !this.$el.contains(e.target as Node | null)) this.detailRow = null
     })
   },
   beforeUnmount() {
-    window.removeEventListener('keydown', this._onKeydown)
-    document.removeEventListener('mousedown', this._onDocMousedown)
+    const priv = internals(this)
+    if (priv._onKeydown) window.removeEventListener('keydown', priv._onKeydown)
+    if (priv._onDocMousedown) document.removeEventListener('mousedown', priv._onDocMousedown)
   },
   methods: {
-    selectTable(name) {
+    selectTable(name: string) {
       this.selectedName = name
       this.filter = ''
       this.sortCol = null
       this.page = 0
       this.detailRow = null
     },
-    sortBy(i) {
+    sortBy(i: number) {
       if (this.sortCol === i) {
         if (this.sortDir === 1) this.sortDir = -1
         else { this.sortCol = null; this.sortDir = 1 }
@@ -206,7 +225,7 @@ export default {
       this.page = 0
     },
   },
-}
+})
 </script>
 
 <style scoped>

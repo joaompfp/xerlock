@@ -117,7 +117,7 @@ describe('paper sizes', () => {
 
   it('reproduces each chart\'s previously inlined arithmetic exactly', () => {
     // Guards the extraction: these are the values the two components computed
-    // from their own copies before utils/paper.js existed.
+    // from their own copies before utils/paper.ts existed.
     const gantt = (mm: number) => Math.round((mm - 20) * (96 / 25.4)) - 15
     const cp = (mm: number) => Math.round((mm - 20) * (96 / 25.4)) - 20
     for (const key of Object.keys(PAPER_SIZES) as (keyof typeof PAPER_SIZES)[]) {

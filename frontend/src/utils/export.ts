@@ -1,14 +1,19 @@
 import { statusLabel, formatDate, formatFloat } from './format'
 import { SEVERITY_LABELS } from './annotations'
 import { relTypeLabel, displayStart, displayEnd } from './p6'
+import type { Annotation, Annotations } from './annotations'
+import type { Activity, Schedule, WbsNode } from '../types/schedule'
+import type { Workbook, Worksheet, Column } from 'exceljs'
 
-const REPORT_SEVERITY_ORDER = ['logic', 'risk', 'query', 'resolved']
-const SEVERITY_FILL = { logic: 'FFF8E3E1', risk: 'FFF6ECD2', query: 'FFDCE6F0', resolved: 'FFE1EBE4' }
+type WbsLevelsMap = Map<number, string[]>
+
+const REPORT_SEVERITY_ORDER: readonly string[] = ['logic', 'risk', 'query', 'resolved']
+const SEVERITY_FILL: Record<string, string> = { logic: 'FFF8E3E1', risk: 'FFF6ECD2', query: 'FFDCE6F0', resolved: 'FFE1EBE4' }
 
 const HEADER_FILL = 'FF2F5496'
 const CRITICAL_FONT = 'FFC0392B'
 
-const RELATIONSHIP_COLUMNS = [
+const RELATIONSHIP_COLUMNS: Partial<Column>[] = [
   { header: 'Predecessor ID', key: 'pred_code', width: 14 },
   { header: 'Predecessor Name', key: 'pred_name', width: 38 },
   { header: 'Type', key: 'type', width: 8 },
@@ -17,14 +22,14 @@ const RELATIONSHIP_COLUMNS = [
   { header: 'Successor Name', key: 'succ_name', width: 38 },
 ]
 
-function round1(n) {
+function round1(n: number | null | undefined): number {
   if (n == null) return 0
   return Math.round(n * 10) / 10
 }
 
 // total_float_hrs is null when P6 didn't compute a float (typically completed
 // activities) — must not export as "0", which reads as zero float / critical.
-function floatDays(hrs, hrsPerDay = 8) {
+function floatDays(hrs: number | null | undefined, hrsPerDay = 8): number | '' {
   return hrs == null ? '' : round1(hrs / (hrsPerDay || 8))
 }
 
@@ -35,15 +40,15 @@ function floatDays(hrs, hrsPerDay = 8) {
  * an hour (and a midnight timestamp shifts to the previous day). Building the Date from
  * UTC components keeps the wall-clock time intact end-to-end.
  */
-function toDate(d) {
+function toDate(d: string | null | undefined): Date | null {
   if (!d) return null
   const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(d)
   if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]))
   const dt = new Date(d)
-  return isNaN(dt) ? null : dt
+  return isNaN(dt.getTime()) ? null : dt
 }
 
-function slug(s) {
+function slug(s: string | null | undefined): string {
   return (s || 'schedule').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 }
 
@@ -53,9 +58,9 @@ function slug(s) {
  * activity and just adds noise; it still gets its own fallback entry (its own
  * label as a single-element array) in case an activity is assigned directly to it.
  */
-function buildWbsLevelsMap(wbsTree) {
-  const map = new Map()
-  function walk(node, trail, isRoot) {
+function buildWbsLevelsMap(wbsTree: WbsNode[] | null | undefined): WbsLevelsMap {
+  const map: WbsLevelsMap = new Map()
+  function walk(node: WbsNode, trail: string[], isRoot: boolean): void {
     const label = node.wbs_short_name ? `${node.wbs_short_name} ${node.wbs_name}` : node.wbs_name
     const levels = isRoot ? [] : [...trail, label]
     map.set(node.wbs_id, levels.length ? levels : [label])
@@ -65,7 +70,7 @@ function buildWbsLevelsMap(wbsTree) {
   return map
 }
 
-function maxWbsDepth(wbsLevelsMap) {
+function maxWbsDepth(wbsLevelsMap: WbsLevelsMap): number {
   let max = 1
   for (const levels of wbsLevelsMap.values()) {
     if (levels.length > max) max = levels.length
@@ -73,7 +78,7 @@ function maxWbsDepth(wbsLevelsMap) {
   return max
 }
 
-function wbsLevelColumns(maxDepth, widthPerLevel = 22) {
+function wbsLevelColumns(maxDepth: number, widthPerLevel = 22): Partial<Column>[] {
   return Array.from({ length: maxDepth }, (_, i) => ({
     header: `WBS Level ${i + 1}`,
     key: `wbs_l${i + 1}`,
@@ -81,14 +86,14 @@ function wbsLevelColumns(maxDepth, widthPerLevel = 22) {
   }))
 }
 
-function wbsLevelValues(wbsLevelsMap, wbsId, maxDepth) {
+function wbsLevelValues(wbsLevelsMap: WbsLevelsMap, wbsId: number, maxDepth: number): Record<string, string> {
   const levels = wbsLevelsMap.get(wbsId) || []
-  const out = {}
+  const out: Record<string, string> = {}
   for (let i = 0; i < maxDepth; i++) out[`wbs_l${i + 1}`] = levels[i] || ''
   return out
 }
 
-function styleHeaderRow(ws) {
+function styleHeaderRow(ws: Worksheet): void {
   const row = ws.getRow(1)
   row.eachCell(cell => {
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
@@ -99,7 +104,13 @@ function styleHeaderRow(ws) {
   ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columns.length } }
 }
 
-function addActivitiesSheet(wb, activities, wbsLevelsMap, maxDepth, sheetName) {
+function addActivitiesSheet(
+  wb: Workbook,
+  activities: Activity[],
+  wbsLevelsMap: WbsLevelsMap,
+  maxDepth: number,
+  sheetName: string,
+): Worksheet {
   const ws = wb.addWorksheet(sheetName)
   ws.columns = [
     { header: 'Activity ID', key: 'task_code', width: 14 },
@@ -143,10 +154,10 @@ function addActivitiesSheet(wb, activities, wbsLevelsMap, maxDepth, sheetName) {
   return ws
 }
 
-function addRelationshipsSheet(wb, activities, actLookup, sheetName) {
+function addRelationshipsSheet(wb: Workbook, activities: Activity[], actLookup: Map<number, Activity>, sheetName: string): Worksheet {
   const ws = wb.addWorksheet(sheetName)
   ws.columns = RELATIONSHIP_COLUMNS
-  const seen = new Set()
+  const seen = new Set<string>()
   activities.forEach(a => {
     ;(a.predecessors || []).forEach(p => {
       const key = `${p.task_id}->${a.task_id}:${p.type}`
@@ -167,7 +178,7 @@ function addRelationshipsSheet(wb, activities, actLookup, sheetName) {
   return ws
 }
 
-function triggerDownload(blob, filename) {
+function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -178,7 +189,7 @@ function triggerDownload(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-async function downloadWorkbook(wb, filename) {
+async function downloadWorkbook(wb: Workbook, filename: string): Promise<void> {
   const buf = await wb.xlsx.writeBuffer()
   const blob = new Blob([buf], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -186,7 +197,7 @@ async function downloadWorkbook(wb, filename) {
   triggerDownload(blob, filename)
 }
 
-async function newWorkbook() {
+async function newWorkbook(): Promise<Workbook> {
   // Lazy-loaded: ExcelJS is only needed when an .xlsx export is actually triggered,
   // so it shouldn't bloat the initial page bundle.
   const { default: ExcelJS } = await import('exceljs')
@@ -201,7 +212,7 @@ async function newWorkbook() {
  * One file covers both the full programme and the critical-path view, since a critical
  * path is just a filtered slice of the same activity/relationship data.
  */
-export async function exportWorkbook(data) {
+export async function exportWorkbook(data: Schedule): Promise<void> {
   const wb = await newWorkbook()
   const wbsLevelsMap = buildWbsLevelsMap(data.wbs_tree)
   const maxDepth = maxWbsDepth(wbsLevelsMap)
@@ -221,7 +232,7 @@ export async function exportWorkbook(data) {
  * schedule data (dates, float, WBS) alongside the note so the report stands
  * on its own without needing the app open.
  */
-export async function exportReviewReport(data, annotations) {
+export async function exportReviewReport(data: Schedule, annotations: Annotations): Promise<void> {
   const wb = await newWorkbook()
   const actLookup = new Map(data.activities.map(a => [a.task_id, a]))
   const wbsLevelsMap = buildWbsLevelsMap(data.wbs_tree)
@@ -262,17 +273,17 @@ export async function exportReviewReport(data, annotations) {
 
   const entries = Object.entries(annotations)
     .map(([taskId, ann]) => ({ activity: actLookup.get(Number(taskId)), ann }))
-    .filter(e => e.activity)
+    .filter((e): e is { activity: Activity; ann: Annotation } => !!e.activity)
     .sort((a, b) => {
-      const oa = REPORT_SEVERITY_ORDER.indexOf(a.ann.severity)
-      const ob = REPORT_SEVERITY_ORDER.indexOf(b.ann.severity)
+      const oa = REPORT_SEVERITY_ORDER.indexOf(a.ann.severity ?? '')
+      const ob = REPORT_SEVERITY_ORDER.indexOf(b.ann.severity ?? '')
       if (oa !== ob) return (oa === -1 ? 99 : oa) - (ob === -1 ? 99 : ob)
       return a.activity.task_code.localeCompare(b.activity.task_code)
     })
 
   entries.forEach(({ activity: a, ann }) => {
     const row = ws.addRow({
-      severity: SEVERITY_LABELS[ann.severity] || '—',
+      severity: SEVERITY_LABELS[ann.severity ?? ''] || '—',
       task_code: a.task_code,
       task_name: a.task_name,
       wbs_path: a.wbs_path || (wbsLevelsMap.get(a.wbs_id) || []).join(' / '),
@@ -282,7 +293,7 @@ export async function exportReviewReport(data, annotations) {
       note: ann.note || '',
       updated: ann.updatedAt ? new Date(ann.updatedAt) : null,
     })
-    const fill = SEVERITY_FILL[ann.severity]
+    const fill = SEVERITY_FILL[ann.severity ?? '']
     if (fill) {
       row.getCell('severity').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } }
     }
@@ -296,13 +307,13 @@ export async function exportReviewReport(data, annotations) {
  * Plain-text rendering of a single activity's review note — the shareable unit when a
  * reviewer wants to paste or send one finding, rather than the whole Review Report.
  */
-function formatNoteText(projectName, activity, annotation) {
+function formatNoteText(projectName: string | null | undefined, activity: Activity, annotation: Annotation): string {
   const lines = [
     'XERlock — Review Note',
     projectName ? `Project: ${projectName}` : null,
     `Activity: ${activity.task_code} — ${activity.task_name}`,
     activity.wbs_path ? `WBS: ${activity.wbs_path}` : null,
-    `Severity: ${SEVERITY_LABELS[annotation.severity] || '—'}`,
+    `Severity: ${SEVERITY_LABELS[annotation.severity ?? ''] || '—'}`,
     `Dates: ${formatDate(displayStart(activity))} → ${formatDate(displayEnd(activity))} · Float: ${formatFloat(activity.total_float_hrs, activity.calendar_hrs_per_day)}`,
     annotation.updatedAt ? `Logged: ${new Date(annotation.updatedAt).toLocaleString('en-GB')}` : null,
     '',
@@ -314,7 +325,11 @@ function formatNoteText(projectName, activity, annotation) {
 /** Copies one activity's note to the clipboard as plain text. Resolves false if the
  * Clipboard API is unavailable or blocked (e.g. insecure context) — caller shows an
  * error rather than silently failing. */
-export async function copyNoteToClipboard(projectName, activity, annotation) {
+export async function copyNoteToClipboard(
+  projectName: string | null | undefined,
+  activity: Activity,
+  annotation: Annotation,
+): Promise<boolean> {
   const text = formatNoteText(projectName, activity, annotation)
   if (!navigator.clipboard) return false
   try {
@@ -326,26 +341,26 @@ export async function copyNoteToClipboard(projectName, activity, annotation) {
 }
 
 /** Downloads one activity's note as a standalone .txt file. */
-export function exportNoteTxt(projectName, activity, annotation) {
+export function exportNoteTxt(projectName: string | null | undefined, activity: Activity, annotation: Annotation): void {
   const text = formatNoteText(projectName, activity, annotation)
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8;' })
   triggerDownload(blob, `${slug(activity.task_code)}-note.txt`)
 }
 
-function csvEscape(v) {
+function csvEscape(v: unknown): string {
   const s = String(v ?? '')
   if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"'
   return s
 }
 
-function downloadCsv(rows, filename) {
+function downloadCsv(rows: unknown[][], filename: string): void {
   const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n')
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
   triggerDownload(blob, filename)
 }
 
 /** CSV export of an activity list (used for both "all activities" and any filtered view). */
-export function exportActivitiesCsv(data, activities, filename) {
+export function exportActivitiesCsv(data: Schedule, activities: Activity[], filename?: string): void {
   const wbsLevelsMap = buildWbsLevelsMap(data.wbs_tree)
   const maxDepth = maxWbsDepth(wbsLevelsMap)
   const wbsHeaders = Array.from({ length: maxDepth }, (_, i) => `WBS Level ${i + 1}`)
@@ -364,8 +379,8 @@ export function exportActivitiesCsv(data, activities, filename) {
       statusLabel(a.status),
       a.pct_complete,
       round1(a.duration_hrs / (a.calendar_hrs_per_day || 8)),
-      displayStart(a) ? displayStart(a).slice(0, 10) : '',
-      displayEnd(a) ? displayEnd(a).slice(0, 10) : '',
+      displayStart(a)?.slice(0, 10) ?? '',
+      displayEnd(a)?.slice(0, 10) ?? '',
       floatDays(a.total_float_hrs, a.calendar_hrs_per_day),
       round1(a.free_float_hrs / (a.calendar_hrs_per_day || 8)),
       a.calendar || '',

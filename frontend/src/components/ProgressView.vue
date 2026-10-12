@@ -86,7 +86,7 @@
           <path :d="pathOf('forecast')" class="curve-forecast" />
           <path :d="pathOf('actual')" class="curve-actual" />
           <line v-if="ddPoint" :x1="xFor(ddPoint.t)" :x2="xFor(ddPoint.t)" :y1="padT" :y2="chartH - padB" class="data-date-line" />
-          <text v-if="ddPoint" :x="xFor(ddPoint.t)" :y="padT - 4" class="axis-label data-date-label" text-anchor="middle">data date · {{ Math.round(ddPoint.actual) }}% earned vs {{ Math.round(ddPoint.planned) }}% planned</text>
+          <text v-if="ddPoint" :x="xFor(ddPoint.t)" :y="padT - 4" class="axis-label data-date-label" text-anchor="middle">data date · {{ Math.round(ddPoint.actual ?? 0) }}% earned vs {{ Math.round(ddPoint.planned) }}% planned</text>
           <!-- Series named at the end of their own line, in their own colour: no legend
                to look away to and match up. -->
           <template v-if="endLabels">
@@ -99,17 +99,30 @@
   </div>
 </template>
 
-<script>
+<script lang="ts">
+import { defineComponent, type PropType } from 'vue'
 import { formatDate, formatHours, formatFloat, isMilestone } from '../utils/format'
 import { displayEnd } from '../utils/p6'
-import { durationSCurve } from '../utils/sCurve'
+import { durationSCurve, type SCurve, type SCurvePoint } from '../utils/sCurve'
+import type { Activity, Schedule } from '../types/schedule'
 
-const STATUS_LABELS = { achieved: 'Achieved', 'on-track': 'On track', watch: 'Watch', 'at-risk': 'At risk', unknown: 'Unknown' }
+type MilestoneStatus = 'achieved' | 'on-track' | 'watch' | 'at-risk' | 'unknown'
+type CurveSeries = 'planned' | 'actual' | 'forecast'
 
-export default {
+interface Milestone extends Activity {
+  forecast: string | null
+  target: string | null
+  varianceDays: number | null
+  achieved: boolean
+  status: MilestoneStatus
+}
+
+const STATUS_LABELS: Record<MilestoneStatus, string> = { achieved: 'Achieved', 'on-track': 'On track', watch: 'Watch', 'at-risk': 'At risk', unknown: 'Unknown' }
+
+export default defineComponent({
   name: 'ProgressView',
   props: {
-    data: { type: Object, required: true },
+    data: { type: Object as PropType<Schedule>, required: true },
   },
   emits: ['jump'],
   data() {
@@ -125,21 +138,21 @@ export default {
     }
   },
   computed: {
-    dataDateObj() {
+    dataDateObj(): Date | null {
       return this.data.project.data_date ? new Date(this.data.project.data_date) : null
     },
-    milestoneList() {
+    milestoneList(): Milestone[] {
       return this.data.activities
         .filter(isMilestone)
         .map(a => {
           const forecast = displayEnd(a) || a.act_start || a.early_start
           const target = a.target_end || a.target_start
           const achieved = a.status === 'TK_Complete' || !!a.act_end || !!a.act_start
-          let varianceDays = null
+          let varianceDays: number | null = null
           if (forecast && target) {
-            varianceDays = Math.round((new Date(forecast) - new Date(target)) / 86400000)
+            varianceDays = Math.round((new Date(forecast).getTime() - new Date(target).getTime()) / 86400000)
           }
-          let status
+          let status: MilestoneStatus
           if (achieved) status = 'achieved'
           else if (varianceDays == null) status = 'unknown'
           else if (varianceDays <= 0) status = 'on-track'
@@ -147,9 +160,9 @@ export default {
           else status = 'at-risk'
           return { ...a, forecast, target, varianceDays, achieved, status }
         })
-        .sort((x, y) => new Date(x.forecast || 0) - new Date(y.forecast || 0))
+        .sort((x, y) => new Date(x.forecast || 0).getTime() - new Date(y.forecast || 0).getTime())
     },
-    lookaheadList() {
+    lookaheadList(): Activity[] {
       const start = this.dataDateObj
       if (!start) return []
       const end = new Date(start.getTime() + this.lookaheadWeeks * 7 * 86400000)
@@ -161,38 +174,39 @@ export default {
           const ee = new Date(a.early_end)
           return es <= end && ee >= start
         })
-        .sort((a, b) => new Date(a.early_start) - new Date(b.early_start))
+        // early_start is non-null here: the filter above drops activities without one.
+        .sort((a, b) => new Date(a.early_start!).getTime() - new Date(b.early_start!).getTime())
     },
-    curve() {
+    curve(): SCurve | null {
       return durationSCurve(this.data.activities, this.data.project.data_date)
     },
     // Forecast growth (remaining above original) can run past 100%; keep it on the chart.
-    yMax() {
+    yMax(): number {
       if (!this.curve) return 100
       return Math.max(100, ...this.curve.points.map(p => p.forecast ?? 0))
     },
-    tRange() {
+    tRange(): [number, number] {
       const pts = this.curve?.points || []
       return pts.length ? [pts[0].t, pts[pts.length - 1].t] : [0, 1]
     },
-    monthTicks() {
+    monthTicks(): SCurvePoint[] {
       const months = (this.curve?.points || []).filter(p => { const d = new Date(p.t); return d.getDate() === 1 && d.getHours() === 0 })
       const step = months.length > 18 ? 3 : months.length > 9 ? 2 : 1
       return months.filter((_, i) => i % step === 0)
     },
-    ddPoint() {
+    ddPoint(): SCurvePoint | null | undefined {
       const c = this.curve
       return c && c.dataDate != null ? c.points.find(p => p.t === c.dataDate) : null
     },
     // Shortfall band: between planned and earned, up to the data date.
-    gapPath() {
+    gapPath(): string | null {
       const pts = (this.curve?.points || []).filter(p => p.actual != null)
       if (pts.length < 2) return null
       const up = pts.map(p => `${this.xFor(p.t)},${this.yFor(p.planned)}`)
-      const down = pts.map(p => `${this.xFor(p.t)},${this.yFor(p.actual)}`).reverse()
+      const down = pts.map(p => `${this.xFor(p.t)},${this.yFor(p.actual!)}`).reverse()
       return `M ${up.join(' L ')} L ${down.join(' L ')} Z`
     },
-    endLabels() {
+    endLabels(): { x: number; plannedY: number; forecastY: number; forecastPct: number } | null {
       const pts = this.curve?.points
       if (!pts || pts.length < 2) return null
       const last = pts[pts.length - 1]
@@ -211,28 +225,28 @@ export default {
     formatDate,
     formatHours,
     formatFloat,
-    varianceClass(m) {
+    varianceClass(m: Milestone): string {
       if (m.status === 'at-risk') return 'lag-neg'
       if (m.status === 'watch') return 'lag-warn'
       return ''
     },
-    xFor(t) {
+    xFor(t: number): number {
       const [t0, t1] = this.tRange
       return this.padL + ((t - t0) / Math.max(1, t1 - t0)) * (this.chartW - this.padL - this.padR)
     },
-    yFor(pct) {
+    yFor(pct: number): number {
       return this.padT + (this.chartH - this.padT - this.padB) * (1 - pct / this.yMax)
     },
-    pathOf(key) {
+    pathOf(key: CurveSeries): string {
       const pts = (this.curve?.points || []).filter(p => p[key] != null)
       if (pts.length < 2) return ''
-      return pts.map((p, i) => (i === 0 ? 'M' : 'L') + this.xFor(p.t).toFixed(1) + ',' + this.yFor(p[key]).toFixed(1)).join(' ')
+      return pts.map((p, i) => (i === 0 ? 'M' : 'L') + this.xFor(p.t).toFixed(1) + ',' + this.yFor(p[key]!).toFixed(1)).join(' ')
     },
-    monthLabel(t) {
+    monthLabel(t: number): string {
       return new Date(t).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
     },
   },
-}
+})
 </script>
 
 <style scoped>

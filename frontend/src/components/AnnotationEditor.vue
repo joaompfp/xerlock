@@ -33,18 +33,20 @@
   </div>
 </template>
 
-<script>
-import { SEVERITIES, SEVERITY_LABELS } from '../utils/annotations'
+<script lang="ts">
+import { defineComponent, type PropType } from 'vue'
+import { SEVERITIES, SEVERITY_LABELS, type Annotation, type Severity } from '../utils/annotations'
 import { timeAgo } from '../utils/format'
 import { copyNoteToClipboard, exportNoteTxt } from '../utils/export'
+import type { Activity } from '../types/schedule'
 
-export default {
+export default defineComponent({
   name: 'AnnotationEditor',
   props: {
-    annotation: { type: Object, default: null },
+    annotation: { type: Object as PropType<Annotation | null>, default: null },
     // Minimal context needed to label a shared note (code/name/wbs/dates/float) — the
     // full activity object works fine here.
-    activity: { type: Object, default: null },
+    activity: { type: Object as PropType<Activity | null>, default: null },
     projectName: { type: String, default: '' },
   },
   emits: ['save', 'remove'],
@@ -52,14 +54,14 @@ export default {
     return {
       justSaved: false,
       justCopied: false,
-      draftSeverity: this.annotation ? this.annotation.severity : null,
+      draftSeverity: (this.annotation ? this.annotation.severity : null) as Severity | null,
       draftNote: this.annotation ? this.annotation.note : '',
       severities: SEVERITIES,
       severityLabels: SEVERITY_LABELS,
     }
   },
   watch: {
-    annotation(a) {
+    annotation(a: Annotation | null) {
       this.draftSeverity = a ? a.severity : null
       this.draftNote = a ? a.note : ''
     },
@@ -71,8 +73,10 @@ export default {
       this.justSaved = true
       setTimeout(() => { this.justSaved = false }, 1500)
     },
+    // The share buttons render only when an annotation exists, and the drawer always
+    // passes its (non-null) activity.
     async copy() {
-      const ok = await copyNoteToClipboard(this.projectName, this.activity, this.annotation)
+      const ok = await copyNoteToClipboard(this.projectName, this.activity!, this.annotation!)
       if (!ok) {
         alert('Could not copy to the clipboard — try Export .txt instead.')
         return
@@ -81,10 +85,10 @@ export default {
       setTimeout(() => { this.justCopied = false }, 1500)
     },
     exportTxt() {
-      exportNoteTxt(this.projectName, this.activity, this.annotation)
+      exportNoteTxt(this.projectName, this.activity!, this.annotation!)
     },
   },
-}
+})
 </script>
 
 <style scoped>

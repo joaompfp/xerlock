@@ -25,7 +25,7 @@
         <span class="legend-item"><i class="diamond"></i>Milestone</span>
       </div>
       <div class="toolbar-actions">
-        <span v-if="isolationActive" class="isolation-chip">
+        <span v-if="isolatedIds" class="isolation-chip">
           Chain trace &middot; {{ isolatedIds.size }} {{ isolatedIds.size === 1 ? 'activity' : 'activities' }}
           <button class="isolation-exit" @click="exitIsolation">Show all</button>
         </span>
@@ -148,13 +148,16 @@
   </div>
 </template>
 
-<script>
+<script lang="ts">
+import { defineComponent, type PropType } from 'vue'
 import dagre from 'dagre'
 import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
 import { formatDate, formatHours, formatLag, statusLabel, isMilestone, formatFloat, formatDateRange } from '../utils/format'
 import fullscreenMixin from '../mixins/fullscreen'
 import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
 import { PAPER_SIZES, usableWidthPx, usableHeightPx } from '../utils/paper'
+import type { Activity } from '../types/schedule'
+import type { Annotations } from '../utils/annotations'
 
 const NEAR_CRITICAL_THRESHOLD_HRS = 80 // 10 working days
 const NODE_WIDTH = 236
@@ -169,15 +172,80 @@ const CANVAS_PADDING = 30
 // pagination), this diagram is a 2D layout — it just needs to fit on ONE page, so both
 // width and height matter, not only width.
 // 20px safety buffer: tuned against this diagram's printed output — deliberately
-// not the Gantt's value (see utils/paper.js).
+// not the Gantt's value (see utils/paper.ts).
 const PRINT_BUFFER_PX = 20
 
-export default {
+type Scope = 'chain' | 'near' | 'full'
+type PaperKey = keyof typeof PAPER_SIZES
+
+interface Point { x: number; y: number }
+interface Pinch { dist: number; mx: number; my: number }
+
+interface GraphNode {
+  id: number
+  x: number
+  y: number
+  row: number
+  dir: number // 1 = row reads left-to-right, -1 = right-to-left
+  width: number
+  height: number
+  code: string
+  name: string
+  milestone: boolean
+  critical: boolean
+  nearCritical: boolean
+  negativeFloat: boolean
+  floatHrs: number | null
+  durationLabel: string
+  rank: number | null
+  floatDaysLabel: string
+  dateRangeLabel: string
+  fullRangeLabel: string
+  hiddenCount: number
+}
+
+interface EdgeMeta {
+  id: string
+  from: number
+  to: number
+  type: string
+  lagHrs: number
+}
+
+interface GraphEdge extends EdgeMeta {
+  path: string
+  mx: number
+  my: number
+  label: string
+  criticalEdge: boolean
+}
+
+interface GraphLayout {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+  width: number
+  height: number
+}
+
+// Per-instance plumbing kept off data() on purpose: it must not be reactive (and Vue
+// does not proxy `_`-prefixed data keys anyway), so it is assigned straight onto `this`.
+interface Internals {
+  _onKeydown?: (e: KeyboardEvent) => void
+  _onDocMousedown?: (e: MouseEvent) => void
+  _resizeObserver?: ResizeObserver
+  _animTimer?: ReturnType<typeof setTimeout>
+  _pendingFit?: boolean
+  _fitDone?: boolean
+  _pinch?: Pinch | null
+}
+const internals = (vm: object): Internals => vm as Internals
+
+export default defineComponent({
   name: 'CriticalPathGraph',
   mixins: [fullscreenMixin],
   props: {
-    activities: { type: Array, required: true },
-    annotations: { type: Object, default: () => ({}) },
+    activities: { type: Array as PropType<Activity[]>, required: true },
+    annotations: { type: Object as PropType<Annotations>, default: () => ({}) },
     visible: { type: Boolean, default: true },
     projectName: { type: String, default: '' },
   },
@@ -185,55 +253,58 @@ export default {
   components: { ActivityDetailDrawer },
   data() {
     return {
-      expandedExtra: new Set(), // task_ids manually revealed beyond the current scope
+      expandedExtra: new Set<number>(), // task_ids manually revealed beyond the current scope
       // Replaces a "Reset to critical path" button that only made sense after you had
       // already expanded something.
-      scope: 'near',
+      scope: 'near' as Scope,
       scopes: [
         { id: 'chain', label: 'Critical chain', hint: 'Only the activities driving the finish date' },
         { id: 'near', label: '+ near-critical', hint: 'Adds activities with 10 days of float or less that touch the chain' },
         { id: 'full', label: 'Full network', hint: 'Every activity in the file' },
-      ],
+      ] as { id: Scope; label: string; hint: string }[],
       showEdgeLabels: true,
-      isolatedIds: null, // when set, the diagram shows ONLY this traced chain
-      selectedId: null,
+      isolatedIds: null as Set<number> | null, // when set, the diagram shows ONLY this traced chain
+      selectedId: null as number | null,
       scale: 1,
       tx: 40,
       ty: 40,
       panning: false,
-      panStart: null,
+      panStart: null as Point | null,
       animating: false,
       canvasWidth: 900,
-      printPaperSize: 'a4',
+      printPaperSize: 'a4' as PaperKey,
       paperSizes: PAPER_SIZES,
     }
   },
   mounted() {
-    window.addEventListener('keydown', this._onKeydown = (e) => {
+    const priv = internals(this)
+    window.addEventListener('keydown', priv._onKeydown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || !this.$el || this.$el.offsetParent === null) return
       if (this.selectedId != null) { this.selectedId = null; return }
       if (this.isolationActive) this.exitIsolation()
     })
     // Clicks on app chrome outside this component dismiss the fixed drawer overlay.
-    document.addEventListener('mousedown', this._onDocMousedown = (e) => {
-      if (this.selectedId != null && this.$el.offsetParent !== null && !this.$el.contains(e.target)) {
+    document.addEventListener('mousedown', priv._onDocMousedown = (e: MouseEvent) => {
+      if (this.selectedId != null && this.$el.offsetParent !== null && !this.$el.contains(e.target as Node | null)) {
         this.selectedId = null
       }
     })
-    if (this.$refs.canvas) {
-      this.canvasWidth = this.$refs.canvas.clientWidth
-      this._resizeObserver = new ResizeObserver(entries => {
+    const canvas = this.$refs.canvas as HTMLElement | undefined
+    if (canvas) {
+      this.canvasWidth = canvas.clientWidth
+      priv._resizeObserver = new ResizeObserver(entries => {
         for (const entry of entries) this.canvasWidth = entry.contentRect.width
       })
-      this._resizeObserver.observe(this.$refs.canvas)
+      priv._resizeObserver.observe(canvas)
     }
     this.$nextTick(this.resetView)
   },
   beforeUnmount() {
-    window.removeEventListener('keydown', this._onKeydown)
-    document.removeEventListener('mousedown', this._onDocMousedown)
-    this._resizeObserver?.disconnect()
-    clearTimeout(this._animTimer)
+    const priv = internals(this)
+    if (priv._onKeydown) window.removeEventListener('keydown', priv._onKeydown)
+    if (priv._onDocMousedown) document.removeEventListener('mousedown', priv._onDocMousedown)
+    priv._resizeObserver?.disconnect()
+    clearTimeout(priv._animTimer)
   },
   watch: {
     activities() {
@@ -241,50 +312,53 @@ export default {
       this.selectedId = null
       this.$nextTick(this.resetView)
     },
-    visible(v) {
+    visible(v: boolean) {
       // Tabs stay mounted (v-show); the canvas measures 0x0 while hidden, so both the
       // mount-time layout (snake wrap uses canvasWidth) and fit are garbage. Flag a
       // pending fit — it runs from the canvasWidth watcher once the ResizeObserver
       // delivers the real width, i.e. after the layout has re-wrapped correctly.
-      if (v && !this._fitDone) {
-        this._pendingFit = true
+      const priv = internals(this)
+      if (v && !priv._fitDone) {
+        priv._pendingFit = true
       }
     },
-    canvasWidth(w) {
-      if (this._pendingFit && w > 0) {
-        this._pendingFit = false
-        this._fitDone = true
+    canvasWidth(w: number) {
+      const priv = internals(this)
+      if (priv._pendingFit && w > 0) {
+        priv._pendingFit = false
+        priv._fitDone = true
         this.$nextTick(this.resetView)
       }
     },
   },
   computed: {
-    actLookup() {
-      const m = new Map()
+    actLookup(): Map<number, Activity> {
+      const m = new Map<number, Activity>()
       for (const a of this.activities) m.set(a.task_id, a)
       return m
     },
-    criticalIds() {
+    criticalIds(): Set<number> {
       return new Set(this.activities.filter(a => a.is_critical).map(a => a.task_id))
     },
     // Position along the driving chain, so the diagram reads as an ordered
     // sequence rather than a bag of boxes.
-    rankById() {
-      const m = new Map()
+    rankById(): Map<number, number> {
+      const m = new Map<number, number>()
       const chain = this.activities
         .filter(a => this.criticalIds.has(a.task_id))
         .sort((a, b) => (displayStart(a) || '').localeCompare(displayStart(b) || ''))
       chain.forEach((a, i) => m.set(a.task_id, i + 1))
       return m
     },
-    baseVisibleIds() {
+    baseVisibleIds(): Set<number> {
       const crit = this.criticalIds
       if (this.scope === 'chain') return new Set(crit)
       if (this.scope === 'full') return new Set(this.activities.map(a => a.task_id))
       const ids = new Set(crit)
       for (const a of this.activities) {
         if (crit.has(a.task_id)) continue
-        if (a.total_float_hrs > 0 && a.total_float_hrs <= NEAR_CRITICAL_THRESHOLD_HRS) {
+        // The null check only satisfies the type: null > 0 was already false.
+        if (a.total_float_hrs != null && a.total_float_hrs > 0 && a.total_float_hrs <= NEAR_CRITICAL_THRESHOLD_HRS) {
           const touchesCritical =
             a.predecessors.some(p => crit.has(p.task_id)) || a.successors.some(s => crit.has(s.task_id))
           if (touchesCritical) ids.add(a.task_id)
@@ -292,29 +366,29 @@ export default {
       }
       return ids
     },
-    visibleIds() {
+    visibleIds(): Set<number> {
       if (this.isolatedIds) return this.isolatedIds
       const ids = new Set(this.baseVisibleIds)
       for (const id of this.expandedExtra) ids.add(id)
       return ids
     },
-    printTargetSize() {
+    printTargetSize(): { w: number; h: number } {
       return {
         w: usableWidthPx(this.printPaperSize, PRINT_BUFFER_PX),
         h: usableHeightPx(this.printPaperSize, PRINT_BUFFER_PX),
       }
     },
-    isolationActive() {
+    isolationActive(): boolean {
       return this.isolatedIds !== null
     },
-    selected() {
+    selected(): Activity | null | undefined {
       return this.selectedId != null ? this.actLookup.get(this.selectedId) : null
     },
     // Runs dagre once to get a correct topological rank + crossing-minimized order,
     // then re-flows that single wide row into wrapped, alternating-direction rows —
     // like a snake / wrapped paragraph — so long critical chains stay readable
     // instead of demanding a mile of horizontal scrolling.
-    layout() {
+    layout(): GraphLayout {
       const g = new dagre.graphlib.Graph()
       g.setGraph({ rankdir: 'LR', nodesep: 20, ranksep: DAGRE_RANKSEP, marginx: 20, marginy: 20 })
       g.setDefaultEdgeLabel(() => ({}))
@@ -325,40 +399,41 @@ export default {
       for (const id of visible) {
         const a = this.actLookup.get(id)
         if (!a) continue
-        g.setNode(id, { width: NODE_WIDTH, height: NODE_HEIGHT })
+        // dagre keys nodes by string; graphlib would stringify the number anyway.
+        g.setNode(String(id), { width: NODE_WIDTH, height: NODE_HEIGHT })
       }
 
-      const edgeMeta = []
+      const edgeMeta: EdgeMeta[] = []
       for (const id of visible) {
         const a = this.actLookup.get(id)
         if (!a) continue
         for (const p of a.predecessors) {
           if (!visible.has(p.task_id)) continue
           const edgeId = `${p.task_id}->${id}`
-          g.setEdge(p.task_id, id, { id: edgeId })
+          g.setEdge(String(p.task_id), String(id), { id: edgeId })
           edgeMeta.push({ id: edgeId, from: p.task_id, to: id, type: p.type, lagHrs: p.lag_hrs })
         }
       }
 
       dagre.layout(g)
 
-      const raw = []
+      const raw: { id: number; a: Activity; gx: number; gy: number }[] = []
       for (const id of visible) {
         const a = this.actLookup.get(id)
-        const gn = g.node(id)
+        const gn = g.node(String(id))
         if (!a || !gn) continue
         raw.push({ id, a, gx: gn.x, gy: gn.y })
       }
       if (raw.length === 0) return { nodes: [], edges: [], width: 400, height: 300 }
 
       const minGx = Math.min(...raw.map(r => r.gx))
-      const rankOf = r => Math.round((r.gx - minGx) / (NODE_WIDTH + DAGRE_RANKSEP))
+      const rankOf = (r: { gx: number }) => Math.round((r.gx - minGx) / (NODE_WIDTH + DAGRE_RANKSEP))
 
-      const rankGroups = new Map()
+      const rankGroups = new Map<number, typeof raw>()
       for (const r of raw) {
         const rk = rankOf(r)
         if (!rankGroups.has(rk)) rankGroups.set(rk, [])
-        rankGroups.get(rk).push(r)
+        rankGroups.get(rk)!.push(r)
       }
       for (const group of rankGroups.values()) group.sort((x, y) => x.gy - y.gy)
 
@@ -367,20 +442,20 @@ export default {
         1,
         Math.floor((this.canvasWidth - CANVAS_PADDING * 2 + RANK_GAP_X) / (NODE_WIDTH + RANK_GAP_X))
       )
-      const rowOf = rk => Math.floor(rk / ranksPerRow)
+      const rowOf = (rk: number) => Math.floor(rk / ranksPerRow)
       const numRows = rowOf(maxRank) + 1
 
-      const rowStackCount = new Array(numRows).fill(1)
+      const rowStackCount: number[] = new Array(numRows).fill(1)
       for (const [rk, group] of rankGroups) {
         const row = rowOf(rk)
         rowStackCount[row] = Math.max(rowStackCount[row], group.length)
       }
-      const rowY = new Array(numRows).fill(0)
+      const rowY: number[] = new Array(numRows).fill(0)
       for (let i = 1; i < numRows; i++) {
         rowY[i] = rowY[i - 1] + rowStackCount[i - 1] * (NODE_HEIGHT + STACK_GAP_Y) + ROW_GAP_Y
       }
 
-      const posById = new Map()
+      const posById = new Map<number, { x: number; y: number; row: number; dir: number }>()
       for (const [rk, group] of rankGroups) {
         const row = rowOf(rk)
         const dir = row % 2 === 0 ? 1 : -1
@@ -393,11 +468,11 @@ export default {
         })
       }
 
-      const nodes = []
+      const nodes: GraphNode[] = []
       let maxX = 0
       let maxY = 0
       for (const r of raw) {
-        const pos = posById.get(r.id)
+        const pos = posById.get(r.id)! // every raw entry was placed in a rank group above
         const a = r.a
         const hiddenCount =
           a.predecessors.filter(p => !visible.has(p.task_id)).length +
@@ -437,11 +512,13 @@ export default {
       // Anchoring every edge this way means a same-row hop is a gentle sideways curve, and a
       // row-wrap hop becomes a hairpin turn on the correct edge — like a snake game or a
       // wrapped paragraph, always readable without special-casing the two situations.
-      const forwardAnchor = n => ({ x: n.x + (n.dir === 1 ? n.width / 2 : -n.width / 2), y: n.y })
-      const backwardAnchor = n => ({ x: n.x + (n.dir === 1 ? -n.width / 2 : n.width / 2), y: n.y })
-      const edges = edgeMeta.map(em => {
-        const a = nodeById.get(em.from)
-        const b = nodeById.get(em.to)
+      const forwardAnchor = (n: GraphNode): Point => ({ x: n.x + (n.dir === 1 ? n.width / 2 : -n.width / 2), y: n.y })
+      const backwardAnchor = (n: GraphNode): Point => ({ x: n.x + (n.dir === 1 ? -n.width / 2 : n.width / 2), y: n.y })
+      const edges: GraphEdge[] = edgeMeta.map(em => {
+        // Both ends are nodes: edges join visible activities only, and the backend drops
+        // relationships to task_ids outside the file, so every endpoint is in actLookup.
+        const a = nodeById.get(em.from)!
+        const b = nodeById.get(em.to)!
         const start = forwardAnchor(a)
         const end = backwardAnchor(b)
         const dx = Math.max(40, Math.abs(end.x - start.x) * 0.5)
@@ -458,10 +535,10 @@ export default {
 
       return { nodes, edges, width: maxX + CANVAS_PADDING, height: maxY + CANVAS_PADDING }
     },
-    nodes() {
+    nodes(): GraphNode[] {
       return this.layout.nodes
     },
-    edges() {
+    edges(): GraphEdge[] {
       return this.layout.edges
     },
   },
@@ -475,11 +552,11 @@ export default {
     cstrLabel,
     displayStart,
     displayEnd,
-    truncate(s, n) {
+    truncate(s: string | null | undefined, n: number): string {
       if (!s) return ''
       return s.length > n ? s.slice(0, n - 1) + '…' : s
     },
-    nodeClass(n) {
+    nodeClass(n: GraphNode): Record<string, boolean> {
       return {
         critical: n.critical,
         'near-critical': n.nearCritical,
@@ -489,22 +566,22 @@ export default {
         dimmed: this.selectedId != null && !this.isConnectedToSelected(n.id) && this.selectedId !== n.id,
       }
     },
-    edgeClass(e) {
+    edgeClass(e: GraphEdge): Record<string, boolean> {
       return {
         'edge-critical': e.criticalEdge,
         dimmed: this.selectedId != null && e.from !== this.selectedId && e.to !== this.selectedId,
       }
     },
-    edgeIsCritical(e) {
+    edgeIsCritical(e: GraphEdge): boolean {
       return e.criticalEdge
     },
-    isConnectedToSelected(id) {
+    isConnectedToSelected(id: number): boolean {
       if (this.selectedId == null) return true
       return this.edges.some(
         e => (e.from === this.selectedId && e.to === id) || (e.to === this.selectedId && e.from === id)
       )
     },
-    selectNode(n) {
+    selectNode(n: GraphNode) {
       if (this.selectedId === n.id) {
         this.selectedId = null
         return
@@ -512,7 +589,7 @@ export default {
       this.selectedId = n.id
       this.$nextTick(() => this.centerOnNode(n.id))
     },
-    expandNode(id) {
+    expandNode(id: number) {
       const a = this.actLookup.get(id)
       if (!a) return
       for (const p of a.predecessors) this.expandedExtra.add(p.task_id)
@@ -520,7 +597,7 @@ export default {
       this.expandedExtra = new Set(this.expandedExtra)
       this.$nextTick(() => this.centerOnNode(id))
     },
-    revealAndSelect(id) {
+    revealAndSelect(id: number) {
       if (this.isolationActive) {
         // Chain tracing: clicking a predecessor/successor ADDS it to the traced set and
         // walks the selection onto it, growing the chain one link at a time.
@@ -539,9 +616,10 @@ export default {
       this.$nextTick(() => this.centerOnNode(id))
     },
     isolateSelected() {
-      if (this.selectedId == null) return
-      this.isolatedIds = new Set([this.selectedId])
-      this.$nextTick(() => this.centerOnNode(this.selectedId))
+      const id = this.selectedId
+      if (id == null) return
+      this.isolatedIds = new Set([id])
+      this.$nextTick(() => this.centerOnNode(id))
     },
     exitIsolation() {
       const keep = this.selectedId
@@ -551,7 +629,7 @@ export default {
       if (keep != null) this.revealAndSelect(keep)
       else this.$nextTick(this.resetView)
     },
-    setScope(id) {
+    setScope(id: Scope) {
       this.scope = id
       this.expandedExtra = new Set()
       this.$nextTick(this.resetView)
@@ -590,15 +668,16 @@ export default {
       this.$nextTick(() => requestAnimationFrame(() => window.print()))
     },
     triggerAnimation() {
+      const priv = internals(this)
       this.animating = true
-      clearTimeout(this._animTimer)
-      this._animTimer = setTimeout(() => {
+      clearTimeout(priv._animTimer)
+      priv._animTimer = setTimeout(() => {
         this.animating = false
       }, 260)
     },
     // Zoom while keeping the graph point under (cx, cy) — canvas-local coords — fixed on screen.
     // Without this, scaling around the origin flings the graph out of view after a couple of clicks.
-    zoomAt(cx, cy, newScale) {
+    zoomAt(cx: number, cy: number, newScale: number) {
       const clamped = Math.min(2.5, Math.max(0.03, newScale))
       const gx = (cx - this.tx) / this.scale
       const gy = (cy - this.ty) / this.scale
@@ -606,17 +685,17 @@ export default {
       this.ty = cy - gy * clamped
       this.scale = clamped
     },
-    zoomBy(factor) {
+    zoomBy(factor: number) {
       this.triggerAnimation()
-      const el = this.$refs.canvas
+      const el = this.$refs.canvas as HTMLElement | undefined
       const cx = el ? el.clientWidth / 2 : 0
       const cy = el ? el.clientHeight / 2 : 0
       this.zoomAt(cx, cy, this.scale * factor)
     },
     // Smoothly pans (and, only if too zoomed-out to read, zooms in a little) so the given
     // node lands centered on screen — keeps you oriented after selecting or expanding.
-    centerOnNode(id) {
-      const el = this.$refs.canvas
+    centerOnNode(id: number) {
+      const el = this.$refs.canvas as HTMLElement | undefined
       const n = this.nodes.find(nd => nd.id === id)
       if (!el || !n) return
       this.triggerAnimation()
@@ -626,7 +705,7 @@ export default {
     },
     resetView() {
       this.triggerAnimation()
-      const el = this.$refs.canvas
+      const el = this.$refs.canvas as HTMLElement | undefined
       const gw = this.layout.width
       const gh = this.layout.height
       if (!el || !gw || !gh) {
@@ -647,17 +726,17 @@ export default {
       this.tx = (el.clientWidth - gw * this.scale) / 2
       this.ty = (el.clientHeight - gh * this.scale) / 2
     },
-    onWheel(e) {
-      const el = this.$refs.canvas
+    onWheel(e: WheelEvent) {
+      const el = this.$refs.canvas as HTMLElement
       const rect = el.getBoundingClientRect()
       const factor = e.deltaY > 0 ? 0.9 : 1.1
       this.zoomAt(e.clientX - rect.left, e.clientY - rect.top, this.scale * factor)
     },
-    onPanStart(e) {
+    onPanStart(e: MouseEvent) {
       this.panning = true
       this.panStart = { x: e.clientX - this.tx, y: e.clientY - this.ty }
     },
-    onPanMove(e) {
+    onPanMove(e: MouseEvent) {
       if (!this.panning || !this.panStart) return
       this.tx = e.clientX - this.panStart.x
       this.ty = e.clientY - this.panStart.y
@@ -667,42 +746,45 @@ export default {
       this.panStart = null
     },
     // Touch: one finger pans, two fingers pinch-zoom around the midpoint.
-    onTouchStart(e) {
+    onTouchStart(e: TouchEvent) {
+      const priv = internals(this)
       if (e.touches.length === 1) {
         this.panStart = { x: e.touches[0].clientX - this.tx, y: e.touches[0].clientY - this.ty }
         this.panning = true
-        this._pinch = null
+        priv._pinch = null
       } else if (e.touches.length >= 2) {
         this.panning = false
         this.panStart = null
-        this._pinch = this._pinchState(e)
+        priv._pinch = this._pinchState(e)
       }
     },
-    onTouchMove(e) {
+    onTouchMove(e: TouchEvent) {
+      const priv = internals(this)
       if (e.touches.length === 1 && this.panStart) {
         this.tx = e.touches[0].clientX - this.panStart.x
         this.ty = e.touches[0].clientY - this.panStart.y
-      } else if (e.touches.length >= 2 && this._pinch) {
+      } else if (e.touches.length >= 2 && priv._pinch) {
         const p = this._pinchState(e)
-        const rect = this.$refs.canvas.getBoundingClientRect()
-        this.zoomAt(p.mx - rect.left, p.my - rect.top, this.scale * (p.dist / this._pinch.dist))
-        this.tx += p.mx - this._pinch.mx
-        this.ty += p.my - this._pinch.my
-        this._pinch = p
+        const rect = (this.$refs.canvas as HTMLElement).getBoundingClientRect()
+        this.zoomAt(p.mx - rect.left, p.my - rect.top, this.scale * (p.dist / priv._pinch.dist))
+        this.tx += p.mx - priv._pinch.mx
+        this.ty += p.my - priv._pinch.my
+        priv._pinch = p
       }
     },
-    onTouchEnd(e) {
+    onTouchEnd(e: TouchEvent) {
+      const priv = internals(this)
       if (e.touches.length === 0) {
         this.panning = false
         this.panStart = null
-        this._pinch = null
+        priv._pinch = null
       } else if (e.touches.length === 1) {
-        this._pinch = null
+        priv._pinch = null
         this.panStart = { x: e.touches[0].clientX - this.tx, y: e.touches[0].clientY - this.ty }
         this.panning = true
       }
     },
-    _pinchState(e) {
+    _pinchState(e: TouchEvent): Pinch {
       const [a, b] = [e.touches[0], e.touches[1]]
       return {
         dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
@@ -716,7 +798,7 @@ export default {
       this.$nextTick(this.resetView)
     },
   },
-}
+})
 </script>
 
 <style scoped>

@@ -13,9 +13,7 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "allowJs": true,
-    "checkJs": false,
     "types": ["vite/client", "node"]
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "src/**/*.js", "vite.config.ts", "vitest.config.*"]
+  "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts"]
 }

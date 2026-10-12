@@ -9,7 +9,14 @@
 // define `onFullscreenChanged()` to react (the network diagram re-fits its
 // viewport, the Gantt doesn't need to).
 
-export default {
+import { defineComponent } from 'vue'
+
+/** Optional hook a host component may define. */
+interface FullscreenHost {
+  onFullscreenChanged?: () => void
+}
+
+export default defineComponent({
   data() {
     return { isFullscreen: false }
   },
@@ -23,15 +30,16 @@ export default {
     toggleFullscreen() {
       if (document.fullscreenElement) {
         document.exitFullscreen()
-      } else if (this.$refs.wrapEl?.requestFullscreen) {
-        this.$refs.wrapEl.requestFullscreen()
+      } else {
+        const wrapEl = this.$refs.wrapEl as HTMLElement | undefined
+        if (wrapEl?.requestFullscreen) wrapEl.requestFullscreen()
       }
     },
     onFullscreenChange() {
       // Driven by the document event rather than set in toggleFullscreen, so
       // leaving fullscreen via Esc or the browser chrome stays in sync.
       this.isFullscreen = !!document.fullscreenElement
-      this.onFullscreenChanged?.()
+      ;(this as FullscreenHost).onFullscreenChanged?.()
     },
   },
-}
+})

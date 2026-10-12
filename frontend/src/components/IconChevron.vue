@@ -4,13 +4,15 @@
   </svg>
 </template>
 
-<script>
-export default {
+<script lang="ts">
+import { defineComponent } from 'vue'
+
+export default defineComponent({
   name: 'IconChevron',
   props: {
     expanded: { type: Boolean, default: false },
   },
-}
+})
 </script>
 
 <style scoped>

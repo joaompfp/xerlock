@@ -52,7 +52,12 @@
           <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
           Open source on GitHub
         </a>
-        <span class="version-tag">v1.0 &middot; MIT</span>
+        <!-- Appropriate Legal Notices (AGPL-3.0 s.0 and s.13) and the author attribution
+             that NOTICE's s.7(b) term requires derivatives to keep. -->
+        <p class="legal-notice">
+          AGPL-3.0 &middot; Based on XERlock by joaompfp &middot;
+          <a href="https://github.com/joaompfp/xerlock" target="_blank" rel="noopener">source</a>
+        </p>
       </div>
     </div>
 
@@ -101,13 +106,18 @@
             <button v-for="(label, key) in themeOptions" :key="key" :class="{ active: theme === key }" @click="theme = key">{{ label }}</button>
           </div>
           <button class="sb-load" @click="data = null">Load another .xer</button>
+          <!-- Same notice as the upload screen, so it stays reachable while the app is in use. -->
+          <p class="sb-legal">
+            AGPL-3.0 &middot; Based on XERlock by joaompfp &middot;
+            <a href="https://github.com/joaompfp/xerlock" target="_blank" rel="noopener">source</a>
+          </p>
         </div>
       </aside>
       <div v-if="navOpen" class="sb-backdrop" @click="navOpen = false"></div>
 
       <div class="main">
         <header class="topbar">
-          <button class="nav-toggle" @click="navOpen = !navOpen" aria-controls="app-sidebar" :aria-expanded="String(navOpen)" aria-label="Navigation">
+          <button class="nav-toggle" @click="navOpen = !navOpen" aria-controls="app-sidebar" :aria-expanded="navOpen ? 'true' : 'false'" aria-label="Navigation">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
           </button>
           <h1 class="topbar-title">{{ tabLabels[tab] }}</h1>
@@ -126,14 +136,14 @@
           </div>
 
           <div class="topbar-actions">
-            <button v-if="annotationCount > 0" class="btn-tiny-light tb-notes" :disabled="exporting" @click="doExport(() => exportReviewReport(data, annotations))" title="Download the annotated Review Report (.xlsx)">
+            <button v-if="annotationCount > 0" class="btn-tiny-light tb-notes" :disabled="exporting" @click="doExport(() => exportReviewReport(data!, annotations))" title="Download the annotated Review Report (.xlsx)">
               {{ exportLabel('Review notes (' + annotationCount + ')') }}
             </button>
             <div class="tb-export">
-              <button class="btn-tiny-light" :disabled="exporting" @click="exportMenuOpen = !exportMenuOpen" :aria-expanded="String(exportMenuOpen)">{{ exportLabel('Export') }} &#9662;</button>
+              <button class="btn-tiny-light" :disabled="exporting" @click="exportMenuOpen = !exportMenuOpen" :aria-expanded="exportMenuOpen ? 'true' : 'false'">{{ exportLabel('Export') }} &#9662;</button>
               <div v-if="exportMenuOpen" class="tb-menu">
-                <button @click="exportMenuOpen = false; doExport(() => exportWorkbook(data))">Schedule workbook (.xlsx)</button>
-                <button :disabled="annotationCount === 0" @click="exportMenuOpen = false; doExport(() => exportReviewReport(data, annotations))">Review report (.xlsx)</button>
+                <button @click="exportMenuOpen = false; doExport(() => exportWorkbook(data!))">Schedule workbook (.xlsx)</button>
+                <button :disabled="annotationCount === 0" @click="exportMenuOpen = false; doExport(() => exportReviewReport(data!, annotations))">Review report (.xlsx)</button>
               </div>
             </div>
           </div>
@@ -229,7 +239,7 @@
               <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
             </select>
           </span>
-          <button class="btn-outline btn-export-view" @click="doExport(() => exportActivitiesCsv(data, filteredActivities, slugName() + '-filtered.csv'))">
+          <button class="btn-outline btn-export-view" @click="doExport(() => exportActivitiesCsv(data!, filteredActivities, slugName() + '-filtered.csv'))">
             Export view (.csv)
           </button>
         </div>
@@ -435,7 +445,8 @@
   </div>
 </template>
 
-<script>
+<script lang="ts">
+import { defineComponent } from 'vue'
 import WBSNode from './components/WBSNode.vue'
 import CriticalPathGraph from './components/CriticalPathGraph.vue'
 import GanttChart from './components/GanttChart.vue'
@@ -446,12 +457,16 @@ import ProgressView from './components/ProgressView.vue'
 import CompareView from './components/CompareView.vue'
 import { formatDate, formatHours, statusLabel, isMilestone, formatFloat, timeAgo } from './utils/format'
 import { exportWorkbook, exportActivitiesCsv, exportReviewReport } from './utils/export'
-import { loadLastFile, saveLastFile, clearLastFile } from './utils/lastFile'
-import { loadAnnotations, saveAnnotation, removeAnnotation } from './utils/annotations'
-import { listSnapshots, saveSnapshot, getSnapshotData, deleteSnapshot } from './utils/snapshots'
+import { loadLastFile, saveLastFile, clearLastFile, type LastFile, type StoredSchedule } from './utils/lastFile'
+import { loadAnnotations, saveAnnotation, removeAnnotation, type Annotations, type Severity } from './utils/annotations'
+import { listSnapshots, saveSnapshot, getSnapshotData, deleteSnapshot, type SnapshotMeta } from './utils/snapshots'
 import { displayStart, displayEnd } from './utils/p6'
-import { compareBy } from './utils/sort'
-import { buildWbsRollups } from './utils/wbs'
+import { compareBy, type SortDir } from './utils/sort'
+import { buildWbsRollups, type WbsRollup } from './utils/wbs'
+import type { Activity, Schedule } from './types/schedule'
+
+type Theme = 'light' | 'dark'
+type SortField = 'task_code' | 'task_name' | 'status' | 'pct_complete' | 'duration_hrs' | 'early_start' | 'early_end' | 'total_float_hrs'
 
 const PARSE_STAGES = [
   'Reading XER tables…',
@@ -463,48 +478,48 @@ const PARSE_STAGES = [
 // Sepia/Slate/Clay/Ink were four variations of one light theme. They collapse into
 // Light; anyone carrying a stored value for them lands there rather than on a broken
 // picker. The storage key is unchanged.
-function normaliseTheme(v) {
+function normaliseTheme(v: string | null): Theme {
   return v === 'dark' ? 'dark' : 'light'
 }
 
-function applyTheme(theme) {
+function applyTheme(theme: Theme): void {
   // Light lives on :root directly; dark overrides via the attribute.
   if (theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark')
   else document.documentElement.removeAttribute('data-theme')
 }
 
-export default {
+export default defineComponent({
   name: 'App',
   components: { WBSNode, CriticalPathGraph, GanttChart, HealthCheck, ProgressView, CompareView, CalendarView, TableInspector },
   data() {
     return {
-      data: null,
+      data: null as StoredSchedule | null,
       loading: false,
       dragOver: false,
       tab: 'gantt',
       search: '',
       statusFilter: '',
       showCriticalOnly: false,
-      sortField: 'total_float_hrs',
-      sortDir: 'asc',
-      selectedAct: null,
+      sortField: 'total_float_hrs' as SortField,
+      sortDir: 'asc' as SortDir,
+      selectedAct: null as Activity | null,
       exporting: false,
-      lastFile: loadLastFile(),
-      pendingJump: null,
-      codeFilters: {},  // seeded per file in activateData
-      annotations: {},
-      compareData: null,
-      snapshots: [],
+      lastFile: loadLastFile() as LastFile | null,
+      pendingJump: null as number | null,
+      codeFilters: {} as Record<string, string>,  // seeded per file in activateData
+      annotations: {} as Annotations,
+      compareData: null as StoredSchedule | null,
+      snapshots: [] as SnapshotMeta[],
       snapshotSaving: false,
       snapshotJustSaved: false,
       currentFilename: '',
       compareFilename: '',
-      dismissedWarnings: [],
+      dismissedWarnings: [] as string[],
       theme: normaliseTheme(localStorage.getItem('schedule-app:theme')),
-      uploadError: null,
+      uploadError: null as string | null,
       parsingStage: 0,
-      jumpOrigin: null,
-      tabLabels: { gantt: 'Gantt chart', story: 'Critical path', table: 'Activity table', wbs: 'WBS tree', progress: 'Progress', health: 'Health check', calendars: 'Calendars', tables: 'Raw tables', compare: 'Compare' },
+      jumpOrigin: null as string | null,
+      tabLabels: { gantt: 'Gantt chart', story: 'Critical path', table: 'Activity table', wbs: 'WBS tree', progress: 'Progress', health: 'Health check', calendars: 'Calendars', tables: 'Raw tables', compare: 'Compare' } as Record<string, string>,
       // Three jobs, not one row of nine: the programme, the analysis of it, and the
       // audit of the file it came from.
       navGroups: [
@@ -527,48 +542,42 @@ export default {
       navOpen: false,
       exportMenuOpen: false,
       // Reported up by HealthCheck so the score is visible from any view.
-      healthScore: null,
+      healthScore: null as number | null,
       exportState: '',
-      themeOptions: { light: 'Light', dark: 'Dark' },
+      themeOptions: { light: 'Light', dark: 'Dark' } as Record<Theme, string>,
       compareLoading: false,
       compareDragOver: false,
     }
   },
+  // The listeners are methods (bound once by Vue), so add and remove get the same reference.
   mounted() {
-    this._onShellDocClick = e => {
-      if (this.exportMenuOpen && !e.target.closest('.tb-export')) this.exportMenuOpen = false
-    }
-    this._onShellKey = e => {
-      if (e.key !== 'Escape') return
-      if (this.exportMenuOpen) this.exportMenuOpen = false
-      else if (this.navOpen) this.navOpen = false
-    }
-    document.addEventListener('mousedown', this._onShellDocClick)
-    window.addEventListener('keydown', this._onShellKey)
+    document.addEventListener('mousedown', this.onShellDocClick)
+    window.addEventListener('keydown', this.onShellKey)
   },
   beforeUnmount() {
-    document.removeEventListener('mousedown', this._onShellDocClick)
-    window.removeEventListener('keydown', this._onShellKey)
+    document.removeEventListener('mousedown', this.onShellDocClick)
+    window.removeEventListener('keydown', this.onShellKey)
   },
   created() {
     applyTheme(this.theme)
   },
   watch: {
-    theme(t) {
+    theme(t: Theme) {
       applyTheme(t)
       try { localStorage.setItem('schedule-app:theme', t) } catch { /* storage unavailable */ }
     },
   },
   computed: {
-    wbsRollups() {
+    wbsRollups(): Map<number, WbsRollup> | null {
       return this.data ? buildWbsRollups(this.data.wbs_tree, this.data.activities) : null
     },
-    healthScoreClass() {
+    healthScoreClass(): string {
       if (this.healthScore === null) return ''
       return this.healthScore >= 80 ? 'is-ok' : this.healthScore >= 60 ? 'is-near' : 'is-crit'
     },
-    filteredActivities() {
-      let acts = [...this.data.activities]
+    // Rendered only once a file is loaded, so data is set.
+    filteredActivities(): Activity[] {
+      let acts = [...this.data!.activities]
       if (this.search) {
         const q = this.search.toLowerCase()
         acts = acts.filter(a =>
@@ -591,64 +600,74 @@ export default {
       }
       // Sort. Unknown values (P6 leaves total float blank on completed work) sort
       // last rather than being treated as zero — see utils/sort.js.
-      acts.sort(compareBy(x =>
+      acts.sort(compareBy((x: Activity) =>
         this.sortField === 'early_start' ? displayStart(x) :
         this.sortField === 'early_end' ? displayEnd(x) : x[this.sortField],
       this.sortDir))
       return acts
     },
-    nearCritical() {
+    nearCritical(): Activity[] {
       if (!this.data) return []
       // Completed activities can't become critical — a watchlist entry for finished work
       // is pure noise to a reviewer.
       return this.data.activities
-        .filter(a => a.status !== 'TK_Complete' && !a.is_critical && a.total_float_hrs > 0 && a.total_float_hrs <= 80)
-        .sort((a, b) => a.total_float_hrs - b.total_float_hrs)
+        .filter(a => a.status !== 'TK_Complete' && !a.is_critical && a.total_float_hrs != null && a.total_float_hrs > 0 && a.total_float_hrs <= 80)
+        .sort((a, b) => a.total_float_hrs! - b.total_float_hrs!)
         .slice(0, 15)
     },
-    parsingMessage() {
+    parsingMessage(): string {
       return PARSE_STAGES[this.parsingStage % PARSE_STAGES.length]
     },
-    visibleWarnings() {
+    visibleWarnings(): string[] {
       const ws = (this.data && this.data.warnings) || []
       return ws.filter(w => !this.dismissedWarnings.includes(w))
     },
-    projectKey() {
+    projectKey(): string | null {
       return this.data ? this.data.project.proj_short_name : null
     },
-    annotationCount() {
+    annotationCount(): number {
       return Object.keys(this.annotations).length
     },
-    codeTypesAvailable() {
+    codeTypesAvailable(): string[] {
       return this.data && this.data.project.has_activity_codes ? this.data.project.activity_code_types : []
     },
-    codeValuesByType() {
-      const m = new Map()
-      for (const t of this.codeTypesAvailable) m.set(t, new Set())
+    codeValuesByType(): Map<string, string[]> {
+      const sets = new Map<string, Set<string>>()
+      for (const t of this.codeTypesAvailable) sets.set(t, new Set())
       if (this.data) {
         for (const a of this.data.activities) {
           for (const c of a.activity_codes) {
-            if (m.has(c.type)) m.get(c.type).add(c.code)
+            sets.get(c.type)?.add(c.code)
           }
         }
       }
-      for (const [t, set] of m) m.set(t, [...set].sort())
+      const m = new Map<string, string[]>()
+      for (const [t, set] of sets) m.set(t, [...set].sort())
       return m
     },
   },
   methods: {
-    async handleDrop(e) {
+    onShellDocClick(e: MouseEvent) {
+      if (this.exportMenuOpen && !(e.target as Element).closest('.tb-export')) this.exportMenuOpen = false
+    },
+    onShellKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      if (this.exportMenuOpen) this.exportMenuOpen = false
+      else if (this.navOpen) this.navOpen = false
+    },
+    // A drop event always carries a dataTransfer; a file input always has a file list.
+    async handleDrop(e: DragEvent) {
       this.dragOver = false
-      const file = e.dataTransfer.files[0]
+      const file = e.dataTransfer!.files[0]
       if (file) await this.uploadFile(file)
     },
-    async handleFile(e) {
-      const file = e.target.files[0]
+    async handleFile(e: Event) {
+      const file = (e.target as HTMLInputElement).files![0]
       if (file) await this.uploadFile(file)
     },
-    async handleCompareDrop(e) {
+    async handleCompareDrop(e: DragEvent) {
       this.compareDragOver = false
-      const file = e.dataTransfer.files[0]
+      const file = e.dataTransfer!.files[0]
       if (file) await this.uploadCompareFile(file)
     },
     async saveCurrentSnapshot() {
@@ -666,7 +685,7 @@ export default {
         this.snapshotSaving = false
       }
     },
-    async compareAgainstSnapshot(snap) {
+    async compareAgainstSnapshot(snap: SnapshotMeta) {
       const data = await getSnapshotData(snap.id)
       if (!data) {
         alert('This snapshot could not be loaded — it may have been deleted by the browser.')
@@ -674,17 +693,18 @@ export default {
         return
       }
       this.compareData = data
-      this.compareFilename = `${snap.filename} (snapshot, ${formatDate(snap.dataDate) || 'no data date'})`
+      // formatDate(null) returns '--', so the fallback has to be chosen before formatting.
+      this.compareFilename = `${snap.filename} (snapshot, ${snap.dataDate ? formatDate(snap.dataDate) : 'no data date'})`
     },
-    async removeSnapshot(snap) {
+    async removeSnapshot(snap: SnapshotMeta) {
       await deleteSnapshot(snap.id)
       this.snapshots = await listSnapshots()
     },
-    async handleCompareFile(e) {
-      const file = e.target.files[0]
+    async handleCompareFile(e: Event) {
+      const file = (e.target as HTMLInputElement).files![0]
       if (file) await this.uploadCompareFile(file)
     },
-    async uploadCompareFile(file) {
+    async uploadCompareFile(file: File) {
       if (!file.name.toLowerCase().endsWith('.xer')) {
         alert('Only .xer files are accepted')
         return
@@ -698,15 +718,15 @@ export default {
           const err = await res.text()
           throw new Error(err)
         }
-        this.compareData = await res.json()
+        this.compareData = (await res.json()) as Schedule
         this.compareFilename = file.name
       } catch (e) {
-        alert('Failed to parse: ' + e.message)
+        alert('Failed to parse: ' + (e as Error).message)
       } finally {
         this.compareLoading = false
       }
     },
-    async uploadFile(file) {
+    async uploadFile(file: File) {
       if (!file.name.toLowerCase().endsWith('.xer')) {
         alert('Only .xer files are accepted')
         return
@@ -721,16 +741,16 @@ export default {
         const res = await fetch('/api/upload', { method: 'POST', body: form })
         if (!res.ok) {
           let msg = 'Could not parse this file.'
-          try { msg = (await res.json()).detail || msg } catch { /* non-JSON error body */ }
+          try { msg = ((await res.json()) as { detail?: string }).detail || msg } catch { /* non-JSON error body */ }
           throw new Error(msg)
         }
-        const parsed = await res.json()
+        const parsed = (await res.json()) as Schedule
         this.activateData(parsed)
         this.currentFilename = file.name
         saveLastFile(file.name, parsed)
         this.lastFile = loadLastFile()
       } catch (e) {
-        this.uploadError = `${e.message} — check the file is a P6 .xer export, or try the sample project below.`
+        this.uploadError = `${(e as Error).message} — check the file is a P6 .xer export, or try the sample project below.`
       } finally {
         clearInterval(stageTimer)
         this.loading = false
@@ -747,7 +767,7 @@ export default {
         this.uploadError = 'Could not load the sample project.'
       }
     },
-    activateData(parsed) {
+    activateData(parsed: StoredSchedule) {
       this.data = parsed
       this.tab = 'gantt'
       this.search = ''
@@ -770,7 +790,7 @@ export default {
       clearLastFile()
       this.lastFile = null
     },
-    sortBy(field) {
+    sortBy(field: SortField) {
       if (this.sortField === field) {
         this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc'
       } else {
@@ -778,7 +798,7 @@ export default {
         this.sortDir = 'asc'
       }
     },
-    sortIcon(field) {
+    sortIcon(field: SortField) {
       if (this.sortField !== field) return ''
       return this.sortDir === 'asc' ? '\u25B2' : '\u25BC'
     },
@@ -793,27 +813,27 @@ export default {
     // Same 0h / ≤80h (10d) thresholds as the Gantt and network diagram, so "critical" and
     // "near-critical" mean exactly the same thing — and use exactly the same colors — in
     // every view instead of each surface inventing its own float-banding scheme.
-    floatClass(f) {
+    floatClass(f: number | null | undefined) {
       if (f == null) return ''
       if (f < 0) return 'float-neg'
       if (f === 0) return 'float-crit'
       if (f <= 80) return 'float-near'
       return ''
     },
-    getActCode(tid) {
-      const a = this.data.activities.find(a => a.task_id === tid)
+    getActCode(tid: number) {
+      const a = this.data!.activities.find(a => a.task_id === tid)
       return a ? a.task_code : '?' + tid
     },
-    dismissWarning(w) {
+    dismissWarning(w: string) {
       this.dismissedWarnings.push(w)
     },
-    jumpToActivity(taskId) {
+    jumpToActivity(taskId: number) {
       // Remember where the jump came from so the Gantt can offer a way back.
       this.jumpOrigin = this.tab !== 'gantt' ? this.tab : null
       this.tab = 'gantt'
       this.pendingJump = taskId
     },
-    selectTab(t) {
+    selectTab(t: string) {
       this.tab = t
       this.jumpOrigin = null
     },
@@ -823,18 +843,18 @@ export default {
         this.jumpOrigin = null
       }
     },
-    exportLabel(idle) {
+    exportLabel(idle: string) {
       if (this.exportState === 'working') return 'Generating…'
       if (this.exportState === 'done') return 'Saved ✓'
       return idle
     },
     slugName() {
-      return (this.data.project.proj_short_name || 'schedule')
+      return (this.data!.project.proj_short_name || 'schedule')
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/(^-|-$)/g, '')
     },
-    async doExport(fn) {
+    async doExport(fn: () => unknown) {
       if (this.exporting) return
       this.exporting = true
       this.exportState = 'working'
@@ -848,13 +868,14 @@ export default {
         // open across a deploy, that chunk's content-hashed filename no longer exists on
         // the server (the old build was replaced) and the dynamic import 404s. A plain
         // "Export failed" message is misleading here — the fix is just reloading.
-        const stale = /dynamically imported module|error loading dynamically imported module/i.test(e.message || '')
+        const message = (e as Error).message
+        const stale = /dynamically imported module|error loading dynamically imported module/i.test(message || '')
         if (stale) {
           if (confirm('XERlock was updated since you opened this page. Reload to get the latest version? (Your file will need to be re-opened.)')) {
             window.location.reload()
           }
         } else {
-          alert('Export failed: ' + e.message)
+          alert('Export failed: ' + message)
         }
       } finally {
         this.exporting = false
@@ -863,14 +884,14 @@ export default {
     exportWorkbook,
     exportActivitiesCsv,
     exportReviewReport,
-    setAnnotation(taskId, patch) {
+    setAnnotation(taskId: number, patch: { severity: Severity | null; note: string }) {
       this.annotations = saveAnnotation(this.projectKey, taskId, patch)
     },
-    removeAnnotationFor(taskId) {
+    removeAnnotationFor(taskId: number) {
       this.annotations = removeAnnotation(this.projectKey, taskId)
     },
   },
-}
+})
 </script>
 
 <style>
@@ -1082,7 +1103,8 @@ th.num { text-align: right !important; }
 .drop-zone .loading { color: var(--accent); font-weight: 600; }
 .hint { font: var(--text-small); color: var(--gray-500); margin-top: var(--space-4); }
 .gh-link { display: inline-flex; align-items: center; gap: 6px; margin-top: var(--space-4); font: var(--text-small); color: var(--gray-700); text-decoration: none; }
-.version-tag { display: inline-block; margin-left: var(--space-3); font: var(--text-micro); color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.04em; }
+.legal-notice { margin-top: var(--space-3); font: var(--text-micro); color: var(--gray-500); letter-spacing: 0.02em; }
+.legal-notice a { color: inherit; text-decoration: underline; }
 .feature-strip { font: var(--text-micro); color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.06em; margin: 6px 0 var(--space-6); }
 .sample-link { display: block; margin: var(--space-4) auto 0; border: none; background: none; cursor: pointer; font: var(--text-body); color: var(--gray-700); }
 .sample-link strong { color: var(--accent); }
@@ -1314,6 +1336,8 @@ th.num { text-align: right !important; }
 .sb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
 
 .sb-footer { padding: var(--space-3) var(--space-3) var(--space-4); border-top: 1px solid var(--nav-line); }
+.sb-legal { margin: var(--space-3) 0 0; font: var(--text-micro); color: var(--nav-ink-3); text-align: center; line-height: 1.5; }
+.sb-legal a { color: inherit; text-decoration: underline; }
 .sb-theme { display: flex; background: var(--nav-2); border-radius: var(--radius-sm); padding: 2px; margin-bottom: var(--space-2); }
 .sb-theme button { flex: 1; border: none; background: none; border-radius: 4px; padding: 5px; cursor: pointer; font: var(--text-small); color: var(--nav-ink-2); }
 .sb-theme button.active { background: var(--accent); color: var(--on-solid); font-weight: 600; }

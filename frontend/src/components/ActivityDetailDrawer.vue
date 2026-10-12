@@ -97,7 +97,7 @@
         </p>
 
         <div v-for="side in otherSides" :key="side.label" class="rel-section">
-          <button class="rel-more" @click="open[side.key] = !open[side.key]" :aria-expanded="String(open[side.key])">
+          <button class="rel-more" @click="open[side.key] = !open[side.key]" :aria-expanded="open[side.key] ? 'true' : 'false'">
             <span class="chev" :class="{ open: open[side.key] }">&rsaquo;</span>
             {{ side.label }} <em>{{ side.items.length }}</em>
           </button>
@@ -127,49 +127,58 @@
         :annotation="annotations[activity.task_id] || null"
         :activity="activity"
         :project-name="projectName"
-        @save="patch => $emit('annotate', activity.task_id, patch)"
+        @save="patch => $emit('annotate', activity!.task_id, patch)"
         @remove="$emit('unannotate', activity.task_id)"
       />
     </aside>
   </Transition>
 </template>
 
-<script>
+<script lang="ts">
+import { defineComponent, type PropType } from 'vue'
 import { formatDate, formatHours, formatFloat, formatLag, statusLabel } from '../utils/format'
 import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
 import AnnotationEditor from './AnnotationEditor.vue'
+import type { Activity, Relationship } from '../types/schedule'
+import type { Annotations } from '../utils/annotations'
 
-export default {
+/** A relationship with the activity at its other end, when that activity is known. */
+type EnrichedRel = Relationship & { activity: Activity | undefined }
+type RelSide = 'preds' | 'succs'
+
+export default defineComponent({
   name: 'ActivityDetailDrawer',
   components: { AnnotationEditor },
   props: {
-    activity: { type: Object, default: null },
+    activity: { type: Object as PropType<Activity | null>, default: null },
     // task_id → activity, for enriching predecessor/successor entries
-    lookup: { type: Map, required: true },
-    annotations: { type: Object, default: () => ({}) },
+    lookup: { type: Map as PropType<Map<number, Activity>>, required: true },
+    annotations: { type: Object as PropType<Annotations>, default: () => ({}) },
     // When set (Critical Path), rel entries absent from this set get a "not shown" badge
-    visibleIds: { type: Set, default: null },
+    visibleIds: { type: Set as PropType<Set<number> | null>, default: null },
     showJump: { type: Boolean, default: false },
     projectName: { type: String, default: '' },
   },
   emits: ['close', 'select', 'jump', 'annotate', 'unannotate'],
   data() {
-    return { open: { preds: false, succs: false } }
+    return { open: { preds: false, succs: false } as Record<RelSide, boolean> }
   },
   computed: {
     // P6's percent-complete type: which progress measure the figure is.
-    pctBasis() {
-      return { CP_Drtn: 'Duration % complete', CP_Units: 'Units % complete', CP_Phys: 'Physical % complete' }[this.activity.pct_complete_type] || 'Complete'
+    pctBasis(): string {
+      const labels: Record<string, string> = { CP_Drtn: 'Duration % complete', CP_Units: 'Units % complete', CP_Phys: 'Physical % complete' }
+      // pct_complete_type is absent from schedules cached by older versions.
+      return labels[this.activity?.pct_complete_type ?? ''] || 'Complete'
     },
-    enrichedPreds() {
+    enrichedPreds(): EnrichedRel[] {
       return (this.activity?.predecessors || []).map(p => ({ ...p, activity: this.lookup.get(p.task_id) }))
     },
-    enrichedSuccs() {
+    enrichedSuccs(): EnrichedRel[] {
       return (this.activity?.successors || []).map(p => ({ ...p, activity: this.lookup.get(p.task_id) }))
     },
-    drivingPreds() { return this.enrichedPreds.filter(p => p.driving) },
-    drivingSuccs() { return this.enrichedSuccs.filter(p => p.driving) },
-    otherSides() {
+    drivingPreds(): EnrichedRel[] { return this.enrichedPreds.filter(p => p.driving) },
+    drivingSuccs(): EnrichedRel[] { return this.enrichedSuccs.filter(p => p.driving) },
+    otherSides(): { key: RelSide; label: string; items: EnrichedRel[] }[] {
       return [
         { key: 'preds', label: 'Other predecessors', items: this.enrichedPreds.filter(p => !p.driving) },
         { key: 'succs', label: 'Other successors', items: this.enrichedSuccs.filter(p => !p.driving) },
@@ -190,20 +199,20 @@ export default {
     displayStart,
     displayEnd,
     // Same severity bands used everywhere else in the app.
-    floatCellClass(a) {
+    floatCellClass(a: Activity): string {
       if (a.total_float_hrs == null) return ''
       if (a.total_float_hrs <= 0) return 'fl-crit'
       if (a.total_float_hrs <= 80) return 'fl-near'
       return ''
     },
-    floatTileClass(a) {
+    floatTileClass(a: Activity): string {
       if (a.is_negative_float) return 'stat-tile-neg'
       if (a.total_float_hrs === 0) return 'stat-tile-crit'
       if (a.total_float_hrs != null && a.total_float_hrs <= 80) return 'stat-tile-near'
       return ''
     },
   },
-}
+})
 </script>
 
 <style scoped>

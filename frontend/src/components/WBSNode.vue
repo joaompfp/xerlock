@@ -34,21 +34,24 @@
   </div>
 </template>
 
-<script>
+<script lang="ts">
+import { defineComponent, type PropType } from 'vue'
 import IconChevron from './IconChevron.vue'
 import { formatDateShort } from '../utils/format'
+import type { WbsNode } from '../types/schedule'
+import type { WbsRollup } from '../utils/wbs'
 
-export default {
+export default defineComponent({
   name: 'WBSNode',
   components: { IconChevron },
   props: {
-    node: Object,
+    node: { type: Object as PropType<WbsNode>, required: true },
     level: { type: Number, default: 0 },
     index: { type: Number, default: 0 },
-    rollups: { type: Map, default: null },
+    rollups: { type: Map as PropType<Map<number, WbsRollup> | null>, default: null },
   },
   computed: {
-    roll() {
+    roll(): WbsRollup | null | undefined {
       return this.rollups ? this.rollups.get(this.node.wbs_id) : null
     },
   },
@@ -61,7 +64,7 @@ export default {
       if (this.node.children.length > 0) this.expanded = !this.expanded
     },
   },
-}
+})
 </script>
 
 <style scoped>

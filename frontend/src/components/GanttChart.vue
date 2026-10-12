@@ -71,7 +71,7 @@
       <div class="tb-right">
         <input type="text" v-model="filterText" class="filter-input" placeholder="Search code, name, or WBS…" />
         <div class="tb-pop">
-          <button class="ctrl-btn" :class="{ 'has-filters': activeFilterChips.length > 0 }" @click="filtersOpen = !filtersOpen; overflowOpen = false" :aria-expanded="String(filtersOpen)">
+          <button class="ctrl-btn" :class="{ 'has-filters': activeFilterChips.length > 0 }" @click="filtersOpen = !filtersOpen; overflowOpen = false" :aria-expanded="(String(filtersOpen) as 'true' | 'false')">
             Filters<template v-if="activeFilterChips.length"> ({{ activeFilterChips.length }})</template>
           </button>
           <div v-if="filtersOpen" class="tb-panel">
@@ -108,7 +108,7 @@
           </div>
         </div>
         <div class="tb-pop">
-          <button class="ctrl-btn tb-more" @click="overflowOpen = !overflowOpen; filtersOpen = false" :aria-expanded="String(overflowOpen)" title="More actions" aria-label="More actions">⋯</button>
+          <button class="ctrl-btn tb-more" @click="overflowOpen = !overflowOpen; filtersOpen = false" :aria-expanded="(String(overflowOpen) as 'true' | 'false')" title="More actions" aria-label="More actions">⋯</button>
           <div v-if="overflowOpen" class="tb-panel tb-panel-menu">
             <button :disabled="todayX === null" @click="overflowOpen = false; scrollToToday()">Scroll to today</button>
             <button @click="overflowOpen = false; toggleFullscreen()">{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</button>
@@ -134,7 +134,7 @@
         <button class="btn-tiny-light" @click="clearFilters">Clear all</button>
       </template>
       <button v-if="returnTab" class="return-chip" @click="$emit('return-to-origin')">&larr; Back to {{ returnTab }}</button>
-      <span v-if="isolationActive" class="isolation-chip">
+      <span v-if="isolatedIds" class="isolation-chip">
         Chain trace &middot; {{ isolatedIds.size }} {{ isolatedIds.size === 1 ? 'activity' : 'activities' }}
         <button class="isolation-exit" @click="exitIsolation">Show all</button>
       </span>
@@ -326,8 +326,8 @@
               <div
                 v-if="ghostFor(row.activity)"
                 class="g-milestone-ghost"
-                :style="{ left: ghostFor(row.activity).x + 'px' }"
-                :title="'Baseline: ' + ghostFor(row.activity).label"
+                :style="{ left: ghostFor(row.activity)!.x + 'px' }"
+                :title="'Baseline: ' + ghostFor(row.activity)!.label"
               ></div>
               <div
                 class="g-milestone"
@@ -341,8 +341,8 @@
               <div
                 v-if="ghostFor(row.activity)"
                 class="g-bar-ghost"
-                :style="{ left: ghostFor(row.activity).x + 'px', width: ghostFor(row.activity).w + 'px' }"
-                :title="'Baseline: ' + ghostFor(row.activity).label"
+                :style="{ left: ghostFor(row.activity)!.x + 'px', width: ghostFor(row.activity)!.w + 'px' }"
+                :title="'Baseline: ' + ghostFor(row.activity)!.label"
               ></div>
               <div
                 v-if="row.tailW"
@@ -444,19 +444,23 @@
   </div>
 </template>
 
-<script>
+<script lang="ts">
+import { defineComponent, type PropType } from 'vue'
+import type { Activity, Schedule, WbsNode } from '../types/schedule'
+import type { Annotations } from '../utils/annotations'
 import { formatDate, formatDateShort, formatHours, isMilestone, formatFloat, formatLag, statusLabel } from '../utils/format'
 
 const NEAR_CRITICAL_HRS = 80 // 10 working days
 const FLOAT_TAIL_MAX_DAYS = 26
-const STATUS_LABELS = { TK_NotStart: 'Not started', TK_Active: 'Active', TK_Complete: 'Complete' }
+const STATUS_LABELS: Record<string, string> = { TK_NotStart: 'Not started', TK_Active: 'Active', TK_Complete: 'Complete' }
 import fullscreenMixin from '../mixins/fullscreen'
 import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
 import { PAPER_SIZES, paperOrDefault, usableWidthPx } from '../utils/paper'
 import {
-  ZOOM_DAY_WIDTH, MIN_DAY_WIDTH, MAX_DAY_WIDTH,
+  type Zoom,
   timelineRange, unionRange, dayWidthFor, clampDayWidth, totalWidth,
   dateToX, yearTicks, monthTicks, monthBandTicks, weekTicks, dayTicks, weekendRects,
+  type Tick,
 } from '../utils/ganttGeometry'
 import IconChevron from './IconChevron.vue'
 import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
@@ -466,14 +470,77 @@ const LABEL_COL_MIN = 200
 const LABEL_COL_MAX = 700
 const HEADER_HEIGHT = 56
 const ROW_HEIGHT = 26
-// 15px safety buffer: tuned against this chart's printed output (see utils/paper.js).
+// 15px safety buffer: tuned against this chart's printed output (see utils/paper.ts).
 const PRINT_BUFFER_PX = 15
-function paperUsableWidthPx(key) {
+function paperUsableWidthPx(key: string): number {
   return usableWidthPx(key, PRINT_BUFFER_PX)
 }
 const VIEW_STORAGE_KEY = 'schedule-app:gantt-view'
 
-function loadSavedView() {
+type CriticalBasis = 'tf0' | 'longest'
+type LinksScope = 'critical' | 'all'
+
+/** View settings persisted to localStorage. */
+interface SavedView {
+  zoom?: Zoom
+  criticalBasis?: CriticalBasis
+  showLinks?: boolean
+  linksScope?: LinksScope
+  showProgressLine?: boolean
+  labelColWidth?: number
+  dayWidthOverride?: number | null
+  printPaperSize?: string
+}
+
+/** WBS ids, plus the synthetic group holding activities with no known WBS. */
+type WbsKey = number | '__unassigned'
+
+interface Rollup { start: Date | null; finish: Date | null; count: number }
+
+interface WbsRow {
+  type: 'wbs'
+  key: string
+  wbsId: WbsKey
+  level: number
+  name: string
+  count: number
+  start?: Date | null
+  finish?: Date | null
+  index: number
+}
+
+interface ActivityRow {
+  type: 'activity'
+  key: string
+  level: number
+  activity: Activity
+  milestone: boolean
+  x: number
+  w: number
+  tailW: number
+  cls: string
+  index: number
+}
+
+type Row = WbsRow | ActivityRow
+// Rows before `rows` numbers them.
+type UnindexedRow = Omit<WbsRow, 'index'> | Omit<ActivityRow, 'index'>
+
+/** Drag bookkeeping kept off the reactive state (Vue does not proxy `_`-prefixed data). */
+interface DragState {
+  _onDocMousedown: (e: MouseEvent) => void
+  _panStartX: number
+  _panStartY: number
+  _panScrollLeft: number
+  _panScrollTop: number
+  _resizeStartX: number
+  _resizeStartWidth: number
+}
+function drag(vm: object): DragState {
+  return vm as DragState
+}
+
+function loadSavedView(): SavedView {
   try {
     const raw = localStorage.getItem(VIEW_STORAGE_KEY)
     return raw ? JSON.parse(raw) : {}
@@ -482,7 +549,7 @@ function loadSavedView() {
   }
 }
 
-function saveView(view) {
+function saveView(view: SavedView): void {
   try {
     localStorage.setItem(VIEW_STORAGE_KEY, JSON.stringify(view))
   } catch {
@@ -490,18 +557,19 @@ function saveView(view) {
   }
 }
 
-export default {
+export default defineComponent({
   name: 'GanttChart',
   mixins: [fullscreenMixin],
   components: { IconChevron, ActivityDetailDrawer },
   props: {
-    data: { type: Object, required: true },
-    jumpTo: { type: [Number, String], default: null },
-    annotations: { type: Object, default: () => ({}) },
+    data: { type: Object as PropType<Schedule>, required: true },
+    // A task id. Activities are keyed by number; a string id would silently match nothing.
+    jumpTo: { type: Number as PropType<number | null>, default: null },
+    annotations: { type: Object as PropType<Annotations>, default: () => ({}) },
     returnTab: { type: String, default: '' },
     // Parsed baseline schedule (from the Compare tab's snapshot/upload). When present,
     // activities matched by code can draw a ghost bar at their baseline position.
-    baseline: { type: Object, default: null },
+    baseline: { type: Object as PropType<Schedule | null>, default: null },
   },
   emits: ['jumped', 'annotate', 'unannotate', 'return-to-origin'],
   data() {
@@ -509,11 +577,11 @@ export default {
 
     const start = this.data.project.earliest_start ? new Date(this.data.project.earliest_start) : new Date()
     const end = this.data.project.latest_end ? new Date(this.data.project.latest_end) : new Date()
-    const days = Math.max(1, (end - start) / 86400000)
-    const autoZoom = days > 300 ? 'month' : days > 100 ? 'week' : 'day'
+    const days = Math.max(1, (end.getTime() - start.getTime()) / 86400000)
+    const autoZoom: Zoom = days > 300 ? 'month' : days > 100 ? 'week' : 'day'
 
-    const expandedWbs = new Set()
-    const markExpanded = (node, level) => {
+    const expandedWbs = new Set<WbsKey>()
+    const markExpanded = (node: WbsNode, level: number) => {
       if (level < 1) expandedWbs.add(node.wbs_id)
       for (const c of node.children || []) markExpanded(c, level + 1)
     }
@@ -523,22 +591,22 @@ export default {
       HEADER_HEIGHT,
       ROW_HEIGHT,
       zoom: saved.zoom || autoZoom,
-      zoomLevels: ['day', 'week', 'month', 'quarter'],
+      zoomLevels: ['day', 'week', 'month', 'quarter'] as Zoom[],
       printPaperSize: saved.printPaperSize || 'a4',
       paperSizes: PAPER_SIZES,
       dayWidthOverride: saved.dayWidthOverride ?? null,
       labelColWidth: Math.min(saved.labelColWidth || LABEL_COL_WIDTH_DEFAULT, Math.max(220, Math.floor(window.innerWidth * 0.55))),
-      criticalBasis: saved.criticalBasis || 'tf0',
+      criticalBasis: (saved.criticalBasis || 'tf0') as CriticalBasis,
       expandedWbs,
       // WBS ids collapsed while a filter is active. Filtering auto-expands everything so
       // matches are revealed, but a collapse click during filtering must still stick —
       // this set records those, and clears when filters clear.
-      filterCollapsed: new Set(),
+      filterCollapsed: new Set<WbsKey>(),
       showBaseline: true,
       showLinks: saved.showLinks ?? true,
-      linksScope: saved.linksScope || 'critical',
+      linksScope: (saved.linksScope || 'critical') as LinksScope,
       showProgressLine: saved.showProgressLine ?? false,
-      selectedTaskId: null,
+      selectedTaskId: null as number | null,
       filterText: '',
       filterStatus: '',
       filterCriticalOnly: false,
@@ -546,11 +614,11 @@ export default {
       filterTo: '',
       filtersOpen: false,
       overflowOpen: false,
-      filterCodes: Object.fromEntries((this.data.project.activity_code_types || []).map(t => [t, ''])),
+      filterCodes: Object.fromEntries<string>((this.data.project.activity_code_types || []).map(t => [t, ''])),
       // Chain tracing: null = off; a Set of task_ids = show ONLY these activities.
       // Grown one activity at a time by clicking predecessors/successors in the drawer,
       // letting a reviewer reconstruct a driving chain link by link.
-      isolatedIds: null,
+      isolatedIds: null as Set<number> | null,
       scrollLeftPx: 0,
       scrollTopPx: 0,
       panning: false,
@@ -562,19 +630,20 @@ export default {
     // The drawer is a fixed overlay; a click on app chrome outside this component
     // (tab bar, summary toggle, another tab's controls) dismisses it instead of the
     // overlay swallowing the interaction context.
-    this._onDocMousedown = e => {
-      if ((this.filtersOpen || this.overflowOpen) && !e.target.closest('.tb-pop')) {
+    drag(this)._onDocMousedown = (e: MouseEvent) => {
+      const target = e.target as Element
+      if ((this.filtersOpen || this.overflowOpen) && !target.closest('.tb-pop')) {
         this.filtersOpen = false
         this.overflowOpen = false
       }
-      if (this.selectedTaskId && this.$el.offsetParent !== null && !this.$el.contains(e.target)) {
+      if (this.selectedTaskId && this.$el.offsetParent !== null && !this.$el.contains(target)) {
         this.selectedTaskId = null
       }
     }
-    document.addEventListener('mousedown', this._onDocMousedown)
+    document.addEventListener('mousedown', drag(this)._onDocMousedown)
   },
   beforeUnmount() {
-    document.removeEventListener('mousedown', this._onDocMousedown)
+    document.removeEventListener('mousedown', drag(this)._onDocMousedown)
     window.removeEventListener('keydown', this.onKeydown)
     window.removeEventListener('mousemove', this.onPanMove)
     window.removeEventListener('mouseup', this.onPanEnd)
@@ -595,7 +664,7 @@ export default {
     dayWidthOverride() { this.persistView() },
     jumpTo: {
       immediate: true,
-      handler(taskId) {
+      handler(taskId: number | null) {
         if (taskId == null) return
         this.revealAndSelect(taskId)
         this.$emit('jumped')
@@ -603,28 +672,28 @@ export default {
     },
   },
   computed: {
-    actLookup() {
-      const m = new Map()
+    actLookup(): Map<number, Activity> {
+      const m = new Map<number, Activity>()
       for (const a of this.data.activities) m.set(a.task_id, a)
       return m
     },
-    selectedActivity() {
+    selectedActivity(): Activity | null | undefined {
       return this.selectedTaskId != null ? this.actLookup.get(this.selectedTaskId) : null
     },
-    wbsParentOf() {
-      const map = new Map()
-      const walk = (node, parentId) => {
+    wbsParentOf(): Map<number, number> {
+      const map = new Map<number, number>()
+      const walk = (node: WbsNode, parentId: number | null) => {
         if (parentId != null) map.set(node.wbs_id, parentId)
         for (const c of node.children || []) walk(c, node.wbs_id)
       }
       for (const root of this.data.wbs_tree || []) walk(root, null)
       return map
     },
-    activitiesByWbs() {
-      const map = new Map()
+    activitiesByWbs(): Map<number, Activity[]> {
+      const map = new Map<number, Activity[]>()
       for (const a of this.data.activities) {
         if (!map.has(a.wbs_id)) map.set(a.wbs_id, [])
-        map.get(a.wbs_id).push(a)
+        map.get(a.wbs_id)!.push(a)
       }
       for (const list of map.values()) {
         list.sort((a, b) => {
@@ -636,18 +705,19 @@ export default {
       }
       return map
     },
-    rollups() {
+    rollups(): Map<number, Rollup> {
       return this.computeRollups(null)
     },
-    rollupsFiltered() {
-      return this.matchedTaskIds ? this.computeRollups(a => this.matchedTaskIds.has(a.task_id)) : null
+    rollupsFiltered(): Map<number, Rollup> | null {
+      const matched = this.matchedTaskIds
+      return matched ? this.computeRollups(a => matched.has(a.task_id)) : null
     },
-    activeRollups() {
+    activeRollups(): Map<number, Rollup> {
       return this.isFilterActive && this.rollupsFiltered ? this.rollupsFiltered : this.rollups
     },
     // Spans both schedules when baseline ghosts are visible, so a baseline that runs
     // past the current programme still lands inside the drawn grid.
-    timelineBounds() {
+    timelineBounds(): { rangeStart: Date; rangeEnd: Date } {
       const p = this.data.project
       let { start, end } = { start: p.earliest_start, end: p.latest_end }
       if (this.baseline && this.showBaseline) {
@@ -656,102 +726,103 @@ export default {
       }
       return timelineRange(start, end)
     },
-    rangeStart() {
+    rangeStart(): Date {
       return this.timelineBounds.rangeStart
     },
-    rangeEnd() {
+    rangeEnd(): Date {
       return this.timelineBounds.rangeEnd
     },
-    dayWidth() {
+    dayWidth(): number {
       return dayWidthFor(this.zoom, this.dayWidthOverride)
     },
-    totalWidth() {
+    totalWidth(): number {
       return totalWidth(this.rangeStart, this.rangeEnd, this.dayWidth)
     },
-    bodyHeight() {
+    bodyHeight(): number {
       return this.rows.length * ROW_HEIGHT
     },
-    yearTicks() {
+    yearTicks(): Tick[] {
       return yearTicks(this.rangeStart, this.rangeEnd, this.dayWidth)
     },
     // Months read as the band at day/week zoom; at month/quarter zoom the months are
     // already the ticks, so the band steps up to years.
-    bandTicks() {
+    bandTicks(): Tick[] {
       return this.zoom === 'day' || this.zoom === 'week'
         ? monthBandTicks(this.rangeStart, this.rangeEnd, this.dayWidth)
         : yearTicks(this.rangeStart, this.rangeEnd, this.dayWidth)
     },
-    monthTicks() {
+    monthTicks(): Tick[] {
       return monthTicks(this.rangeStart, this.rangeEnd, this.dayWidth)
     },
-    weekTicks() {
+    weekTicks(): Tick[] {
       return weekTicks(this.rangeStart, this.rangeEnd, this.dayWidth)
     },
-    dayTicks() {
+    dayTicks(): Tick[] {
       return dayTicks(this.rangeStart, this.rangeEnd, this.dayWidth)
     },
-    detailTicks() {
+    detailTicks(): Tick[] {
       if (this.zoom === 'month' || this.zoom === 'quarter') return this.monthTicks
       if (this.zoom === 'week') return this.weekTicks
       return this.dayTicks
     },
-    secondaryMonthGridlines() {
+    secondaryMonthGridlines(): Tick[] {
       return this.zoom === 'day' || this.zoom === 'week' ? this.monthTicks : []
     },
-    weekendRects() {
+    weekendRects(): { x: number; w: number }[] {
       if (this.zoom !== 'day') return []
       return weekendRects(this.dayTicks, this.dayWidth)
     },
-    todayX() {
+    todayX(): number | null {
       const today = new Date()
       if (today < this.rangeStart || today > this.rangeEnd) return null
-      return Math.round(((today - this.rangeStart) / 86400000) * this.dayWidth)
+      return Math.round(((today.getTime() - this.rangeStart.getTime()) / 86400000) * this.dayWidth)
     },
-    dataDateX() {
+    dataDateX(): number | null {
       if (!this.data.project.data_date) return null
       const dd = new Date(this.data.project.data_date)
-      if (isNaN(dd) || dd < this.rangeStart || dd > this.rangeEnd) return null
-      const x = Math.round(((dd - this.rangeStart) / 86400000) * this.dayWidth)
+      if (isNaN(dd.getTime()) || dd < this.rangeStart || dd > this.rangeEnd) return null
+      const x = Math.round(((dd.getTime() - this.rangeStart.getTime()) / 86400000) * this.dayWidth)
       // When the file is fresh, data date ≈ today — don't stack two flags on one pixel.
       return this.todayX !== null && Math.abs(x - this.todayX) < 3 ? null : x
     },
     // Print has no "Today" marker at all (today's date isn't meaningful once printed
     // and later read), so the data date always shows, unlike the on-screen version.
-    printDataDateX() {
+    printDataDateX(): number | null {
       if (!this.data.project.data_date) return null
       const dd = new Date(this.data.project.data_date)
-      if (isNaN(dd) || dd < this.rangeStart || dd > this.rangeEnd) return null
-      return Math.round(((dd - this.rangeStart) / 86400000) * this.dayWidth)
+      if (isNaN(dd.getTime()) || dd < this.rangeStart || dd > this.rangeEnd) return null
+      return Math.round(((dd.getTime() - this.rangeStart.getTime()) / 86400000) * this.dayWidth)
     },
-    codeTypesAvailable() {
+    codeTypesAvailable(): string[] {
       return this.data.project.has_activity_codes ? this.data.project.activity_code_types : []
     },
-    codeValuesByType() {
-      const m = new Map()
-      for (const t of this.codeTypesAvailable) m.set(t, new Set())
+    codeValuesByType(): Map<string, string[]> {
+      const sets = new Map<string, Set<string>>()
+      for (const t of this.codeTypesAvailable) sets.set(t, new Set())
       for (const a of this.data.activities) {
         for (const c of a.activity_codes) {
-          if (m.has(c.type)) m.get(c.type).add(c.code)
+          sets.get(c.type)?.add(c.code)
         }
       }
-      for (const [t, set] of m) m.set(t, [...set].sort())
+      const m = new Map<string, string[]>()
+      for (const [t, set] of sets) m.set(t, [...set].sort())
       return m
     },
-    activeCodeFilters() {
+    activeCodeFilters(): [string, string][] {
       return Object.entries(this.filterCodes).filter(([, v]) => v)
     },
-    isolationActive() {
+    isolationActive(): boolean {
       return this.isolatedIds !== null
     },
-    isFilterActive() {
+    isFilterActive(): boolean {
       return this.isolationActive || !!(this.filterText.trim() || this.filterStatus || this.filterCriticalOnly || this.filterFrom || this.filterTo || this.activeCodeFilters.length)
     },
-    matchedTaskIds() {
+    matchedTaskIds(): Set<number> | null {
       // Isolation takes precedence over the text/status/code filters: the trace IS the view.
       if (this.isolatedIds) return this.isolatedIds
       if (!this.isFilterActive) return null
       const q = this.filterText.trim().toLowerCase()
-      const ids = new Set()
+      const ids = new Set<number>()
       for (const a of this.data.activities) {
         if (q && !(a.task_code.toLowerCase().includes(q) || a.task_name.toLowerCase().includes(q) || (a.wbs_path && a.wbs_path.toLowerCase().includes(q)))) continue
         if (this.filterStatus && a.status !== this.filterStatus) continue
@@ -776,16 +847,16 @@ export default {
       }
       return ids
     },
-    baselineByCode() {
+    baselineByCode(): Map<string, Activity> | null {
       if (!this.baseline) return null
-      const m = new Map()
+      const m = new Map<string, Activity>()
       for (const a of this.baseline.activities) m.set(a.task_code, a)
       return m
     },
     // One removable chip per active filter — the strip states exactly what is
     // narrowing the view, so a filtered chart can't be read as the whole programme.
-    activeFilterChips() {
-      const out = []
+    activeFilterChips(): { id: string; label: string }[] {
+      const out: { id: string; label: string }[] = []
       const q = this.filterText.trim()
       if (q) out.push({ id: 'text', label: `Search: ${q}` })
       if (this.filterStatus) out.push({ id: 'status', label: `Status: ${STATUS_LABELS[this.filterStatus] || this.filterStatus}` })
@@ -799,8 +870,8 @@ export default {
       for (const [type, code] of this.activeCodeFilters) out.push({ id: 'code:' + type, label: `${type}: ${code}` })
       return out
     },
-    emptyFilterHint() {
-      const bits = []
+    emptyFilterHint(): string {
+      const bits: string[] = []
       if (this.filterText.trim()) bits.push(`text “${this.filterText.trim()}”`)
       if (this.filterStatus) bits.push('a status')
       if (this.filterCriticalOnly) bits.push('critical only')
@@ -810,15 +881,16 @@ export default {
         ? `Filtering by ${bits.join(', ')}.`
         : 'This schedule has no activities to show.'
     },
-    matchCount() {
+    matchCount(): number {
       return this.matchedTaskIds ? this.matchedTaskIds.size : this.data.activities.length
     },
-    rows() {
-      const rows = []
+    rows(): Row[] {
+      const rows: UnindexedRow[] = []
       const filtering = this.isFilterActive
-      const matched = this.matchedTaskIds
+      // Non-null whenever `filtering` is true: an active filter always yields a match set.
+      const matched = this.matchedTaskIds as Set<number>
       const rollups = this.activeRollups
-      const walk = (nodes, level) => {
+      const walk = (nodes: WbsNode[], level: number) => {
         const sorted = [...nodes].sort((a, b) => a.seq_num - b.seq_num)
         for (const node of sorted) {
           const roll = rollups.get(node.wbs_id) || { start: null, finish: null, count: 0 }
@@ -854,26 +926,26 @@ export default {
         }
       }
 
-      rows.forEach((r, i) => { r.index = i })
-      return rows
+      rows.forEach((r, i) => { (r as Row).index = i })
+      return rows as Row[]
     },
-    allWbsIds() {
-      const ids = new Set()
-      const walk = (nodes) => {
+    allWbsIds(): Set<number> {
+      const ids = new Set<number>()
+      const walk = (nodes: WbsNode[]) => {
         for (const n of nodes) { ids.add(n.wbs_id); walk(n.children || []) }
       }
       walk(this.data.wbs_tree || [])
       return ids
     },
-    rowIndexByTaskId() {
-      const map = new Map()
+    rowIndexByTaskId(): Map<number, number> {
+      const map = new Map<number, number>()
       this.rows.forEach(r => { if (r.type === 'activity') map.set(r.activity.task_id, r.index) })
       return map
     },
-    links() {
+    links(): { id: string; d: string; chain: boolean }[] {
       // Chain tracing draws its links regardless of the Links toggle — they're the point.
       if (!this.showLinks && !this.isolationActive) return []
-      const out = []
+      const out: { id: string; d: string; chain: boolean }[] = []
       const rowByIndex = this.rows
       for (const row of rowByIndex) {
         if (row.type !== 'activity') continue
@@ -886,7 +958,7 @@ export default {
         for (const p of row.activity.predecessors || []) {
           const predIdx = this.rowIndexByTaskId.get(p.task_id)
           if (predIdx === undefined) continue
-          const predRow = rowByIndex[predIdx]
+          const predRow = rowByIndex[predIdx] as ActivityRow // rowIndexByTaskId only indexes activity rows
           const bothCritical = this.isBasisCritical(row.activity) && this.isBasisCritical(predRow.activity)
           if (criticalScope && !bothCritical) continue
           const predX = this.dateToX(displayEnd(predRow.activity))
@@ -904,9 +976,9 @@ export default {
       }
       return out
     },
-    progressLinePoints() {
+    progressLinePoints(): { x: number; y: number }[] {
       if (!this.showProgressLine) return []
-      const pts = []
+      const pts: { x: number; y: number }[] = []
       for (const row of this.rows) {
         if (row.type !== 'activity' || row.milestone) continue
         const px = row.x + row.w * (row.activity.pct_complete / 100)
@@ -915,17 +987,17 @@ export default {
       }
       return pts
     },
-    progressLinePath() {
+    progressLinePath(): string {
       if (this.progressLinePoints.length < 2) return ''
       return 'M' + this.progressLinePoints.map(p => `${p.x},${p.y}`).join(' L')
     },
   },
   methods: {
-    computeRollups(matchFn) {
-      const map = new Map()
+    computeRollups(matchFn: ((a: Activity) => boolean) | null): Map<number, Rollup> {
+      const map = new Map<number, Rollup>()
       const activitiesByWbs = this.activitiesByWbs
-      const visit = (node) => {
-        let start = null, finish = null, count = 0
+      const visit = (node: WbsNode): Rollup => {
+        let start: Date | null = null, finish: Date | null = null, count = 0
         for (const a of activitiesByWbs.get(node.wbs_id) || []) {
           if (matchFn && !matchFn(a)) continue
           count++
@@ -953,30 +1025,30 @@ export default {
       for (const root of this.data.wbs_tree || []) visit(root)
       return map
     },
-    dateToX(dateStr) {
+    dateToX(dateStr: string | null | undefined): number | null {
       return dateToX(dateStr, this.rangeStart, this.dayWidth)
     },
-    isBasisCritical(a) {
+    isBasisCritical(a: Activity): boolean {
       return this.criticalBasis === 'longest' ? a.is_longest_path : a.is_critical
     },
     // The number a reviewer reads most often, now in the grid rather than only in
     // the drawer — same severity bands as the bars.
-    floatCellClass(a) {
+    floatCellClass(a: Activity): string {
       if (a.total_float_hrs == null) return ''
       if (a.total_float_hrs < 0) return 'fl-neg'
       if (a.total_float_hrs === 0) return 'fl-crit'
       if (a.total_float_hrs <= NEAR_CRITICAL_HRS) return 'fl-near'
       return ''
     },
-    classifyActivity(a) {
+    classifyActivity(a: Activity): string {
       const base = this.isBasisCritical(a)
         ? 'critical'
-        : (this.criticalBasis === 'tf0' && a.total_float_hrs > 0 && a.total_float_hrs <= 80 ? 'near' : 'other')
+        : (this.criticalBasis === 'tf0' && a.total_float_hrs != null && a.total_float_hrs > 0 && a.total_float_hrs <= 80 ? 'near' : 'other')
       // Negative float means the activity is already behind an imposed date — flag it
       // regardless of critical basis, since that's a property of the activity itself.
       return a.is_negative_float ? `${base} negative` : base
     },
-    buildActivityRow(a, level) {
+    buildActivityRow(a: Activity, level: number): Omit<ActivityRow, 'index'> {
       const milestone = isMilestone(a)
       const x = this.dateToX(displayStart(a))
       const xEnd = this.dateToX(displayEnd(a))
@@ -986,17 +1058,18 @@ export default {
       const tfDays = a.total_float_hrs != null ? a.total_float_hrs / (a.calendar_hrs_per_day || 8) : 0
       const tailW = tfDays > 0 && tfDays <= FLOAT_TAIL_MAX_DAYS ? Math.round(tfDays * this.dayWidth) : 0
       return {
-        type: 'activity', key: 'a' + a.task_id, level, activity: a,
+        type: 'activity' as const, key: 'a' + a.task_id, level, activity: a,
         milestone, x: x ?? 0, w, tailW, cls: this.classifyActivity(a),
       }
     },
-    wbsBarStyle(row) {
+    wbsBarStyle(row: WbsRow): Record<string, string> {
       if (!row.start || !row.finish) return { display: 'none' }
       const x = this.dateToX(row.start.toISOString())
       const xEnd = this.dateToX(row.finish.toISOString())
-      return { left: x + 'px', width: Math.max(xEnd - x, 3) + 'px' }
+      // `?? 0` mirrors JS's null-to-0 coercion in subtraction.
+      return { left: x + 'px', width: Math.max((xEnd ?? 0) - (x ?? 0), 3) + 'px' }
     },
-    ghostFor(a) {
+    ghostFor(a: Activity): { x: number | null; w: number; label: string } | null {
       if (!this.showBaseline || !this.baselineByCode) return null
       const b = this.baselineByCode.get(a.task_code)
       if (!b) return null
@@ -1007,11 +1080,11 @@ export default {
       const xEnd = e ? this.dateToX(e) : x
       return {
         x,
-        w: Math.max(xEnd - x, 3),
+        w: Math.max((xEnd ?? 0) - (x ?? 0), 3), // `?? 0` mirrors JS's null-to-0 coercion
         label: `${formatDateShort(s)}${e && e !== s ? ' → ' + formatDateShort(e) : ''}`,
       }
     },
-    toggleWbs(wbsId) {
+    toggleWbs(wbsId: WbsKey) {
       if (this.isFilterActive) {
         if (this.filterCollapsed.has(wbsId)) this.filterCollapsed.delete(wbsId)
         else this.filterCollapsed.add(wbsId)
@@ -1023,9 +1096,9 @@ export default {
       else this.expandedWbs.add(wbsId)
       this.expandedWbs = new Set(this.expandedWbs)
     },
-    allWbsIdSet() {
-      const all = new Set()
-      const walk = (nodes) => {
+    allWbsIdSet(): Set<WbsKey> {
+      const all = new Set<WbsKey>()
+      const walk = (nodes: WbsNode[]) => {
         for (const n of nodes) { all.add(n.wbs_id); walk(n.children || []) }
       }
       walk(this.data.wbs_tree || [])
@@ -1039,18 +1112,18 @@ export default {
       }
       this.expandedWbs = this.allWbsIdSet()
     },
-    wbsNodesByLevel() {
-      const out = []
-      const walk = (nodes, level) => {
+    wbsNodesByLevel(): { id: number; level: number }[] {
+      const out: { id: number; level: number }[] = []
+      const walk = (nodes: WbsNode[], level: number) => {
         for (const n of nodes) { out.push({ id: n.wbs_id, level }); walk(n.children || [], level + 1) }
       }
       walk(this.data.wbs_tree || [], 0)
       return out
     },
-    _wbsExpanded(id) {
+    _wbsExpanded(id: WbsKey): boolean {
       return this.isFilterActive ? !this.filterCollapsed.has(id) : this.expandedWbs.has(id)
     },
-    _setWbsExpanded(ids, expand) {
+    _setWbsExpanded(ids: WbsKey[], expand: boolean) {
       if (this.isFilterActive) {
         const set = new Set(this.filterCollapsed)
         ids.forEach(id => (expand ? set.delete(id) : set.add(id)))
@@ -1082,7 +1155,7 @@ export default {
       }
       this.expandedWbs = new Set()
     },
-    selectActivity(a) {
+    selectActivity(a: Activity) {
       const wasSelected = this.selectedTaskId === a.task_id
       this.selectedTaskId = wasSelected ? null : a.task_id
       if (!wasSelected) {
@@ -1094,17 +1167,17 @@ export default {
     // right alongside a reactive DOM mutation (e.g. the .selected class toggle
     // that triggers this scroll) — two rAFs guarantee a real layout+paint has
     // settled first. Cheap enough that it's used for every programmatic scroll.
-    deferredScrollTo(el, opts) {
+    deferredScrollTo(el: HTMLElement, opts: ScrollToOptions) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           el.scrollTo(opts)
         })
       })
     },
-    scrollToActivity(taskId) {
-      const idx = this.rowIndexByTaskId.get(taskId)
-      if (idx === undefined || !this.$refs.scrollEl) return
-      const el = this.$refs.scrollEl
+    scrollToActivity(taskId: number | null) {
+      const idx = taskId == null ? undefined : this.rowIndexByTaskId.get(taskId)
+      const el = this.$refs.scrollEl as HTMLElement | undefined
+      if (idx === undefined || !el) return
       const row = this.rows[idx]
       const top = Math.max(0, idx * ROW_HEIGHT - el.clientHeight / 2)
       let left = el.scrollLeft
@@ -1113,7 +1186,7 @@ export default {
       }
       this.deferredScrollTo(el, { top, left, behavior: 'smooth' })
     },
-    onKeydown(e) {
+    onKeydown(e: KeyboardEvent) {
       // Only when this tab is actually on screen (tabs stay mounted via v-show).
       if (!this.$el || this.$el.offsetParent === null) return
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')
@@ -1129,8 +1202,8 @@ export default {
       }
     },
     // ↑/↓ walk the visible activity rows (skipping WBS headers); the drawer follows.
-    moveSelection(dir) {
-      const actRows = this.rows.filter(r => r.type === 'activity')
+    moveSelection(dir: number) {
+      const actRows = this.rows.filter((r): r is ActivityRow => r.type === 'activity')
       if (!actRows.length) return
       let idx = actRows.findIndex(r => r.activity.task_id === this.selectedTaskId)
       idx = idx === -1 ? (dir > 0 ? 0 : actRows.length - 1) : Math.min(actRows.length - 1, Math.max(0, idx + dir))
@@ -1139,7 +1212,7 @@ export default {
       this.selectedTaskId = next.task_id
       this.$nextTick(() => this.scrollToActivity(next.task_id))
     },
-    clearFilter(id) {
+    clearFilter(id: string) {
       if (id === 'text') this.filterText = ''
       else if (id === 'status') this.filterStatus = ''
       else if (id === 'crit') this.filterCriticalOnly = false
@@ -1154,11 +1227,11 @@ export default {
       this.filterFrom = ''
       this.filterTo = ''
       // Reseed one '' entry per category — an undefined v-model renders the select blank.
-      this.filterCodes = Object.fromEntries((this.data.project.activity_code_types || []).map(t => [t, '']))
+      this.filterCodes = Object.fromEntries<string>((this.data.project.activity_code_types || []).map(t => [t, '']))
       this.isolatedIds = null
     },
     // Look-ahead: the window every site meeting asks for — data date + N days.
-    lookAheadWindow(days) {
+    lookAheadWindow(days: number): { from: string; to: string } | null {
       const dd = this.data.project.data_date
       if (!dd) return null
       const from = dd.slice(0, 10)
@@ -1167,11 +1240,11 @@ export default {
       const to = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`
       return { from, to }
     },
-    lookAheadActive(days) {
+    lookAheadActive(days: number): boolean {
       const w = this.lookAheadWindow(days)
       return !!w && this.filterFrom === w.from && this.filterTo === w.to
     },
-    setLookAhead(days) {
+    setLookAhead(days: number) {
       const w = this.lookAheadWindow(days)
       if (!w) return
       if (this.lookAheadActive(days)) {
@@ -1195,8 +1268,8 @@ export default {
       if (keep != null) this.revealAndSelect(keep)
     },
     scrollToToday() {
-      if (this.todayX === null || !this.$refs.scrollEl) return
-      const el = this.$refs.scrollEl
+      const el = this.$refs.scrollEl as HTMLElement | undefined
+      if (this.todayX === null || !el) return
       this.deferredScrollTo(el, { left: Math.max(0, this.todayX - el.clientWidth / 2), behavior: 'smooth' })
     },
     printGantt() {
@@ -1207,12 +1280,12 @@ export default {
       // mechanism ctrl+scroll zoom already uses) so the timeline fills the selected
       // paper's usable width precisely — no clipping, no wasted margin, no new
       // rendering path to distrust.
-      const days = Math.max(1, (this.rangeEnd - this.rangeStart) / 86400000)
+      const days = Math.max(1, (this.rangeEnd.getTime() - this.rangeStart.getTime()) / 86400000)
       const target = paperUsableWidthPx(this.printPaperSize) - this.labelColWidth
       const fitDayWidth = clampDayWidth(target / days)
       const prevOverride = this.dayWidthOverride
       this.dayWidthOverride = fitDayWidth
-      const pageCss = (this.paperSizes[this.printPaperSize] || this.paperSizes.a4).pageCss
+      const pageCss = paperOrDefault(this.printPaperSize).pageCss
       const styleTag = document.createElement('style')
       styleTag.textContent = `@page { size: ${pageCss} landscape; margin: 10mm; }`
       document.head.appendChild(styleTag)
@@ -1237,14 +1310,14 @@ export default {
         printPaperSize: this.printPaperSize,
       })
     },
-    zoomLabel(z) {
+    zoomLabel(z: string): string {
       return z.charAt(0).toUpperCase() + z.slice(1)
     },
-    barTitle(a) {
+    barTitle(a: Activity): string {
       return `${a.task_code} — ${a.task_name}\n${formatDate(displayStart(a))} → ${formatDate(displayEnd(a))}\n` +
         `Duration: ${formatHours(a.duration_hrs, a.calendar_hrs_per_day)} · Float: ${formatFloat(a.total_float_hrs, a.calendar_hrs_per_day)} · ${a.pct_complete}% complete`
     },
-    milestoneTitle(a) {
+    milestoneTitle(a: Activity): string {
       return `${a.task_code} — ${a.task_name}\n${formatDate(displayStart(a))}\nFloat: ${formatFloat(a.total_float_hrs, a.calendar_hrs_per_day)}`
     },
     // Same 0h / negative / ≤80h(10d) severity bands used everywhere else in the app,
@@ -1262,7 +1335,7 @@ export default {
     // Selects a predecessor/successor from the detail panel: expands every WBS
     // ancestor so the row actually renders (it may be tucked under a collapsed
     // branch, or hidden by an active filter), then scrolls to it.
-    revealAndSelect(taskId) {
+    revealAndSelect(taskId: number) {
       const a = this.actLookup.get(taskId)
       if (!a) return
       if (this.isolationActive) {
@@ -1277,7 +1350,7 @@ export default {
       }
       if (this.isFilterActive) this.clearFilters()
       const toExpand = new Set(this.expandedWbs)
-      let cur = a.wbs_id
+      let cur: number | null = a.wbs_id
       while (cur != null) {
         toExpand.add(cur)
         cur = this.wbsParentOf.get(cur) ?? null
@@ -1288,11 +1361,11 @@ export default {
     },
 
     // ── Zoom (presets + continuous) ──────────────────────────────────────
-    selectZoomPreset(z) {
+    selectZoomPreset(z: Zoom) {
       this.zoom = z
       this.dayWidthOverride = null
     },
-    setDayWidth(v) {
+    setDayWidth(v: number) {
       this.dayWidthOverride = clampDayWidth(v)
     },
     zoomIn() {
@@ -1302,16 +1375,16 @@ export default {
       this.setDayWidth(this.dayWidth / 1.3)
     },
     fitToWidth() {
-      const el = this.$refs.scrollEl
+      const el = this.$refs.scrollEl as HTMLElement | undefined
       if (!el) return
       const availableWidth = Math.max(100, el.clientWidth - this.labelColWidth)
-      const totalDays = Math.max(1, (this.rangeEnd - this.rangeStart) / 86400000)
+      const totalDays = Math.max(1, (this.rangeEnd.getTime() - this.rangeStart.getTime()) / 86400000)
       this.setDayWidth(availableWidth / totalDays)
     },
-    onWheel(e) {
+    onWheel(e: WheelEvent) {
       if (!e.ctrlKey && !e.metaKey) return
       e.preventDefault()
-      const el = this.$refs.scrollEl
+      const el = this.$refs.scrollEl as HTMLElement | undefined
       if (!el) return
       const rect = el.getBoundingClientRect()
       const viewportX = e.clientX - rect.left
@@ -1334,26 +1407,32 @@ export default {
     },
 
     // ── Pan (drag on the timeline; native scrollbars still work too) ────
-    onScroll(e) {
-      this.scrollLeftPx = e.target.scrollLeft
-      this.scrollTopPx = e.target.scrollTop
+    onScroll(e: Event) {
+      const target = e.target as HTMLElement
+      this.scrollLeftPx = target.scrollLeft
+      this.scrollTopPx = target.scrollTop
     },
-    onPanStart(e) {
+    onPanStart(e: MouseEvent) {
       if (e.button !== 0) return
-      if (e.target.closest('.g-label') || e.target.closest('.g-resize-handle')) return
+      const target = e.target as Element
+      if (target.closest('.g-label') || target.closest('.g-resize-handle')) return
       this.panning = true
-      this._panStartX = e.clientX
-      this._panStartY = e.clientY
-      this._panScrollLeft = this.$refs.scrollEl.scrollLeft
-      this._panScrollTop = this.$refs.scrollEl.scrollTop
+      const st = drag(this)
+      // The handler is bound on the scroll element itself, so the ref is mounted.
+      const scrollEl = this.$refs.scrollEl as HTMLElement
+      st._panStartX = e.clientX
+      st._panStartY = e.clientY
+      st._panScrollLeft = scrollEl.scrollLeft
+      st._panScrollTop = scrollEl.scrollTop
       window.addEventListener('mousemove', this.onPanMove)
       window.addEventListener('mouseup', this.onPanEnd)
     },
-    onPanMove(e) {
-      if (!this.panning || !this.$refs.scrollEl) return
-      const el = this.$refs.scrollEl
-      el.scrollLeft = this._panScrollLeft - (e.clientX - this._panStartX)
-      el.scrollTop = this._panScrollTop - (e.clientY - this._panStartY)
+    onPanMove(e: MouseEvent) {
+      const el = this.$refs.scrollEl as HTMLElement | undefined
+      if (!this.panning || !el) return
+      const st = drag(this)
+      el.scrollLeft = st._panScrollLeft - (e.clientX - st._panStartX)
+      el.scrollTop = st._panScrollTop - (e.clientY - st._panStartY)
     },
     onPanEnd() {
       this.panning = false
@@ -1362,18 +1441,19 @@ export default {
     },
 
     // ── Resizable label column ───────────────────────────────────────────
-    onResizeStart(e) {
+    onResizeStart(e: MouseEvent) {
       e.preventDefault()
       this.resizing = true
-      this._resizeStartX = e.clientX
-      this._resizeStartWidth = this.labelColWidth
+      drag(this)._resizeStartX = e.clientX
+      drag(this)._resizeStartWidth = this.labelColWidth
       window.addEventListener('mousemove', this.onResizeMove)
       window.addEventListener('mouseup', this.onResizeEnd)
     },
-    onResizeMove(e) {
+    onResizeMove(e: MouseEvent) {
       if (!this.resizing) return
-      const dx = e.clientX - this._resizeStartX
-      this.labelColWidth = Math.min(LABEL_COL_MAX, Math.max(LABEL_COL_MIN, this._resizeStartWidth + dx))
+      const st = drag(this)
+      const dx = e.clientX - st._resizeStartX
+      this.labelColWidth = Math.min(LABEL_COL_MAX, Math.max(LABEL_COL_MIN, st._resizeStartWidth + dx))
     },
     onResizeEnd() {
       if (!this.resizing) return
@@ -1383,7 +1463,7 @@ export default {
       this.persistView()
     },
   },
-}
+})
 </script>
 
 <style scoped>

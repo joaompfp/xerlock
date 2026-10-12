@@ -149,8 +149,8 @@
           <tbody>
             <tr v-for="(r, i) in relationshipStats.leads" :key="'lead' + i" class="jump-row" title="Show details" @click="openDetail(r.succ.task_id)">
               <td><span class="code">{{ codeOf(r.predId) }}</span><span class="tbl-name">{{ predOf(r.predId)?.task_name }}</span></td>
-              <td class="num-cell">{{ predOf(r.predId) ? formatDate(displayEnd(predOf(r.predId))) : '—' }}</td>
-              <td class="num-cell">{{ predOf(r.predId) ? formatHours(predOf(r.predId).duration_hrs, predOf(r.predId).calendar_hrs_per_day) : '—' }}</td>
+              <td class="num-cell">{{ predOf(r.predId) ? formatDate(displayEnd(predOf(r.predId)!)) : '—' }}</td>
+              <td class="num-cell">{{ predOf(r.predId) ? formatHours(predOf(r.predId)!.duration_hrs, predOf(r.predId)!.calendar_hrs_per_day) : '—' }}</td>
               <td>{{ relTypeLabels[r.type] || r.type }}</td>
               <td class="num-cell lag-neg">{{ formatLag(r.lag, r.succ.calendar_hrs_per_day) }}</td>
               <td><span class="code">{{ r.succ.task_code }}</span><span class="tbl-name">{{ r.succ.task_name }}</span></td>
@@ -167,8 +167,8 @@
           <tbody>
             <tr v-for="(r, i) in relationshipStats.bigLags" :key="'lag' + i" class="jump-row" title="Show details" @click="openDetail(r.succ.task_id)">
               <td><span class="code">{{ codeOf(r.predId) }}</span><span class="tbl-name">{{ predOf(r.predId)?.task_name }}</span></td>
-              <td class="num-cell">{{ predOf(r.predId) ? formatDate(displayEnd(predOf(r.predId))) : '—' }}</td>
-              <td class="num-cell">{{ predOf(r.predId) ? formatHours(predOf(r.predId).duration_hrs, predOf(r.predId).calendar_hrs_per_day) : '—' }}</td>
+              <td class="num-cell">{{ predOf(r.predId) ? formatDate(displayEnd(predOf(r.predId)!)) : '—' }}</td>
+              <td class="num-cell">{{ predOf(r.predId) ? formatHours(predOf(r.predId)!.duration_hrs, predOf(r.predId)!.calendar_hrs_per_day) : '—' }}</td>
               <td>{{ relTypeLabels[r.type] || r.type }}</td>
               <td class="num-cell ">{{ formatLag(r.lag, r.succ.calendar_hrs_per_day) }}</td>
               <td><span class="code">{{ r.succ.task_code }}</span><span class="tbl-name">{{ r.succ.task_name }}</span></td>
@@ -196,7 +196,7 @@
             <tr v-for="a in constraintList" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
-              <td>{{ cstrLabels[a.cstr_type] || a.cstr_type }}</td>
+              <td>{{ cstrLabels[a.cstr_type ?? ''] || a.cstr_type }}</td>
               <td class="num-cell">{{ formatDate(a.cstr_date) }}</td>
               <td><span class="issue-badge" :class="a.hard ? 'issue-severe' : 'issue-warn'">{{ a.hard ? 'Hard' : 'Soft' }}</span></td>
               <td class="section-note-cell">{{ a.criticalOnlyByConstraint ? 'Critical only due to this constraint, not network logic' : '' }}</td>
@@ -467,34 +467,52 @@
   </div>
 </template>
 
-<script>
+<script lang="ts">
+import { defineComponent, type PropType } from 'vue'
 import { formatDate, formatHours, formatFloat, formatLag } from '../utils/format'
 import { REL_TYPE_LABELS, CSTR_LABELS, displayStart, displayEnd } from '../utils/p6'
 import { CHECK_DEFS, CFG_VERSION, defaultConfig, runChecks, weightedScore } from '../utils/healthChecks'
+import type { CheckDef, CheckKey, CheckResult, HealthConfig } from '../utils/healthChecks'
 import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
+import type { Activity, Schedule, ScheduleOptions } from '../types/schedule'
+import type { Annotations } from '../utils/annotations'
+
+type Checks = ReturnType<typeof runChecks>
+type SectionKey = 'openEnds' | 'rel' | 'constraints' | 'alap' | 'negfloat' | 'highfloat' | 'invdates'
+  | 'missed' | 'highdur' | 'loe' | 'driving' | 'oos' | 'resources'
+
+interface ScorecardItem {
+  key: CheckKey
+  label: string
+  display: number | string
+  section: SectionKey | null
+  state: 'excluded' | 'pass' | 'fail'
+  targetText: string
+  tip: string
+}
 
 const CFG_KEY = 'schedule-app:health-config'
 
-function loadConfig() {
+function loadConfig(): HealthConfig {
   const cfg = defaultConfig()
   try {
     const raw = localStorage.getItem(CFG_KEY)
     if (!raw) return cfg
-    const saved = JSON.parse(raw)
+    const saved = JSON.parse(raw) as { version?: number; cfg?: Partial<HealthConfig> }
     if (saved.version !== CFG_VERSION) return cfg
-    for (const key of Object.keys(cfg)) {
+    for (const key of Object.keys(cfg) as CheckKey[]) {
       if (saved.cfg?.[key]) Object.assign(cfg[key], saved.cfg[key])
     }
   } catch { /* corrupted config — fall back to defaults */ }
   return cfg
 }
 
-export default {
+export default defineComponent({
   name: 'HealthCheck',
   components: { ActivityDetailDrawer },
   props: {
-    data: { type: Object, required: true },
-    annotations: { type: Object, default: () => ({}) },
+    data: { type: Object as PropType<Schedule>, required: true },
+    annotations: { type: Object as PropType<Annotations>, default: () => ({}) },
   },
   emits: ['jump', 'annotate', 'unannotate', 'score'],
   data() {
@@ -513,9 +531,9 @@ export default {
         driving: false,
         oos: false,
         resources: false,
-      },
+      } as Record<SectionKey, boolean>,
       showConfig: false,
-      selectedTaskId: null,
+      selectedTaskId: null as number | null,
       cfg: loadConfig(),
       checkDefs: CHECK_DEFS,
       cstrLabels: CSTR_LABELS,
@@ -526,10 +544,10 @@ export default {
   watch: {
     // The sidebar shows the score on the Health check nav item, so the state is
     // visible from any view without opening this one.
-    weightedScore: { immediate: true, handler(v) { this.$emit('score', v) } },
+    weightedScore: { immediate: true, handler(v: number) { this.$emit('score', v) } },
     cfg: {
       deep: true,
-      handler(v) {
+      handler(v: HealthConfig) {
         try {
           localStorage.setItem(CFG_KEY, JSON.stringify({ version: CFG_VERSION, cfg: v }))
         } catch { /* storage unavailable */ }
@@ -537,21 +555,24 @@ export default {
     },
   },
   computed: {
-    selectedActivity() {
+    selectedActivity(): Activity | null {
       return this.selectedTaskId != null ? this.activitiesById.get(this.selectedTaskId) || null : null
     },
-    activitiesById() {
-      const m = new Map()
+    activitiesById(): Map<number, Activity> {
+      const m = new Map<number, Activity>()
       for (const a of this.data.activities) m.set(a.task_id, a)
       return m
     },
-    schedOpts() {
+    // Absent from schedules cached by older versions, and {} when the XER has no options.
+    schedOpts(): Partial<ScheduleOptions> {
       return this.data.project.schedule_options || {}
     },
     // Each option with the reason it deserves a second look, where it does.
-    schedOptionRows() {
+    schedOptionRows(): { label: string; value: string | undefined; warn?: string }[] {
       const o = this.schedOpts
-      const yn = v => (v == null ? '—' : v ? 'Yes' : 'No')
+      const floatTypes: Record<string, string> = { FT_FF: 'Finish float', FT_SF: 'Start float', FT_SmallestFloat: 'Smallest' }
+      const lagCalendars: Record<string, string> = { rcal_Predecessor: 'Predecessor', rcal_Successor: 'Successor', rcal_24Hour: '24-hour', rcal_ProjDefault: 'Project default' }
+      const yn = (v: boolean | null | undefined) => (v == null ? '—' : v ? 'Yes' : 'No')
       const critical = o.critical_type === 'CT_DrivPath'
         ? 'Longest Path'
         : `TF ≤ ${formatFloat(o.critical_float_hrs, 8)}`
@@ -559,60 +580,60 @@ export default {
         { label: 'Out-of-sequence progress', value: o.progress_override ? 'Progress Override' : o.retained_logic ? 'Retained Logic' : 'Actual Dates',
           warn: o.progress_override ? 'Progress Override lets out-of-sequence work ignore its predecessors; Retained Logic is the conservative setting' : '' },
         { label: 'Critical', value: critical },
-        { label: 'Total float as', value: { FT_FF: 'Finish float', FT_SF: 'Start float', FT_SmallestFloat: 'Smallest' }[o.float_type] || o.float_type || '—' },
-        { label: 'Lag calendar', value: { rcal_Predecessor: 'Predecessor', rcal_Successor: 'Successor', rcal_24Hour: '24-hour', rcal_ProjDefault: 'Project default' }[o.lag_calendar] || o.lag_calendar },
+        { label: 'Total float as', value: floatTypes[o.float_type ?? ''] || o.float_type || '—' },
+        { label: 'Lag calendar', value: lagCalendars[o.lag_calendar ?? ''] || o.lag_calendar },
         { label: 'Open ends critical', value: yn(o.open_ends_critical) },
         { label: 'Expected finish dates', value: yn(o.use_expected_finish),
           warn: o.use_expected_finish ? 'Expected Finish lets an entered date set remaining duration instead of the estimate' : '' },
       ]
     },
     // All check logic lives in utils/healthChecks.js; these are views onto one run.
-    checks() {
+    checks(): Checks {
       return runChecks(this.data, this.cfg)
     },
-    openEnds() { return this.checks.openEnds },
-    relationshipStats() { return this.checks.relationshipStats },
-    constraintList() { return this.checks.constraintList },
-    alapList() { return this.checks.alapList },
-    alapOnCriticalPath() { return this.checks.alapOnCriticalPath },
-    negativeFloatList() { return this.checks.negativeFloatList },
-    highFloatList() { return this.checks.highFloatList },
-    invalidDatesList() { return this.checks.invalidDatesList },
-    plannedDoneCount() { return this.checks.plannedDoneCount },
-    missedTasksList() { return this.checks.missedTasksList },
-    highDurationList() { return this.checks.highDurationList },
-    loeOnCriticalList() { return this.checks.loeOnCriticalList },
-    drivingPathAvailable() { return this.checks.drivingPathAvailable },
-    drivingMismatchList() { return this.checks.drivingMismatchList },
-    outOfSequenceList() { return this.checks.outOfSequenceList },
-    noResourceList() { return this.checks.noResourceList },
-    availability() { return this.checks.availability },
-    checkResults() { return this.checks.results },
-    includedDefs() {
+    openEnds(): Checks['openEnds'] { return this.checks.openEnds },
+    relationshipStats(): Checks['relationshipStats'] { return this.checks.relationshipStats },
+    constraintList(): Checks['constraintList'] { return this.checks.constraintList },
+    alapList(): Checks['alapList'] { return this.checks.alapList },
+    alapOnCriticalPath(): Checks['alapOnCriticalPath'] { return this.checks.alapOnCriticalPath },
+    negativeFloatList(): Checks['negativeFloatList'] { return this.checks.negativeFloatList },
+    highFloatList(): Checks['highFloatList'] { return this.checks.highFloatList },
+    invalidDatesList(): Checks['invalidDatesList'] { return this.checks.invalidDatesList },
+    plannedDoneCount(): Checks['plannedDoneCount'] { return this.checks.plannedDoneCount },
+    missedTasksList(): Checks['missedTasksList'] { return this.checks.missedTasksList },
+    highDurationList(): Checks['highDurationList'] { return this.checks.highDurationList },
+    loeOnCriticalList(): Checks['loeOnCriticalList'] { return this.checks.loeOnCriticalList },
+    drivingPathAvailable(): Checks['drivingPathAvailable'] { return this.checks.drivingPathAvailable },
+    drivingMismatchList(): Checks['drivingMismatchList'] { return this.checks.drivingMismatchList },
+    outOfSequenceList(): Checks['outOfSequenceList'] { return this.checks.outOfSequenceList },
+    noResourceList(): Checks['noResourceList'] { return this.checks.noResourceList },
+    availability(): Checks['availability'] { return this.checks.availability },
+    checkResults(): Record<CheckKey, CheckResult> { return this.checks.results },
+    includedDefs(): CheckDef[] {
       return CHECK_DEFS.filter(d => this.checkResults[d.key].included)
     },
-    includedCount() {
+    includedCount(): number {
       return this.includedDefs.length
     },
-    passCount() {
+    passCount(): number {
       return this.includedDefs.filter(d => this.checkResults[d.key].pass).length
     },
-    weightedScore() {
+    weightedScore(): number {
       return weightedScore(this.checkResults, this.cfg)
     },
-    scoreClass() {
+    scoreClass(): string {
       return this.weightedScore >= 80 ? 'score-good' : this.weightedScore >= 60 ? 'score-mid' : 'score-bad'
     },
-    failingChecks() {
+    failingChecks(): ScorecardItem[] {
       return this.scorecard.filter(c => c.state === 'fail')
     },
-    passingChecks() {
+    passingChecks(): ScorecardItem[] {
       return this.scorecard.filter(c => c.state === 'pass')
     },
-    excludedChecks() {
+    excludedChecks(): CheckDef[] {
       return CHECK_DEFS.filter(d => !this.availability[d.key])
     },
-    scorecard() {
+    scorecard(): ScorecardItem[] {
       return CHECK_DEFS.filter(d => this.availability[d.key]).map(d => {
         const r = this.checkResults[d.key]
         const c = this.cfg[d.key]
@@ -621,7 +642,8 @@ export default {
           key: d.key,
           label: d.label,
           display: r.display,
-          section: d.section,
+          // CHECK_DEFS sections name this component's detail sections.
+          section: d.section as SectionKey | null,
           state: !r.included ? 'excluded' : r.pass ? 'pass' : 'fail',
           targetText: r.included ? targetText : 'excluded',
           tip: r.included
@@ -631,17 +653,14 @@ export default {
       })
     },
   },
+  // The listeners are methods (bound once by Vue), so add and remove get the same reference.
   mounted() {
-    window.addEventListener('keydown', this._onKeydown = e => {
-      if (e.key === 'Escape' && this.selectedTaskId != null && this.$el.offsetParent !== null) this.selectedTaskId = null
-    })
-    document.addEventListener('mousedown', this._onDocMousedown = e => {
-      if (this.selectedTaskId != null && this.$el.offsetParent !== null && !this.$el.contains(e.target)) this.selectedTaskId = null
-    })
+    window.addEventListener('keydown', this.onKeydown)
+    document.addEventListener('mousedown', this.onDocMousedown)
   },
   beforeUnmount() {
-    window.removeEventListener('keydown', this._onKeydown)
-    document.removeEventListener('mousedown', this._onDocMousedown)
+    window.removeEventListener('keydown', this.onKeydown)
+    document.removeEventListener('mousedown', this.onDocMousedown)
   },
   methods: {
     formatDate,
@@ -650,30 +669,37 @@ export default {
     formatLag,
     displayStart,
     displayEnd,
-    openDetail(taskId) {
+    onKeydown(e: KeyboardEvent) {
+      if (e.key === 'Escape' && this.selectedTaskId != null && (this.$el as HTMLElement).offsetParent !== null) this.selectedTaskId = null
+    },
+    onDocMousedown(e: MouseEvent) {
+      const el = this.$el as HTMLElement
+      if (this.selectedTaskId != null && el.offsetParent !== null && !el.contains(e.target as Node | null)) this.selectedTaskId = null
+    },
+    openDetail(taskId: number) {
       this.selectedTaskId = taskId
     },
-    predOf(taskId) {
+    predOf(taskId: number): Activity | null {
       return this.activitiesById.get(taskId) || null
     },
-    codeOf(taskId) {
+    codeOf(taskId: number): string {
       const a = this.activitiesById.get(taskId)
       return a ? a.task_code : '?' + taskId
     },
-    toggle(key) {
+    toggle(key: SectionKey) {
       this.expanded[key] = !this.expanded[key]
     },
-    openSection(key) {
+    openSection(key: SectionKey) {
       this.expanded[key] = true
       this.$nextTick(() => {
-        this.$refs['sec-' + key]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        (this.$refs['sec-' + key] as HTMLElement | undefined)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       })
     },
     resetConfig() {
       this.cfg = defaultConfig()
     },
   },
-}
+})
 </script>
 
 <style scoped>

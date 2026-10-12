@@ -21,7 +21,7 @@ describe('timelineRange', () => {
 
   it('falls back to today when the project has no dates', () => {
     const { rangeStart: s, rangeEnd: e } = timelineRange(null, null)
-    expect(e - s).toBe(10 * 86400000)
+    expect(e.getTime() - s.getTime()).toBe(10 * 86400000)
   })
 
   it('does not mutate its inputs', () => {
@@ -79,7 +79,7 @@ describe('dayWidthFor / clampDayWidth', () => {
 
 describe('totalWidth', () => {
   it('spans the full padded range', () => {
-    const days = (rangeEnd - rangeStart) / 86400000
+    const days = (rangeEnd.getTime() - rangeStart.getTime()) / 86400000
     expect(totalWidth(rangeStart, rangeEnd, DW)).toBe(Math.round(days * DW))
   })
 
@@ -119,7 +119,7 @@ describe('tick rows', () => {
 
   it('emits one day tick per day and flags weekends', () => {
     const ticks = dayTicks(rangeStart, rangeEnd, DW)
-    const days = Math.round((rangeEnd - rangeStart) / 86400000)
+    const days = Math.round((rangeEnd.getTime() - rangeStart.getTime()) / 86400000)
     expect(ticks.length).toBeGreaterThanOrEqual(days)
     // 24 Feb 2026 is a Tuesday; the first Saturday follows four days later.
     const weekends = ticks.filter(t => t.weekend)

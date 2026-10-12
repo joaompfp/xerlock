@@ -1,3 +1,5 @@
+import type { Schedule } from '../types/schedule'
+
 const STORAGE_KEY = 'schedule-app:last-file'
 
 // Bump whenever the parsed-payload shape changes (new fields on activities/project).
@@ -6,11 +8,23 @@ const STORAGE_KEY = 'schedule-app:last-file'
 // invalidates the cache and the user re-uploads instead.
 const SCHEMA_VERSION = 3
 
-export function loadLastFile() {
+/** A schedule as cached in the browser: raw tables may have been dropped to fit quota. */
+export type StoredSchedule = Schedule & { raw_tables_omitted?: boolean }
+
+export interface LastFile {
+  filename: string
+  data: StoredSchedule
+  savedAt: number
+  schemaVersion: number
+}
+
+export function loadLastFile(): LastFile | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
-    const parsed = JSON.parse(raw)
+    // Only the version is checked here; within a version, fields marked optional in
+    // types/schedule.ts may still be absent and every reader copes with that.
+    const parsed = JSON.parse(raw) as LastFile
     if (parsed.schemaVersion !== SCHEMA_VERSION) {
       localStorage.removeItem(STORAGE_KEY)
       return null
@@ -21,8 +35,8 @@ export function loadLastFile() {
   }
 }
 
-export function saveLastFile(filename, data) {
-  const payload = d => JSON.stringify({ filename, data: d, savedAt: Date.now(), schemaVersion: SCHEMA_VERSION })
+export function saveLastFile(filename: string, data: StoredSchedule): void {
+  const payload = (d: StoredSchedule) => JSON.stringify({ filename, data: d, savedAt: Date.now(), schemaVersion: SCHEMA_VERSION })
   try {
     localStorage.setItem(STORAGE_KEY, payload(data))
   } catch {
@@ -36,7 +50,7 @@ export function saveLastFile(filename, data) {
   }
 }
 
-export function clearLastFile() {
+export function clearLastFile(): void {
   try {
     localStorage.removeItem(STORAGE_KEY)
   } catch {

@@ -146,25 +146,39 @@
   </div>
 </template>
 
-<script>
+<script lang="ts">
+import { defineComponent, type PropType } from 'vue'
 import { formatDate, formatHours, formatFloat } from '../utils/format'
 import { displayStart, displayEnd } from '../utils/p6'
+import type { Activity, CalendarInfo, Schedule, WorkPeriod } from '../types/schedule'
 
 // P6 weekday keys are 1..7 = Sunday..Saturday; the grid displays Monday-first.
-const P6_KEY_BY_JSDAY = { 0: '1', 1: '2', 2: '3', 3: '4', 4: '5', 5: '6', 6: '7' }
+const P6_KEY_BY_JSDAY: Record<number, string> = { 0: '1', 1: '2', 2: '3', 3: '4', 4: '5', 5: '6', 6: '7' }
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
-export default {
+type CalendarException = CalendarInfo['exceptions'][number]
+
+interface MonthCell {
+  key: string
+  day: number
+  inMonth: boolean
+  isDataDate: boolean
+  cls: string
+  hours: string
+  tip: string
+}
+
+export default defineComponent({
   name: 'CalendarView',
   props: {
-    data: { type: Object, required: true },
+    data: { type: Object as PropType<Schedule>, required: true },
   },
   emits: ['jump'],
   data() {
     const dd = this.data.project.data_date ? new Date(this.data.project.data_date) : new Date(2000, 0, 1)
     return {
-      selectedId: this.data.calendars?.[0]?.clndr_id ?? null,
+      selectedId: (this.data.calendars?.[0]?.clndr_id ?? null) as string | null,
       viewYear: dd.getFullYear(),
       viewMonth: dd.getMonth(),
       dayHeaders: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
@@ -173,40 +187,40 @@ export default {
     }
   },
   computed: {
-    calendars() {
+    calendars(): CalendarInfo[] {
       return this.data.calendars || []
     },
-    selected() {
+    selected(): CalendarInfo | null {
       return this.calendars.find(c => c.clndr_id === this.selectedId) || null
     },
-    dataDate() {
+    dataDate(): string | null {
       return this.data.project.data_date ? this.data.project.data_date.slice(0, 10) : null
     },
-    excByDate() {
-      const m = new Map()
+    excByDate(): Map<string, CalendarException> {
+      const m = new Map<string, CalendarException>()
       for (const e of this.selected?.exceptions || []) m.set(e.date, e)
       return m
     },
-    monthLabel() {
+    monthLabel(): string {
       return `${MONTHS[this.viewMonth]} ${this.viewYear}`
     },
-    patternSummary() {
+    patternSummary(): string {
       if (!this.selected) return ''
       const days = this.workdaysPerWeek(this.selected)
       return `${days}-day week · ${this.selected.day_hr_cnt}h/day · ${this.selected.exceptions.length} exception${this.selected.exceptions.length === 1 ? '' : 's'}`
     },
-    workingExceptions() {
+    workingExceptions(): CalendarException[] {
       return (this.selected?.exceptions || []).filter(e => e.periods.length > 0)
     },
-    holidays() {
+    holidays(): CalendarException[] {
       return (this.selected?.exceptions || []).filter(e => e.periods.length === 0)
     },
-    yearSummary() {
+    yearSummary(): string {
       const h = this.holidays.length
       const w = this.workingExceptions.length
       return `${h} holiday${h === 1 ? '' : 's'} · ${w} working exception${w === 1 ? '' : 's'}`
     },
-    yearMonths() {
+    yearMonths(): { i: number; label: string; cls: string; tip: string }[] {
       const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
       return MON.map((label, i) => {
         const inMonth = (this.selected?.exceptions || []).filter(
@@ -221,11 +235,12 @@ export default {
     },
     // The activities-per-calendar list is a client-side group-by on clndr_id, which
     // the parse already puts on every activity — no backend change.
-    activitiesOnCalendar() {
-      if (!this.selected) return []
-      const excDates = (this.selected.exceptions || []).map(e => e.date)
+    activitiesOnCalendar(): (Activity & { excInSpan: string | null })[] {
+      const selected = this.selected
+      if (!selected) return []
+      const excDates = (selected.exceptions || []).map(e => e.date)
       return this.data.activities
-        .filter(a => a.clndr_id === this.selected.clndr_id)
+        .filter(a => a.clndr_id === selected.clndr_id)
         .map(a => {
           const s = (displayStart(a) || '').slice(0, 10)
           const e = (displayEnd(a) || s).slice(0, 10)
@@ -236,22 +251,23 @@ export default {
         })
         .sort((a, b) => (displayStart(a) || '').localeCompare(displayStart(b) || ''))
     },
-    visibleActivities() {
+    visibleActivities(): (Activity & { excInSpan: string | null })[] {
       return this.showAllActs ? this.activitiesOnCalendar : this.activitiesOnCalendar.slice(0, this.ACT_PAGE)
     },
-    monthCells() {
-      if (!this.selected) return []
+    monthCells(): MonthCell[] {
+      const selected = this.selected
+      if (!selected) return []
       const first = new Date(this.viewYear, this.viewMonth, 1)
       // Monday-first offset: JS getDay() 0=Sun..6=Sat → Mon=0 … Sun=6
       const lead = (first.getDay() + 6) % 7
       const start = new Date(this.viewYear, this.viewMonth, 1 - lead)
-      const cells = []
+      const cells: MonthCell[] = []
       for (let i = 0; i < 42; i++) {
         const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i)
         const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
         const exc = this.excByDate.get(iso)
-        const weekPeriods = this.selected.weekdays[P6_KEY_BY_JSDAY[d.getDay()]] || []
-        let cls, periods
+        const weekPeriods = selected.weekdays[P6_KEY_BY_JSDAY[d.getDay()]] || []
+        let cls: string, periods: WorkPeriod[]
         if (exc) {
           periods = exc.periods
           // Any dated exception that works is a deliberate author decision — often a
@@ -282,18 +298,18 @@ export default {
     formatFloat,
     displayStart,
     displayEnd,
-    goToDate(iso) {
+    goToDate(iso: string) {
       const d = new Date(iso + 'T12:00:00')
       this.viewYear = d.getFullYear()
       this.viewMonth = d.getMonth()
     },
-    typeLabel(t) {
-      return { CA_Base: 'Global', CA_Project: 'Project', CA_Rsrc: 'Resource' }[t] || t
+    typeLabel(t: string): string {
+      return ({ CA_Base: 'Global', CA_Project: 'Project', CA_Rsrc: 'Resource' } as Record<string, string>)[t] || t
     },
-    workdaysPerWeek(c) {
+    workdaysPerWeek(c: CalendarInfo): number {
       return Object.values(c.weekdays).filter(p => p.length > 0).length
     },
-    periodHours(periods) {
+    periodHours(periods: WorkPeriod[]): string {
       let mins = 0
       for (const p of periods) {
         const [sh, sm] = p.start.split(':').map(Number)
@@ -303,16 +319,16 @@ export default {
       const h = mins / 60
       return h === Math.round(h) ? `${h}h` : `${h.toFixed(1)}h`
     },
-    weekdayName(iso) {
+    weekdayName(iso: string): string {
       return WEEKDAYS[new Date(iso + 'T12:00:00').getDay()]
     },
-    isWorkingException(e) {
+    isWorkingException(e: CalendarException): boolean {
       return e.periods.length > 0
     },
-    periodsText(periods) {
+    periodsText(periods: WorkPeriod[]): string {
       return periods.length ? periods.map(p => `${p.start}–${p.finish}`).join(', ') : '—'
     },
-    shiftMonth(dir) {
+    shiftMonth(dir: number) {
       const d = new Date(this.viewYear, this.viewMonth + dir, 1)
       this.viewYear = d.getFullYear()
       this.viewMonth = d.getMonth()
@@ -324,7 +340,7 @@ export default {
       this.viewMonth = d.getMonth()
     },
   },
-}
+})
 </script>
 
 <style scoped>

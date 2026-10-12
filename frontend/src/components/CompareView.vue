@@ -311,89 +311,104 @@
   </div>
 </template>
 
-<script>
+<script lang="ts">
+import { defineComponent, type PropType } from 'vue'
 import { formatDate, formatFloat, formatHours, formatLag } from '../utils/format'
 import { REL_TYPE_LABELS, cstrLabel, displayStart, displayEnd } from '../utils/p6'
-import { actualDateChanges, constraintChanges } from '../utils/compareChecks'
+import { actualDateChanges, constraintChanges, type ActualChange, type MatchedPair } from '../utils/compareChecks'
+import type { Activity, Schedule } from '../types/schedule'
 
+type SectionKey = 'milestones' | 'tornado' | 'dates' | 'durations' | 'actuals' | 'constraints' | 'float' | 'critical' | 'logic' | 'addrem'
+type Delta = MatchedPair & { deltaDays: number }
+interface MilestoneMove extends MatchedPair {
+  curDate: string | null
+  baseDate: string | null
+  delta: number
+  baseX: number
+  curX: number
+}
 
-export default {
+const days = (a: string | number | Date, b: string | number | Date) => new Date(a).getTime() - new Date(b).getTime()
+
+export default defineComponent({
   name: 'CompareView',
   props: {
-    current: { type: Object, required: true },
-    baseline: { type: Object, required: true },
+    // Either side may be a snapshot saved by an older version; see types/schedule.ts.
+    current: { type: Object as PropType<Schedule>, required: true },
+    baseline: { type: Object as PropType<Schedule>, required: true },
     baselineFilename: { type: String, default: '' },
   },
   emits: ['jump', 'reset'],
   data() {
     return {
-      expanded: { milestones: true, tornado: true, dates: false, durations: true, actuals: true, constraints: true, float: true, critical: true, logic: false, addrem: false },
+      expanded: { milestones: true, tornado: true, dates: false, durations: true, actuals: true, constraints: true, float: true, critical: true, logic: false, addrem: false } as Record<SectionKey, boolean>,
     }
   },
   computed: {
-    curByCode() {
-      const m = new Map()
+    curByCode(): Map<string, Activity> {
+      const m = new Map<string, Activity>()
       for (const a of this.current.activities) m.set(a.task_code, a)
       return m
     },
-    baseByCode() {
-      const m = new Map()
+    baseByCode(): Map<string, Activity> {
+      const m = new Map<string, Activity>()
       for (const a of this.baseline.activities) m.set(a.task_code, a)
       return m
     },
-    matched() {
-      const out = []
+    matched(): MatchedPair[] {
+      const out: MatchedPair[] = []
       for (const [code, cur] of this.curByCode) {
         const base = this.baseByCode.get(code)
         if (base) out.push({ code, cur, base })
       }
       return out
     },
-    added() {
+    added(): Activity[] {
       return this.current.activities.filter(a => !this.baseByCode.has(a.task_code))
     },
-    removed() {
+    removed(): Activity[] {
       return this.baseline.activities.filter(a => !this.curByCode.has(a.task_code))
     },
-    dateChanges() {
+    dateChanges(): Delta[] {
       return this.matched
         .filter(d => displayEnd(d.cur) && displayEnd(d.base) && displayEnd(d.cur) !== displayEnd(d.base))
-        .map(d => ({ ...d, deltaDays: Math.round((new Date(displayEnd(d.cur)) - new Date(displayEnd(d.base))) / 86400000) }))
+        .map(d => ({ ...d, deltaDays: Math.round(days(displayEnd(d.cur)!, displayEnd(d.base)!) / 86400000) }))
         .filter(d => d.deltaDays !== 0)
         .sort((a, b) => b.deltaDays - a.deltaDays)
     },
-    finishDelta() {
+    finishDelta(): number | null {
       const c = this.current.project.latest_end
       const b = this.baseline.project.latest_end
       if (!c || !b) return null
-      return Math.round((new Date(c) - new Date(b)) / 86400000)
+      return Math.round(days(c, b) / 86400000)
     },
-    ddAdvance() {
+    ddAdvance(): number | null {
       const c = this.current.project.data_date
       const b = this.baseline.project.data_date
       if (!c || !b) return null
-      return Math.round((new Date(c) - new Date(b)) / 86400000)
+      return Math.round(days(c, b) / 86400000)
     },
-    milestoneMoves() {
+    milestoneMoves(): MilestoneMove[] {
+      // baseX/curX are filled in by the loop below, once the domain is known.
       const rows = this.matched
         .filter(d => (d.cur.task_type || '').includes('Mile'))
         .map(d => {
           const curDate = displayEnd(d.cur) || displayStart(d.cur)
           const baseDate = displayEnd(d.base) || displayStart(d.base)
-          return { ...d, curDate, baseDate, delta: curDate && baseDate ? Math.round((new Date(curDate) - new Date(baseDate)) / 86400000) : 0 }
+          return { ...d, curDate, baseDate, delta: curDate && baseDate ? Math.round(days(curDate, baseDate) / 86400000) : 0 }
         })
         .filter(m => m.curDate && m.baseDate)
-        .sort((a, b) => new Date(a.curDate) - new Date(b.curDate))
+        .sort((a, b) => days(a.curDate!, b.curDate!))
       const dom = this.msDomain
-      const span = Math.max(1, new Date(dom.max) - new Date(dom.min))
-      for (const m of rows) {
-        m.baseX = (100 * (new Date(m.baseDate) - new Date(dom.min))) / span
-        m.curX = (100 * (new Date(m.curDate) - new Date(dom.min))) / span
+      const span = Math.max(1, days(dom.max ?? 0, dom.min ?? 0))
+      for (const m of rows as MilestoneMove[]) {
+        m.baseX = (100 * days(m.baseDate!, dom.min ?? 0)) / span
+        m.curX = (100 * days(m.curDate!, dom.min ?? 0)) / span
       }
-      return rows
+      return rows as MilestoneMove[]
     },
-    msDomain() {
-      const dates = []
+    msDomain(): { min: string | null; max: string | null } {
+      const dates: Date[] = []
       for (const d of this.matched) {
         if (!(d.cur.task_type || '').includes('Mile')) continue
         const c = displayEnd(d.cur) || displayStart(d.cur)
@@ -402,19 +417,19 @@ export default {
         if (b) dates.push(new Date(b))
       }
       if (!dates.length) return { min: null, max: null }
-      const min = new Date(Math.min(...dates))
-      const max = new Date(Math.max(...dates))
+      const min = new Date(Math.min(...dates.map(Number)))
+      const max = new Date(Math.max(...dates.map(Number)))
       // 4% padding each side so edge dots don't clip
-      const pad = Math.max(86400000, (max - min) * 0.04)
-      return { min: new Date(min - pad).toISOString(), max: new Date(+max + pad).toISOString() }
+      const pad = Math.max(86400000, days(max, min) * 0.04)
+      return { min: new Date(+min - pad).toISOString(), max: new Date(+max + pad).toISOString() }
     },
-    tornadoRows() {
+    tornadoRows(): Delta[] {
       return [...this.dateChanges].sort((a, b) => Math.abs(b.deltaDays) - Math.abs(a.deltaDays)).slice(0, 30)
     },
-    tornadoMax() {
+    tornadoMax(): number {
       return Math.max(1, ...this.tornadoRows.map(d => Math.abs(d.deltaDays)))
     },
-    durationChanges() {
+    durationChanges(): Delta[] {
       // The forensic reviewer proved this gap with a hand-perturbed file: a quiet
       // duration edit between submissions is exactly the kind of change a diff must
       // surface. Compares original (target) durations, in the activity's own calendar.
@@ -423,27 +438,27 @@ export default {
         .map(d => ({ ...d, deltaDays: Math.round(((d.cur.duration_hrs - d.base.duration_hrs) / (d.cur.calendar_hrs_per_day || 8)) * 10) / 10 }))
         .sort((a, b) => Math.abs(b.deltaDays) - Math.abs(a.deltaDays))
     },
-    actualChanges() {
+    actualChanges(): (MatchedPair & { changes: ActualChange[] })[] {
       return actualDateChanges(this.matched)
     },
-    constraintChanges() {
+    constraintChanges(): MatchedPair[] {
       return constraintChanges(this.matched)
     },
-    floatErosion() {
+    floatErosion(): (MatchedPair & { delta: number })[] {
       return this.matched
         .filter(d => d.cur.total_float_hrs != null && d.base.total_float_hrs != null && d.cur.total_float_hrs < d.base.total_float_hrs)
-        .map(d => ({ ...d, delta: Math.round((d.cur.total_float_hrs - d.base.total_float_hrs) * 10) / 10 }))
+        .map(d => ({ ...d, delta: Math.round((d.cur.total_float_hrs! - d.base.total_float_hrs!) * 10) / 10 }))
         .sort((a, b) => a.delta - b.delta)
     },
-    criticalEntered() {
+    criticalEntered(): MatchedPair[] {
       return this.matched.filter(d => !d.base.is_critical && d.cur.is_critical)
     },
-    criticalLeft() {
+    criticalLeft(): MatchedPair[] {
       return this.matched.filter(d => d.base.is_critical && !d.cur.is_critical)
     },
-    logicChanges() {
-      const linkSet = (activity, lookupById) => {
-        const set = new Set()
+    logicChanges(): (MatchedPair & { added: string[]; removed: string[] })[] {
+      const linkSet = (activity: Activity, lookupById: Map<number, Activity>) => {
+        const set = new Set<string>()
         for (const p of activity.predecessors) {
           const predActivity = lookupById.get(p.task_id)
           const code = predActivity ? predActivity.task_code : '?' + p.task_id
@@ -453,7 +468,7 @@ export default {
       }
       const curById = new Map(this.current.activities.map(a => [a.task_id, a]))
       const baseById = new Map(this.baseline.activities.map(a => [a.task_id, a]))
-      const out = []
+      const out: (MatchedPair & { added: string[]; removed: string[] })[] = []
       for (const d of this.matched) {
         const curLinks = linkSet(d.cur, curById)
         const baseLinks = linkSet(d.base, baseById)
@@ -463,18 +478,18 @@ export default {
       }
       return out
     },
-    stability() {
+    stability(): { pct: number; retained: number; baseCount: number; newlyCritical: number; dropped: number; driverChanged: boolean | string | null } {
       const baseLongest = new Set(this.baseline.activities.filter(a => a.is_longest_path).map(a => a.task_code))
       const curLongest = new Set(this.current.activities.filter(a => a.is_longest_path).map(a => a.task_code))
       const retained = [...baseLongest].filter(c => curLongest.has(c)).length
       const pct = baseLongest.size ? Math.round((100 * retained) / baseLongest.size) : 100
       const newlyCritical = [...curLongest].filter(c => !baseLongest.has(c)).length
       const dropped = [...baseLongest].filter(c => !curLongest.has(c)).length
-      const driverOf = (data, codeSet) => {
-        let best = null
+      const driverOf = (data: Schedule, codeSet: Set<string>) => {
+        let best: Activity | null = null
         for (const a of data.activities) {
           if (!codeSet.has(a.task_code) || !a.early_end) continue
-          if (!best || new Date(a.early_end) > new Date(best.early_end)) best = a
+          if (!best || new Date(a.early_end) > new Date(best.early_end!)) best = a
         }
         return best ? best.task_code : null
       }
@@ -490,11 +505,11 @@ export default {
     cstrLabel,
     displayStart,
     displayEnd,
-    toggle(key) {
+    toggle(key: SectionKey) {
       this.expanded[key] = !this.expanded[key]
     },
   },
-}
+})
 </script>
 
 <style scoped>
