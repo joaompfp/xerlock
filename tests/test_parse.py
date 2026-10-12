@@ -65,16 +65,31 @@ def test_longest_path_is_a_connected_chain(schedule, by_code):
 
 # ── Driving relationships ────────────────────────────────────────────────────
 
-def test_driving_flags_pick_the_closest_predecessor(by_code):
-    """Among several predecessors, only the one(s) actually explaining the
-    successor's computed date are driving."""
+def test_driving_means_zero_relationship_free_float_in_working_time(by_code):
+    """A link drives when the successor sits exactly where the link puts it, measured
+    in working time on the successor's calendar — P6's definition. Not "the closest
+    predecessor": a link with float is not driving however close it is."""
     mep050 = by_code["MEP-050"]
-    driving = [p for p in mep050["predecessors"] if p["driving"]]
+    flags = {p["type"] + str(p["free_float_hrs"]): p["driving"] for p in mep050["predecessors"]}
     assert len(mep050["predecessors"]) == 2
-    assert len(driving) == 1, "exactly one of MEP-050's two predecessors drives it"
+    assert sum(p["driving"] for p in mep050["predecessors"]) == 1
+    assert all(p["driving"] == (p["free_float_hrs"] == 0) for p in mep050["predecessors"]), flags
 
+
+def test_concurrent_drivers_both_drive(by_code):
+    """CX-030 finishes Tue 16:00 and MS-020 falls Wed 08:00; CX-040 starts Wed 08:00.
+    Overnight is not working time, so both links have zero free float and both drive
+    (P6 marks both). The old clock-time rule saw a 16h gap and dropped CX-030."""
     cx040 = by_code["CX-040"]
-    assert sum(1 for p in cx040["predecessors"] if p["driving"]) == 1
+    assert [p["driving"] for p in cx040["predecessors"]] == [True, True]
+
+
+def test_longest_path_agrees_with_p6s_own_flag(schedule):
+    """The trace is computed independently of P6's stored driving_path_flag so the two
+    can be cross-checked. On a freshly scheduled file they must agree exactly."""
+    ours = {a["task_code"] for a in schedule.activities if a["is_longest_path"]}
+    p6 = {a["task_code"] for a in schedule.activities if a["driving_path_flag"]}
+    assert ours == p6
 
 
 def test_single_predecessor_drives_unless_progress_is_out_of_sequence(schedule, by_code):
@@ -106,8 +121,9 @@ def test_single_predecessor_drives_unless_progress_is_out_of_sequence(schedule, 
 
 
 def test_out_of_sequence_is_the_only_case_without_a_driving_predecessor(schedule):
-    """Every activity with predecessors should have at least one driving link;
-    a growing list here means the driving rule is losing chains."""
+    """In the sample, every activity with predecessors has a driving link except the
+    out-of-sequence one. (In general an activity held by a constraint or the data date
+    has none either — the sample has no such case.)"""
     dead_ends = sorted(a["task_code"] for a in schedule.activities
                        if a["predecessors"] and not any(p["driving"] for p in a["predecessors"]))
     assert dead_ends == ["ST-010"]
