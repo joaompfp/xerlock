@@ -1,6 +1,6 @@
 # Exact pins: this is an application, so a rebuild must produce the same dependency set.
 # Dependabot (.github/dependabot.yml) proposes upgrades as PRs, which CI then tests.
 PyP6XER==1.16.0
-fastapi==0.140.7
+fastapi==0.143.0
 uvicorn==0.51.0
 python-multipart==0.0.32
