@@ -94,7 +94,8 @@ meaning. Works down to a phone, where the sidebar slides over from a hamburger.
 ![Progress view](docs/screenshots/progress.png)
 - Milestone tracker with target-vs-forecast variance
 - 4/8-week look-ahead window with remaining vs original durations
-- Planned-vs-actual S-curve anchored to the schedule's data date
+- Duration-weighted S-curve: planned, earned (original less remaining duration) and forecast,
+  anchored to the data date
 
 **Calendars** - the check most tools can't do without P6
 ![Calendar viewer](docs/screenshots/calendars.png)
