@@ -210,6 +210,12 @@ request. Both suites run on every push (`.github/workflows/test.yml`).
 - `docs/DESIGN_TOKENS.md` is the reference for the design system (generated from `App.vue`:
   every token, its value, which themes override it, and which components consume it).
 
+## Contributing
+
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[code of conduct](CODE_OF_CONDUCT.md). Report security problems privately as described in
+[SECURITY.md](SECURITY.md).
+
 ## License
 
 [MIT](LICENSE). Depends on [PyP6XER](https://github.com/HotaOsman/PyP6XER) (LGPL-2.1, used as an
