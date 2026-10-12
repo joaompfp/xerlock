@@ -7,6 +7,9 @@ dist/
 .DS_Store
 *.xer
 !examples/*.xer
+# Served by the 'Load the sample project' button; must equal examples/sample-schedule.xer
+# (tests/test_fixture.py checks).
+!frontend/public/sample-schedule.xer
 
 # test artefacts
 .pytest_cache/

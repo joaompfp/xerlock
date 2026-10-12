@@ -24,3 +24,10 @@ def test_frontend_fixture_matches_the_parser(schedule):
         "json.dump({'project':d['project'],'activities':d['activities']}, "
         "open('frontend/src/utils/fixtures/sample-schedule.json','w'), indent=1)\""
     )
+
+
+def test_served_sample_is_the_example_file():
+    """The upload screen's sample button fetches frontend/public/sample-schedule.xer. It
+    must be the same file as examples/sample-schedule.xer, which the tests and docs use."""
+    served = REPO_ROOT / "frontend" / "public" / "sample-schedule.xer"
+    assert served.read_bytes() == (REPO_ROOT / "examples" / "sample-schedule.xer").read_bytes()
