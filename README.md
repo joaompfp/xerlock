@@ -244,7 +244,7 @@ Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) and
 ## License
 
 [MIT](LICENSE). Depends on [PyP6XER](https://pypi.org/project/PyP6XER/) (LGPL-2.1, used as an
-unmodified library), dagre, ExcelJS, Vue, and IBM Plex fonts (OFL, loaded from Google Fonts).
+unmodified library), dagre, ExcelJS, Vue, and IBM Plex fonts (OFL, bundled via Fontsource - the app makes no third-party requests).
 
 Primavera and P6 are trademarks of Oracle. This project is not affiliated with or endorsed by
 Oracle; it merely reads the documented `.xer` interchange format.
