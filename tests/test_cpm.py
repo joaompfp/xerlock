@@ -356,6 +356,47 @@ def test_expected_finish_sets_the_remaining_duration():
     assert run([t])[1].ef == dt(2026, 3, 2, 16)
 
 
+def test_completed_work_carries_late_dates_as_its_successors_allow():
+    # 1 -> 2 (complete, held behind 1 by Retained Logic) -> 3 (8h). 2's late date is 3's
+    # late start as it is (Tue 08:00, not snapped back); 1 reads it as a finish: Mon 16:00.
+    done = task(2, 0, status="TK_Complete", act_start=dt(2026, 2, 23, 8), act_end=dt(2026, 2, 27, 16))
+    d = run([task(1, 8), done, task(3, 8)], [Link(1, 2), Link(2, 3)])
+    assert (d[2].es, d[3].es) == (dt(2026, 3, 2, 16), dt(2026, 3, 3, 8))
+    assert (d[2].ls, d[2].lf) == (dt(2026, 3, 3, 8), dt(2026, 3, 3, 8))
+    assert d[1].lf == dt(2026, 3, 2, 16) and d[1].tf == 0
+
+
+def test_lag_into_completed_work_is_not_taken_off_the_late_dates():
+    done = task(2, 0, status="TK_Complete", act_start=dt(2026, 2, 23, 8), act_end=dt(2026, 2, 27, 16))
+    d = run([task(1, 8), done, task(3, 8)], [Link(1, 2, "PR_FS", 16), Link(2, 3)])
+    # 2 is held to Wed 16:00 (Mon 16:00 + 16h), so 3 starts Thu and 2's late date is Thu
+    # 08:00; 1's late finish follows it directly, Wed 16:00, the 16h lag not taken off.
+    assert d[2].ls == dt(2026, 3, 5, 8)
+    assert d[1].lf == dt(2026, 3, 4, 16)
+
+
+def test_zero_duration_task_late_date_is_read_as_a_finish():
+    # An SS successor with LS Monday 08:00 leaves a task's late start at Monday 08:00 but
+    # puts a zero-duration task at Friday 16:00, as it would a finish milestone.
+    assert run([task(1, 8), task(2, 40)], [Link(1, 2, "PR_SS")])[1].ls == DD
+    d = run([task(1, 0), task(2, 40)], [Link(1, 2, "PR_SS")])
+    assert (d[1].ls, d[1].lf) == (dt(2026, 2, 27, 16), dt(2026, 2, 27, 16))
+
+
+# ── Comparison with stored values ────────────────────────────────────────────
+
+def test_differences_are_per_field_within_tolerance():
+    from backend.cpm import Dates, differences
+    computed = {1: Dates(es=DD, ef=dt(2026, 3, 2, 16), ls=DD, lf=dt(2026, 3, 2, 16), tf=0.0, ff=0.0)}
+    same = {1: Dates(es=DD, ef=dt(2026, 3, 2, 16, 0, 30), ls=DD, lf=dt(2026, 3, 2, 16), tf=0.004, ff=0.0)}
+    assert differences(computed, same) == []
+    off = {1: Dates(es=DD, ef=dt(2026, 3, 3, 16), ls=DD, lf=dt(2026, 3, 2, 16), tf=8.0, ff=None)}
+    out = differences(computed, off)
+    assert [(x["field"], x["delta_hrs"]) for x in out] == [("ef", -24.0), ("tf", -8.0), ("ff", None)]
+    # Activities absent from the stored set (completed work) are not compared.
+    assert differences(computed, {}) == []
+
+
 # ── Level of effort ───────────────────────────────────────────────────────────
 
 def test_loe_spans_its_predecessors_and_successors_and_never_drives():
