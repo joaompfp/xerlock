@@ -24,7 +24,7 @@
    "float_type": "FT_FF",
    "lag_calendar": "rcal_Predecessor",
    "open_ends_critical": false,
-   "use_expected_finish": true,
+   "use_expected_finish": false,
    "float_to_project_finish": true,
    "external_relationships": "SD_Both",
    "critical_type": "CT_TotFloat",

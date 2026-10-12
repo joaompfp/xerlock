@@ -42,7 +42,7 @@ ERMHDR	15.2	2026-03-02	Project	ADMIN	demo	dbxDatabaseNoName	Project Management	E
 %R	24	1000	2	100	0	N		N	Y	CP_Phys	TT_FinMile	DT_FixedDUR2	TK_NotStart	MS-030	Practical Completion		0	0	0				0				2026-09-09 08:00			2026-09-08 16:00	2026-09-08 16:00		2026-09-08 16:00	2026-09-08 16:00			2026-08-26 08:00	2026-08-26 08:00	2026-09-08 16:00	2026-09-08 16:00	CS_MEOB	PT_Normal									Y										
 %T	SCHEDOPTIONS
 %F	schedoptions_id	proj_id	sched_outer_depend_type	sched_open_critical_flag	sched_lag_early_start_flag	sched_retained_logic	sched_setplantoforecast	sched_float_type	sched_calendar_on_relationship_lag	sched_use_expect_end_flag	sched_progress_override	level_float_thrs_cnt	level_outer_assign_flag	level_outer_assign_priority	level_over_alloc_pct	level_within_float_flag	level_keep_sched_date_flag	level_all_rsrc_flag	sched_use_project_end_date_for_float	enable_multiple_longest_path_calc	limit_multiple_longest_path_calc	max_multiple_longest_path	use_total_float_multiple_longest_paths	key_activity_for_multiple_longest_paths	LevelPriorityList
-%R	1	1000	SD_Both	N	Y	N	N	FT_FF	rcal_Predecessor	Y	Y	0	N	5	25	N	Y	Y	Y	N	Y	10	Y		priority_type,ASC_BY_FIELD/ASC
+%R	1	1000	SD_Both	N	Y	N	N	FT_FF	rcal_Predecessor	N	Y	0	N	5	25	N	Y	Y	Y	N	Y	10	Y		priority_type,ASC_BY_FIELD/ASC
 %T	TASKPRED
 %F	task_pred_id	task_id	pred_task_id	proj_id	pred_proj_id	pred_type	lag_hr_cnt	comments	float_path	aref	arls
 %R	1	2	1	1000	1000	PR_FS	0				
