@@ -1,6 +1,6 @@
 # XERlock
 
-![License: MIT](https://img.shields.io/badge/license-MIT-blue) ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB) ![Vue 3](https://img.shields.io/badge/vue-3-42b883) ![Self-hosted](https://img.shields.io/badge/self--hosted-yes-8250df)
+![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue) ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB) ![Vue 3](https://img.shields.io/badge/vue-3-42b883) ![Self-hosted](https://img.shields.io/badge/self--hosted-yes-8250df)
 
 **Review a contractor's programme in full - without a P6 license.** Upload a `.xer` export and get
 an interactive Gantt chart, a critical-path network diagram, configurable DCMA-14-style schedule
@@ -156,7 +156,7 @@ same file ships in [`examples/sample-schedule.xer`](examples/sample-schedule.xer
   JSON - activities with float/constraints/actuals/codes, the WBS tree, and project stats
   including a longest-path trace. **Nothing is persisted server-side**; files are parsed and
   discarded.
-- **Frontend** (`frontend/`): Vue 3 (Options API) + Vite. No UI framework - hand-rolled CSS on a
+- **Frontend** (`frontend/`): Vue 3 (Options API) + Vite, in strict TypeScript; `src/types/schedule.ts` declares the API contract, and the build fails if it drifts from what the backend returns. No UI framework - hand-rolled CSS on a
   design-token system. [dagre](https://github.com/dagrejs/dagre) computes the network layout;
   [ExcelJS](https://github.com/exceljs/exceljs) (lazy-loaded) generates the Excel exports.
   Annotations and the last-opened file live in `localStorage` only.
@@ -228,8 +228,8 @@ the request. The frontend suite tests each health-check rule on a minimal synthe
   (Chromium mis-renders sticky grid items near scroll boundaries); positions are tracked
   manually from the scroll handler. See comments in `GanttChart.vue`.
 - Numeric text (codes, dates, durations, floats) renders in tabular monospace app-wide.
-- Timeline maths lives in `utils/ganttGeometry.js` and paper sizes in `utils/paper.js`,
-  both pure and unit-tested; `mixins/fullscreen.js` carries the fullscreen lifecycle shared
+- Timeline maths lives in `utils/ganttGeometry.ts` and paper sizes in `utils/paper.ts`,
+  both pure and unit-tested; `mixins/fullscreen.ts` carries the fullscreen lifecycle shared
   by the two charts. The charts' pan implementations are deliberately *not* shared — the
   Gantt pans a scroll container, the network diagram pans an SVG transform.
 - `docs/DESIGN_TOKENS.md` is the reference for the design system (generated from `App.vue`:
@@ -243,7 +243,14 @@ Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) and
 
 ## License
 
-[MIT](LICENSE). Depends on [PyP6XER](https://pypi.org/project/PyP6XER/) (LGPL-2.1, used as an
+[GNU AGPL-3.0-or-later](LICENSE), with one additional term under section 7(b): derivatives must
+keep the author attribution "Based on XERlock by joaompfp" in their UI and documentation (see
+[NOTICE](NOTICE)). In short: you may use, modify, self-host and redistribute XERlock freely; if you
+distribute a modified version or offer it to others over a network, you must publish your source
+under the same licence. Commercial licences without these conditions are available from the author.
+Versions published before 12 October 2026 remain available under MIT.
+
+Depends on [PyP6XER](https://pypi.org/project/PyP6XER/) (LGPL-2.1, used as an
 unmodified library), dagre, ExcelJS, Vue, and IBM Plex fonts (OFL, bundled via Fontsource - the app makes no third-party requests).
 
 Primavera and P6 are trademarks of Oracle. This project is not affiliated with or endorsed by

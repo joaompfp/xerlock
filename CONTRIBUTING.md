@@ -4,6 +4,15 @@ Thanks for your interest! This is a small, focused tool — contributions that k
 the most welcome. Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md);
 security problems go through [SECURITY.md](SECURITY.md), not public issues.
 
+## Licence and the CLA
+
+XERlock is licensed under the [AGPL-3.0](LICENSE) (see [NOTICE](NOTICE)). Before your first pull
+request is merged you sign the [Contributor License Agreement](CLA.md): a bot asks on the PR, and
+you sign by replying with the sentence it gives you. You keep the copyright in your work; the CLA
+lets the maintainer also offer XERlock under other terms, which is how the project can be
+sustained commercially. It also commits that every public release including your work stays
+open source.
+
 
 ## Before opening a PR
 

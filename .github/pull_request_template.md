@@ -13,4 +13,4 @@
 
 ## Notes
 
-By submitting this I agree my contribution is licensed under the MIT licence.
+By submitting this I agree to the [Contributor License Agreement](https://github.com/joaompfp/xerlock/blob/main/CLA.md); the contribution is licensed under the AGPL-3.0 (see [NOTICE](https://github.com/joaompfp/xerlock/blob/main/NOTICE)).

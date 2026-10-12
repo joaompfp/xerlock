@@ -96,7 +96,7 @@ scripts/
 tests/
   test_cpm.py        NEW: synthetic networks, one rule per test (§4)
   test_cpm_sample.py NEW: engine reproduces examples/sample-schedule.xer exactly
-frontend/src/utils/healthChecks.js   'cpt' check becomes available when the backend
+frontend/src/utils/healthChecks.ts   'cpt' check becomes available when the backend
                                      reports a result; add 'recalc' (XERlock) check
 frontend/src/components/HealthCheck.vue  CPT result card plus recalculation differences
 docs/METHODOLOGY.md                  engine rules, CPT method, refusal cases

@@ -1,0 +1,32 @@
+XERlock
+Copyright (C) 2026 joaompfp <https://github.com/joaompfp>
+
+This program is free software: you can redistribute it and/or modify it under the terms
+of the GNU Affero General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License (LICENSE) for details.
+
+ADDITIONAL TERMS UNDER SECTION 7(b) OF THE AGPL-3.0
+
+Any covered work, modified or not, must preserve the following author attribution,
+in the user interface wherever the program displays its Appropriate Legal Notices,
+and in the documentation accompanying any distribution:
+
+    Based on XERlock by joaompfp - https://github.com/joaompfp/xerlock
+
+The attribution may be restyled to suit the interface, but must remain legible and
+must not be removed or obscured.
+
+EARLIER VERSIONS
+
+Versions of XERlock published before 12 October 2026 were released under the MIT
+License, and those versions remain available under it.
+
+COMMERCIAL LICENSING
+
+The copyright holder offers XERlock under other terms, including proprietary ones, to
+anyone for whom the AGPL does not suit. Contributions are accepted under the
+Contributor License Agreement (CLA.md), which makes this possible.

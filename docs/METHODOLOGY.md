@@ -102,7 +102,7 @@ walk backward through driving links only. The chain ends where nothing drives.
 
 ## Health check
 
-Every rule lives in `frontend/src/utils/healthChecks.js`, with unit tests beside it.
+Every rule lives in `frontend/src/utils/healthChecks.ts`, with unit tests beside it.
 
 **Population.** DCMA's percentage metrics are taken over incomplete activities,
 excluding level-of-effort (`TT_LOE`) and WBS-summary (`TT_WBS`) activities, which carry
@@ -188,7 +188,7 @@ additive or subtractive). It is the evidence-gathering step those methods start 
   Status bands: on track ≤ 0, watch 1–10, at risk > 10. The bands are XERlock's convention.
 - **Look-ahead**: incomplete activities whose early dates overlap the window from the data
   date.
-- **S-curve** (`frontend/src/utils/sCurve.js`): cumulative share of the programme's total
+- **S-curve** (`frontend/src/utils/sCurve.ts`): cumulative share of the programme's total
   original duration, in working days (hours / the activity's hours per day, so calendars of
   different lengths weigh the same per day). Task and resource-dependent activities only;
   milestones carry no duration and level of effort would count the work it spans twice.
