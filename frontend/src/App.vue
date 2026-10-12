@@ -4,12 +4,7 @@
     <div v-if="!data" class="upload-screen">
       <div class="upload-card">
         <div class="logo">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" class="logo-icon" stroke-width="1.5">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <path d="M3 9h18" />
-            <path d="M9 3v18" />
-            <path d="M7 12l2 2 4-4" />
-          </svg>
+          <XerlockMark :size="64" />
         </div>
         <h1>XERlock</h1>
         <p class="subtitle">Review Primavera P6 schedules — no P6 license required.</p>
@@ -69,15 +64,7 @@
       <aside class="sidebar" :class="{ open: navOpen }" id="app-sidebar">
         <div class="sb-brand">
           <a class="sb-logo" href="https://github.com/joaompfp/xerlock" target="_blank" rel="noopener" title="XERlock on GitHub">
-            <!-- The mark (public/favicon.svg) drawn with theme tokens so it re-colours with the app. -->
-            <svg class="xl-mark" width="22" height="22" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-              <path d="M9.6 10V6.6a4.4 4.4 0 0 1 8.8 0V10" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
-              <circle cx="14" cy="17" r="8.4" stroke="currentColor" stroke-width="2.6" fill="var(--nav)" />
-              <path d="M20.2 23.2l7 7" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" />
-              <rect x="8.4" y="12.6" width="6.4" height="2.4" rx="1.2" fill="var(--accent)" />
-              <rect x="11" y="15.8" width="6.4" height="2.4" rx="1.2" fill="var(--accent)" />
-              <rect x="13.6" y="19" width="5.6" height="2.4" rx="1.2" fill="var(--crit)" />
-            </svg>
+            <XerlockMark :size="22" surface="var(--nav)" />
             <span>XERlock</span>
           </a>
           <span class="sb-readonly" title="XERlock never modifies or stores your file">read only</span>
@@ -455,6 +442,7 @@
 <script lang="ts">
 import { defineComponent } from 'vue'
 import WBSNode from './components/WBSNode.vue'
+import XerlockMark from './components/XerlockMark.vue'
 import CriticalPathGraph from './components/CriticalPathGraph.vue'
 import GanttChart from './components/GanttChart.vue'
 import HealthCheck from './components/HealthCheck.vue'
@@ -498,7 +486,7 @@ function applyTheme(theme: Theme): void {
 
 export default defineComponent({
   name: 'App',
-  components: { WBSNode, CriticalPathGraph, GanttChart, HealthCheck, ProgressView, CompareView, CalendarView, TableInspector },
+  components: { WBSNode, XerlockMark, CriticalPathGraph, GanttChart, HealthCheck, ProgressView, CompareView, CalendarView, TableInspector },
   data() {
     return {
       data: null as StoredSchedule | null,
@@ -1069,7 +1057,7 @@ th.num { text-align: right !important; }
 .upload-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: var(--space-6); }
 .upload-card { text-align: center; max-width: 480px; }
 .upload-card .logo { margin-bottom: var(--space-4); }
-.logo-icon { stroke: var(--accent); }
+.logo { color: var(--ink); }
 .upload-card h1 { font: var(--text-h1); color: var(--ink); margin-bottom: var(--space-1); }
 .upload-card .subtitle { font: var(--text-body); color: var(--gray-700); font-weight: 600; margin-bottom: 2px; }
 .reopen-card { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); background: var(--accent-soft); border: 1px solid var(--accent); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4); text-align: left; }
@@ -1143,10 +1131,6 @@ th.num { text-align: right !important; }
 
 /* Tabs */
 .tabs { display: flex; align-items: center; gap: var(--space-1); margin-bottom: var(--space-6); border-bottom: 1px solid var(--gray-300); }
-.brand { display: flex; align-items: center; gap: 7px; margin-right: var(--space-4); text-decoration: none; padding-bottom: 2px; }
-.brand-icon { stroke: var(--accent); flex-shrink: 0; }
-.brand-name { font: var(--text-small); font-weight: 700; color: var(--ink); letter-spacing: 0.01em; white-space: nowrap; }
-.brand:hover .brand-name { color: var(--accent); }
 .theme-select { margin-left: auto; margin-bottom: 4px; padding: 5px 8px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); color: var(--gray-700); background: var(--white); cursor: pointer; }
 .header-collapsed .tabs { margin-bottom: var(--space-3); }
 .tabs button { padding: var(--space-2) var(--space-4); border: none; background: none; cursor: pointer; font: var(--text-small); color: var(--gray-700); border-bottom: 3px solid transparent; margin-bottom: -1px; transition: color 0.15s, border-color 0.2s; }
@@ -1279,7 +1263,6 @@ th.num { text-align: right !important; }
   .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   .tabs::-webkit-scrollbar { display: none; }
   .tabs button { white-space: nowrap; padding: var(--space-2) var(--space-3); }
-  .brand-name { display: none; }
   .header { flex-direction: column; align-items: flex-start; gap: var(--space-3); }
   .header-right { flex-wrap: wrap; }
   .metrics-strip { overflow-x: auto; scrollbar-width: none; }
