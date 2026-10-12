@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from xerparser.reader import Reader
 
+from backend import recalc
 from backend.cpm import lag_calendar
 from backend.worktime import ALL_HOURS, WorkCalendar
 
@@ -127,6 +128,11 @@ class ProjectSummary(BaseModel):
     schedule_options: dict = {}
     # DCMA check 13; None when it cannot be computed (no data date, finish complete).
     cpli: Optional[dict] = None
+    # The CPM engine's reproduction of P6's dates and float (backend/recalc.py):
+    # supported/reason, counts compared and differing, and the differences themselves.
+    recalculation: Optional[dict] = None
+    # DCMA check 12, only when the recalculation reproduces P6 exactly.
+    critical_path_test: Optional[dict] = None
 
 class ScheduleData(BaseModel):
     project: ProjectSummary
@@ -666,6 +672,16 @@ def parse_xer(filepath: str) -> ScheduleData:
         return tf is not None and tf <= crit_threshold
 
     task_rows = {r.get("task_id"): r for r in table_records(raw_tables, "TASK")}
+
+    # Recalculate the schedule from its own logic and compare with what P6 stored;
+    # the Critical Path Test runs only when the two agree (see docs/METHODOLOGY.md).
+    recalculation, critical_path_test = recalc.run(
+        list(task_rows.values()), table_records(raw_tables, "TASKPRED"),
+        next((r for r in table_records(raw_tables, "PROJECT") if r.get("proj_id") == str(project.proj_id)), {}),
+        next((r for r in table_records(raw_tables, "SCHEDOPTIONS") if r.get("proj_id") == str(project.proj_id)), {}),
+        work_cals, default_cal, sorted(longest_path_ids),
+        hrs_per_day={c["clndr_id"]: c["day_hr_cnt"] for c in calendars},
+    )
     units_done = {}
     for r in table_records(raw_tables, "TASKRSRC"):
         act = sum(safe_float(_num(r.get(f))) for f in ("act_reg_qty", "act_ot_qty"))
@@ -780,6 +796,8 @@ def parse_xer(filepath: str) -> ScheduleData:
             activity_code_types=activity_code_types,
             schedule_options=sched_options,
             cpli=cpli,
+            recalculation=recalculation,
+            critical_path_test=critical_path_test,
         ),
         wbs_tree=wbs_tree,
         activities=activities,

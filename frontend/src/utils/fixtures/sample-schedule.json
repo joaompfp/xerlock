@@ -35,6 +35,47 @@
    "cpl_hrs": 1080.0,
    "tf_hrs": 0.0,
    "finish_task_id": 24
+  },
+  "recalculation": {
+   "supported": true,
+   "reason": null,
+   "options": {
+    "progress_mode": "override",
+    "float_type": "FT_FF",
+    "lag_calendar": "rcal_Predecessor",
+    "delay_days": 600
+   },
+   "compared": 21,
+   "excluded": {
+    "complete": 3,
+    "wbs_summary": 0
+   },
+   "differing": 0,
+   "by_field": {
+    "es": 0,
+    "ef": 0,
+    "ls": 0,
+    "lf": 0,
+    "tf": 0,
+    "ff": 0
+   },
+   "differences": [],
+   "truncated": false
+  },
+  "critical_path_test": {
+   "passed": true,
+   "exact": true,
+   "delay_days": 600,
+   "delay_hrs": 4800.0,
+   "tolerance_hrs": 0.02,
+   "calendars_uniform": true,
+   "delayed_task_id": 9,
+   "finish_task_id": 24,
+   "finish_before": "2026-09-08 16:00",
+   "finish_after": "2028-12-27 16:00",
+   "expected_delta_hrs": 4800.0,
+   "finish_delta_hrs": 4800.0,
+   "absorbed_by_task_id": null
   }
  },
  "activities": [
