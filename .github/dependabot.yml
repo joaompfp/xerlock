@@ -10,6 +10,11 @@ updates:
     groups:
       build-tooling:
         patterns: ["vite", "vitest", "@vitejs/*", "esbuild"]
+    ignore:
+      # TypeScript 7 is the native (Go) compiler and drops the JS API vue-tsc runs on.
+      # Lift this once vue-tsc supports it.
+      - dependency-name: typescript
+        versions: [">=7"]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
