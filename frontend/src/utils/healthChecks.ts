@@ -3,11 +3,12 @@
 // unit-tested and audited in one place; docs/METHODOLOGY.md cites this file.
 
 import { HARD_CONSTRAINT_TYPES } from './p6'
-import type { Activity, ScheduleCore } from '../types/schedule'
+import type { Activity, RecalcDifference, ScheduleCore } from '../types/schedule'
 
 export type CheckKey =
   | 'openends' | 'leads' | 'lags' | 'fs' | 'hardcstr' | 'highfloat' | 'negfloat' | 'highdur'
   | 'invdates' | 'noresource' | 'missed' | 'cpt' | 'cpli' | 'oos' | 'alap' | 'loe' | 'driving'
+  | 'recalc'
 
 export interface CheckDef {
   key: CheckKey
@@ -64,12 +65,13 @@ export const CHECK_DEFS: readonly CheckDef[] = [
   { key: 'invdates', source: 'DCMA 09', label: 'Invalid Dates', section: 'invdates', unit: 'count', cmp: 'lte', target: 0, weight: 1 },
   { key: 'noresource', source: 'DCMA 10', label: 'Missing Resources', section: 'resources', unit: 'pct', cmp: 'lte', target: 5, weight: 1 },
   { key: 'missed', source: 'DCMA 11', label: 'Missed Tasks', section: 'missed', unit: 'pct', cmp: 'lte', target: 5, weight: 1 },
-  { key: 'cpt', source: 'DCMA 12', label: 'Critical Path Test', section: null, unit: 'count', cmp: 'lte', target: 0, weight: 1, naReason: 'not performed: it re-runs the schedule, and XERlock reads P6\'s dates without rescheduling' },
+  { key: 'cpt', source: 'DCMA 12', label: 'Critical Path Test', section: 'cpt', unit: 'count', cmp: 'lte', target: 0, weight: 1 },
   { key: 'cpli', source: 'DCMA 13', label: 'CPLI', section: null, unit: 'ratio', cmp: 'gte', target: 0.95, weight: 1 },
   { key: 'oos', source: 'XERlock', label: 'Out-of-Sequence', section: 'oos', unit: 'count', cmp: 'lte', target: 0, weight: 1 },
   { key: 'alap', source: 'XERlock', label: 'ALAP Constraints', section: 'alap', unit: 'count', cmp: 'lte', target: 0, weight: 1 },
   { key: 'loe', source: 'XERlock', label: 'LOE on Critical', section: 'loe', unit: 'count', cmp: 'lte', target: 0, weight: 1 },
   { key: 'driving', source: 'XERlock', label: 'Driving Path Cross-Check', section: 'driving', unit: 'count', cmp: 'lte', target: 0, weight: 1 },
+  { key: 'recalc', source: 'XERlock', label: 'Recalculation matches P6', section: 'recalc', unit: 'count', cmp: 'lte', target: 0, weight: 1 },
 ]
 
 // DCMA's population for its percentage metrics: incomplete activities, less
@@ -107,6 +109,10 @@ export interface OutOfSequence {
   type: string
   what: string
   predDate: string | null
+}
+
+export interface RecalcFinding extends RecalcDifference {
+  activity: Activity
 }
 
 interface RawMeasure {
@@ -268,6 +274,29 @@ export function runChecks(data: ScheduleCore, cfg: HealthConfig) {
     ? scope.filter(a => TASK_TYPES.has(a.task_type) && a.resource_names.length === 0)
     : []
 
+  // The CPM engine's reproduction of P6's dates and float. Absent from snapshots that
+  // predate it; `supported` false when the engine refuses the file (reason given).
+  const recalculation = data.project.recalculation ?? null
+  const criticalPathTest = data.project.critical_path_test ?? null
+  const recalcDifferences: RecalcFinding[] = (recalculation?.differences ?? []).flatMap(d => {
+    const activity = byId.get(d.task_id)
+    return activity ? [{ ...d, activity }] : []
+  })
+  // Why a check cannot run on this file, where the reason is the file's rather than
+  // the check's own (CheckDef.naReason).
+  const naReasons: Partial<Record<CheckKey, string>> = {}
+  if (!recalculation) {
+    naReasons.recalc = 'not available: this schedule was parsed before the recalculation engine'
+    naReasons.cpt = 'not performed: this schedule was parsed before the recalculation engine'
+  } else if (!recalculation.supported) {
+    naReasons.recalc = `not checkable: ${recalculation.reason}`
+    naReasons.cpt = `withheld: ${recalculation.reason}`
+  } else if (recalculation.differing) {
+    naReasons.cpt = `withheld: the recalculation differs from P6 on ${recalculation.differing} activit${recalculation.differing === 1 ? 'y' : 'ies'}`
+  } else if (!criticalPathTest) {
+    naReasons.cpt = 'not performed: no incomplete activity with a duration on the Longest Path'
+  }
+
   const availability = {
     openends: true, leads: true, lags: true, fs: true, hardcstr: true, alap: true, negfloat: true,
     highfloat: true, highdur: true, oos: true, loe: true,
@@ -275,10 +304,10 @@ export function runChecks(data: ScheduleCore, cfg: HealthConfig) {
     missed: !!dd,
     driving: drivingPathAvailable,
     noresource: data.project.has_resources,
-    // DCMA 12 extends the critical path by a test delay and re-runs the schedule. That
-    // needs a CPM engine; XERlock reads P6's computed dates and does not reschedule.
-    cpt: false,
+    // DCMA 12 is reported only on a file the recalculation reproduces exactly.
+    cpt: !!criticalPathTest,
     cpli: !!data.project.cpli,
+    recalc: !!recalculation?.supported,
   }
 
   // Per-check measurement: count of findings, the value the target is compared
@@ -302,8 +331,10 @@ export function runChecks(data: ScheduleCore, cfg: HealthConfig) {
     loe: { count: loeOnCriticalList.length, denom: nAct },
     driving: { count: drivingMismatchList.length, denom: nAct },
     noresource: { count: noResourceList.length, denom: nAct },
-    cpt: { count: 0, denom: 1 },
+    cpt: { count: criticalPathTest && !criticalPathTest.passed ? 1 : 0, denom: 1,
+      displayOverride: criticalPathTest ? (criticalPathTest.passed ? 'Pass' : 'Fail') : '—' },
     cpli: { count: cpli ?? 0, denom: 1, valueOverride: cpli ?? 0, displayOverride: cpli != null ? cpli.toFixed(2) : '—' },
+    recalc: { count: recalculation?.differing ?? 0, denom: nAct },
   }
   const results = {} as Record<CheckKey, CheckResult>
   for (const def of CHECK_DEFS) {
@@ -326,6 +357,7 @@ export function runChecks(data: ScheduleCore, cfg: HealthConfig) {
     openEnds, relationshipStats, constraintList, alapList, alapOnCriticalPath, negativeFloatList,
     highFloatList, invalidDatesList, plannedDoneCount, missedTasksList, highDurationList,
     loeOnCriticalList, drivingPathAvailable, drivingMismatchList, outOfSequenceList, noResourceList,
+    recalculation, recalcDifferences, criticalPathTest, naReasons,
     availability, results,
   }
 }
