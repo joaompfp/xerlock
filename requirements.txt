@@ -2,5 +2,5 @@
 # Dependabot (.github/dependabot.yml) proposes upgrades as PRs, which CI then tests.
 PyP6XER==1.16.0
 fastapi==0.140.7
-uvicorn==0.51.0
+uvicorn==0.54.0
 python-multipart==0.0.32
