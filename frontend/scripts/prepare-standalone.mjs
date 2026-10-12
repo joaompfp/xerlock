@@ -3,7 +3,7 @@
 // the app's own origin.
 //   py/pyodide.*, python_stdlib.zip   the Python runtime, from the pinned npm package
 //   py/<PyP6XER wheel>                 the version requirements.txt pins, SHA-256 checked
-//   py/backend/{xer,worktime}.py       XERlock's parsing core, the same files the server runs
+//   py/backend/{xer,worktime,cpm,recalc}.py  XERlock's parsing core and CPM engine, the same files the server runs
 //   py/manifest.json                   tells the worker what to load
 import { createHash } from 'node:crypto'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -25,7 +25,7 @@ for (const f of ['pyodide.mjs', 'pyodide.asm.mjs', 'pyodide.asm.wasm', 'python_s
   cpSync(join(pyodide, f), join(py, f))
 }
 
-const pythonFiles = ['xer.py', 'worktime.py']
+const pythonFiles = ['xer.py', 'worktime.py', 'cpm.py', 'recalc.py']
 for (const f of pythonFiles) cpSync(join(repo, 'backend', f), join(py, 'backend', f))
 
 // One source of truth for the parser library's version: the server's requirements.txt.

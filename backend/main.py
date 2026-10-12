@@ -120,6 +120,11 @@ class ProjectSummary(BaseModel):
     schedule_options: dict = {}
     # DCMA check 13; None when it cannot be computed (no data date, finish complete).
     cpli: Optional[dict] = None
+    # The CPM engine's reproduction of P6's dates and float (backend/recalc.py):
+    # supported/reason, counts compared and differing, and the differences themselves.
+    recalculation: Optional[dict] = None
+    # DCMA check 12, only when the recalculation reproduces P6 exactly.
+    critical_path_test: Optional[dict] = None
 
 class ScheduleData(BaseModel):
     project: ProjectSummary

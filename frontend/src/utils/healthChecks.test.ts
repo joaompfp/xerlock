@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import fixture from './fixtures/sample-schedule.json'
 import { runChecks, defaultConfig, weightedScore } from './healthChecks'
 import type { CheckResult } from './healthChecks'
-import type { Activity, ProjectSummary, ScheduleCore } from '../types/schedule'
+import type { Activity, CriticalPathTest, ProjectSummary, Recalculation, ScheduleCore } from '../types/schedule'
 import { makeActivity, makeSchedule, link } from '../testing/factories'
 
 // Typed as the API contract: if the backend's output and types/schedule.ts disagree, the
@@ -36,12 +36,13 @@ describe('runChecks on the sample schedule', () => {
         "noresource": 0,
         "oos": 2,
         "openends": 2,
+        "recalc": 0,
       }
     `)
   })
 
   it('scores', () => {
-    expect(weightedScore(out.results, defaultConfig())).toMatchInlineSnapshot(`53`)
+    expect(weightedScore(out.results, defaultConfig())).toMatchInlineSnapshot(`58`)
   })
 })
 
@@ -106,10 +107,56 @@ describe('DCMA rules', () => {
     expect(run([p, ss, ff]).outOfSequenceList.map(r => r.type)).toEqual(['PR_SS', 'PR_FF'])
   })
 
-  it('scores CPLI against 0.95 and marks the Critical Path Test as not performed', () => {
+  it('scores CPLI against 0.95', () => {
     const r = run([act()], { cpli: { value: 0.9, cpl_hrs: 1000, tf_hrs: -100, finish_task_id: 1 } })
     expect(r.results.cpli).toMatchObject({ value: 0.9, pass: false, included: true })
+  })
+})
+
+const recalc = (over: Partial<Recalculation> = {}): Recalculation => ({
+  supported: true, reason: null,
+  options: { progress_mode: 'retained', float_type: 'FT_FF', lag_calendar: 'rcal_Predecessor', delay_days: 600 },
+  compared: 1, excluded: { complete: 0, wbs_summary: 0 }, differing: 0,
+  by_field: { es: 0, ef: 0, ls: 0, lf: 0, tf: 0, ff: 0 }, differences: [], truncated: false,
+  ...over,
+})
+const cptResult = (over: Partial<CriticalPathTest> = {}): CriticalPathTest => ({
+  passed: true, exact: true, delay_days: 600, delay_hrs: 4800, tolerance_hrs: 0.02, calendars_uniform: true,
+  delayed_task_id: 1, finish_task_id: 1, finish_before: '2026-03-13 16:00', finish_after: '2028-07-07 16:00',
+  expected_delta_hrs: 4800, finish_delta_hrs: 4800, absorbed_by_task_id: null,
+  ...over,
+})
+
+describe('recalculation and the Critical Path Test', () => {
+  it('are not checkable on a schedule parsed before the engine existed', () => {
+    const r = run([act()])
+    expect(r.availability.recalc).toBe(false)
     expect(r.availability.cpt).toBe(false)
-    expect(r.results.cpt.included).toBe(false)
+    expect(r.naReasons.cpt).toMatch(/not performed/)
+  })
+
+  it('counts the activities whose recalculation differs, and withholds the CPT', () => {
+    const a = act()
+    const diff = { task_id: a.task_id, field: 'ef', computed: '2026-03-16 16:00', stored: '2026-03-13 16:00', delta_hrs: 72 }
+    const r = run([a], { recalculation: recalc({ differing: 1, by_field: { ef: 1 }, differences: [diff] }) })
+    expect(r.results.recalc).toMatchObject({ count: 1, pass: false, included: true })
+    expect(r.recalcDifferences).toEqual([{ ...diff, activity: a }])
+    expect(r.availability.cpt).toBe(false)
+    expect(r.naReasons.cpt).toMatch(/differs from P6 on 1 activity/)
+  })
+
+  it('reports the refusal reason when the engine declines the file', () => {
+    const r = run([act()], { recalculation: recalc({ supported: false, reason: '2 resource-dependent activities (TT_Rsrc)' }) })
+    expect(r.availability.recalc).toBe(false)
+    expect(r.naReasons.recalc).toMatch(/resource-dependent/)
+    expect(r.naReasons.cpt).toMatch(/withheld/)
+  })
+
+  it('scores the CPT from the backend result: pass counts 0, fail counts 1', () => {
+    const pass = run([act()], { recalculation: recalc(), critical_path_test: cptResult() })
+    expect(pass.results.cpt).toMatchObject({ count: 0, pass: true, included: true, display: 'Pass' })
+    const fail = run([act()], { recalculation: recalc(), critical_path_test: cptResult({ passed: false, finish_delta_hrs: 0, absorbed_by_task_id: 1 }) })
+    expect(fail.results.cpt).toMatchObject({ count: 1, pass: false, included: true, display: 'Fail' })
+    expect(fail.criticalPathTest?.absorbed_by_task_id).toBe(1)
   })
 })

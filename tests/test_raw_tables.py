@@ -82,7 +82,7 @@ def test_rows_before_any_table_header_are_ignored():
 
 def test_sample_raw_tables(schedule):
     tables = schedule.raw_tables
-    assert set(tables) == {"CALENDAR", "PROJECT", "PROJWBS", "TASK", "TASKPRED"}
+    assert set(tables) == {"CALENDAR", "PROJECT", "PROJWBS", "SCHEDOPTIONS", "TASK", "TASKPRED"}
     assert tables["TASK"]["row_count"] == 24
     assert tables["PROJWBS"]["row_count"] == 7
     assert not any(t["truncated"] for t in tables.values())
