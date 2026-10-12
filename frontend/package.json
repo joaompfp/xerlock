@@ -15,7 +15,7 @@
   "dependencies": {
     "dagre": "^0.8.5",
     "exceljs": "^4.4.0",
-    "vue": "^3.4.0"
+    "vue": "^3.5.43"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
