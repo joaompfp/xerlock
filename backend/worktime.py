@@ -93,3 +93,7 @@ class WorkCalendar:
                 remaining -= f - s
             d += timedelta(days=1 if forward else -1)
         return t
+
+
+# P6's "24 Hour" calendar: every minute of every day is working time.
+ALL_HOURS = WorkCalendar({str(d): [{"start": "00:00", "finish": "00:00"}] for d in range(1, 8)}, [])

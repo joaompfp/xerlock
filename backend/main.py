@@ -19,7 +19,8 @@ from pydantic import BaseModel
 
 from xerparser.reader import Reader
 
-from backend.worktime import WorkCalendar
+from backend.cpm import lag_calendar
+from backend.worktime import ALL_HOURS, WorkCalendar
 
 logger = logging.getLogger("schedule-app")
 
@@ -574,21 +575,14 @@ def parse_xer(filepath: str) -> ScheduleData:
     sched_options = schedule_options_for(raw_tables, project.proj_id)
     work_cals = {c["clndr_id"]: WorkCalendar(c["weekdays"], c["exceptions"]) for c in calendars}
     default_cal = next((work_cals[c["clndr_id"]] for c in calendars if c["default_flag"]), None)
-    all_hours = WorkCalendar({str(d): [{"start": "00:00", "finish": "00:00"}] for d in range(1, 8)}, [])
 
     def cal_of(a):
-        return work_cals.get(str(a.clndr_id)) or default_cal or all_hours
+        return work_cals.get(str(a.clndr_id)) or default_cal or ALL_HOURS
 
     lag_basis = sched_options.get("lag_calendar", "rcal_Predecessor")
 
     def lag_cal(pred_a, succ_a):
-        if lag_basis == "rcal_Successor":
-            return cal_of(succ_a)
-        if lag_basis == "rcal_24Hour":
-            return all_hours
-        if lag_basis == "rcal_ProjDefault":
-            return default_cal or cal_of(pred_a)
-        return cal_of(pred_a)
+        return lag_calendar(lag_basis, cal_of(pred_a), cal_of(succ_a), default_cal)
 
     def relationship_free_float_hrs(succ_a, pred_a, link_type, lag_hrs):
         """Working hours between where the link puts the successor and where it is.
