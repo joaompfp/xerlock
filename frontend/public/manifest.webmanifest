@@ -1,0 +1,14 @@
+{
+  "name": "XERlock",
+  "short_name": "XERlock",
+  "description": "Review Primavera P6 schedules: Gantt, critical path, DCMA checks, compare. Read-only.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#171C23",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
