@@ -1,7 +1,8 @@
 # Contributing
 
 Thanks for your interest! This is a small, focused tool — contributions that keep it that way are
-the most welcome.
+the most welcome. Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md);
+security problems go through [SECURITY.md](SECURITY.md), not public issues.
 
 
 ## Before opening a PR
