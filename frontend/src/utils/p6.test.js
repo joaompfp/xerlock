@@ -61,6 +61,13 @@ describe('relationship and constraint labels', () => {
     expect(HARD_CONSTRAINT_TYPES.has('CS_MANDFIN')).toBe(true)
     expect(HARD_CONSTRAINT_TYPES.has('CS_ALAP')).toBe(false)
   })
+
+  it('classifies DCMA\'s "no later than" pair as hard', () => {
+    // P6 calls Start/Finish No Later Than "Start/Finish On or Before".
+    expect(HARD_CONSTRAINT_TYPES.has('CS_MSOB')).toBe(true)
+    expect(HARD_CONSTRAINT_TYPES.has('CS_MEOB')).toBe(true)
+    expect(HARD_CONSTRAINT_TYPES.has('CS_MSOA')).toBe(false)
+  })
 })
 
 describe('float, duration and lag are shown in working days', () => {

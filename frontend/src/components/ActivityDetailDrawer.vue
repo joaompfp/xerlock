@@ -37,7 +37,7 @@
         <div class="stat-tile">
           <div class="stat-value">{{ activity.pct_complete }}%</div>
           <div class="stat-progress"><div class="stat-progress-fill" :style="{ width: activity.pct_complete + '%' }"></div></div>
-          <div class="stat-label">Complete</div>
+          <div class="stat-label">{{ pctBasis }}</div>
         </div>
       </div>
 
@@ -91,8 +91,9 @@
           </template>
         </div>
         <p v-if="!drivingPreds.length && !drivingSuccs.length" class="chain-none">
-          No relationship explains this activity's dates. Progress recorded out of sequence
-          leaves nothing driving it.
+          No relationship drives this activity: every link into it has free float, so its
+          dates are held by something else — a constraint, the data date, or progress
+          recorded out of sequence.
         </p>
 
         <div v-for="side in otherSides" :key="side.label" class="rel-section">
@@ -114,6 +115,7 @@
                   <span class="rel-dates">{{ formatDate(displayStart(p.activity)) }} → {{ formatDate(displayEnd(p.activity)) }}</span>
                 </template>
                 <span v-if="p.lag_hrs" class="rel-lag">{{ formatLag(p.lag_hrs, activity.calendar_hrs_per_day) }} lag</span>
+                <span v-if="p.free_float_hrs != null" class="rel-lag" title="Relationship free float: working time between where this link puts the successor and where it is">FF {{ formatFloat(p.free_float_hrs, activity.calendar_hrs_per_day) }}</span>
               </div>
             </button>
           </template>
@@ -155,6 +157,10 @@ export default {
     return { open: { preds: false, succs: false } }
   },
   computed: {
+    // P6's percent-complete type: which progress measure the figure is.
+    pctBasis() {
+      return { CP_Drtn: 'Duration % complete', CP_Units: 'Units % complete', CP_Phys: 'Physical % complete' }[this.activity.pct_complete_type] || 'Complete'
+    },
     enrichedPreds() {
       return (this.activity?.predecessors || []).map(p => ({ ...p, activity: this.lookup.get(p.task_id) }))
     },

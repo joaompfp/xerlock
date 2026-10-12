@@ -119,8 +119,8 @@
             <div class="tb-metric" v-if="data.project.total_negative_float > 0"><b class="is-crit">{{ data.project.total_negative_float }}</b><span>Neg. float</span></div>
             <div class="tb-metric"><b>{{ data.project.total_longest_path }}</b><span>Longest path</span></div>
             <div class="tb-metric"><b>{{ data.project.total_milestones }}</b><span>Milestones</span></div>
-            <div class="tb-metric tb-metric-pct">
-              <b>{{ data.project.pct_complete }}%</b><span>Complete</span>
+            <div class="tb-metric tb-metric-pct" title="Share of activities with status Complete. A count, not weighted by duration, cost or units; per-activity % complete uses each activity's own P6 percent-complete type.">
+              <b>{{ data.project.pct_complete }}%</b><span>Activities done</span>
               <i class="tb-bar"><u :style="{ width: data.project.pct_complete + '%' }"></u></i>
             </div>
           </div>
