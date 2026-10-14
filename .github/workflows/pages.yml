@@ -5,7 +5,7 @@ name: pages
 # files, and .xer files are parsed on the visitor's machine.
 on:
   push:
-    branches: [client-side-parsing]
+    branches: [main]
   workflow_dispatch:
 
 permissions:

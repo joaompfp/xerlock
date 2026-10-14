@@ -5,6 +5,7 @@
 //   py/<PyP6XER wheel>                 the version requirements.txt pins, SHA-256 checked
 //   py/backend/{xer,worktime,cpm,recalc}.py  XERlock's parsing core and CPM engine, the same files the server runs
 //   py/manifest.json                   tells the worker what to load
+//   LICENSE, NOTICE, THIRD-PARTY-NOTICES.txt   the terms everything above is distributed under
 import { createHash } from 'node:crypto'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -49,4 +50,19 @@ if (sha !== wheel.digests.sha256) {
 writeFileSync(join(py, wheel.filename), bytes)
 
 writeFileSync(join(py, 'manifest.json'), JSON.stringify({ wheel: wheel.filename, python: pythonFiles }, null, 2))
-console.log(`standalone assets ready: Pyodide ${JSON.parse(readFileSync(join(pyodide, 'package.json'), 'utf8')).version}, ${wheel.filename}`)
+
+// The build redistributes Pyodide and PyP6XER, so it carries their terms with it (the
+// wheel holds PyP6XER's full licence text in its dist-info).
+const pyodideVersion = JSON.parse(readFileSync(join(pyodide, 'package.json'), 'utf8')).version
+for (const f of ['LICENSE', 'NOTICE']) cpSync(join(repo, f), join(out, f))
+writeFileSync(join(out, 'THIRD-PARTY-NOTICES.txt'), `XERlock's standalone build includes:
+
+Pyodide ${pyodideVersion} (py/pyodide.*, py/python_stdlib.zip, py/pyodide-lock.json)
+  Mozilla Public License 2.0. Source: https://github.com/pyodide/pyodide
+  It bundles CPython (Python Software Foundation License) and its standard library.
+
+PyP6XER ${version} (py/${wheel.filename})
+  GNU Lesser General Public License v2.1; full text inside the wheel at
+  pyp6xer-${version}.dist-info/licenses/LICENSE. Source: https://github.com/HassanEmam/PyP6Xer
+`)
+console.log(`standalone assets ready: Pyodide ${pyodideVersion}, ${wheel.filename}`)

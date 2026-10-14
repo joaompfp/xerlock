@@ -22,8 +22,9 @@ evidence and shows its working. *Elementary* - though, unlike the original, it c
 sources: every calculation is documented against the standard it follows in
 [docs/METHODOLOGY.md](docs/METHODOLOGY.md).
 
-**Try it locally** - one click loads a sample data-centre fit-out, or
-upload your own `.xer` (parsed in memory, never stored).
+**Try it in your browser: <https://joaompfp.github.io/xerlock/>** - nothing to install, and
+your `.xer` never leaves your computer: it is parsed on your own machine, not uploaded. One
+click loads a sample data-centre fit-out.
 
 Built for project controls professionals: the checks follow the DCMA 14-Point Assessment, the
 critical path follows P6's own definitions (AACE 49R-06), and every computed figure is either
@@ -204,7 +205,11 @@ origin: no CDN, nothing for a corporate proxy to block. The first visit download
 (measured on GitHub Pages) for the Python runtime; the browser caches it afterwards. Results are identical to the
 server's: the test suite and CI build both modes.
 
-Experimental: this is the prototype of XERlock's no-install distribution.
+A hosted copy is published at <https://joaompfp.github.io/xerlock/>, rebuilt from `main` on
+every push. To host it yourself (e.g. on an intranet web server), download
+`xerlock-standalone-<version>.zip` from the [releases](https://github.com/joaompfp/xerlock/releases)
+and serve its contents at the root of a site. To serve it under a sub-path, build it with
+`npm run build:standalone -- --base=/your/path/`.
 
 ## Deploy
 

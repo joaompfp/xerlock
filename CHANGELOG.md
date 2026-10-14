@@ -4,6 +4,18 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.1.0] - 2026-10-14
+
+### Added
+- Standalone build: the same Python parsing core and CPM engine the server runs, executed in
+  the browser under Pyodide in a Web Worker. No server; the `.xer` never leaves the user's
+  computer. Published at https://joaompfp.github.io/xerlock/ and attached to this release
+  as `xerlock-standalone-1.1.0.zip` for hosting on any static web server.
+
+### Changed
+- The parsing core moved from `backend/main.py` to `backend/xer.py` so that both builds run
+  the same code; the server's API and results are unchanged.
+
 ## [1.0.0] - 2026-10-13
 
 First release. XERlock reviews a Primavera P6 `.xer` export read-only, in memory, and shows
@@ -39,4 +51,5 @@ its working: every figure is either P6's own value or recomputed and checked aga
 - Licensed AGPL-3.0-or-later with an attribution term (see NOTICE); contributions under
   the CLA. Versions published before 12 October 2026 remain available under MIT.
 
+[1.1.0]: https://github.com/joaompfp/xerlock/releases/tag/v1.1.0
 [1.0.0]: https://github.com/joaompfp/xerlock/releases/tag/v1.0.0
