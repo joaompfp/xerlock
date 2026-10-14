@@ -1,8 +1,8 @@
 # SPEC: CPM recalculation engine and DCMA 12 Critical Path Test
 
-Status: **draft for a future iteration**, not started. Written 2026-10-12 to hand to an
-implementing agent. Read `docs/METHODOLOGY.md` first: it defines every figure the app
-already shows, and this spec builds on those definitions.
+Status: **implemented** in v1.0.0 (PR #15, 2026-10-12). Kept as the design record;
+`docs/METHODOLOGY.md` ("Recalculation") is the authoritative description of the rules as
+built, including where they depart from this draft.
 
 ## 1. Objective
 
