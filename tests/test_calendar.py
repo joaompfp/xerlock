@@ -8,7 +8,7 @@ including the nested-group shape that once silently produced empty weekdays.
 
 from datetime import date
 
-from backend.main import parse_calendar_data, parse_calendars
+from backend.xer import parse_calendar_data, parse_calendars
 
 # The real shape P6 emits: a params group, then a *children group* holding nodes.
 BLOB = (

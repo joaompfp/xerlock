@@ -2,7 +2,7 @@
 options, CPLI. Each is something an auditor would recompute by hand, so each test
 states the hand calculation."""
 
-from backend.main import percent_complete, schedule_options_for
+from backend.xer import percent_complete, schedule_options_for
 
 
 def test_cpli_hand_calculation(schedule):

@@ -6,7 +6,7 @@ That only holds if the parser reproduces the file verbatim — no reordering, no
 silent row loss, no column drift.
 """
 
-from backend.main import parse_raw_tables, RAW_TABLE_ROW_CAP
+from backend.xer import parse_raw_tables, RAW_TABLE_ROW_CAP
 
 XER = "\n".join([
     "ERMHDR\t15.2\t2026-03-02\tProject\tADMIN\tdemo\tdbxDatabaseNoName\tProject Management\tEUR",

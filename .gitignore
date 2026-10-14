@@ -14,3 +14,7 @@ dist/
 # test artefacts
 .pytest_cache/
 __pycache__/
+
+# Standalone (in-browser) build: generated assets and output
+frontend/.standalone-public/
+frontend/dist-standalone/

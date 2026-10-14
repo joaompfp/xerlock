@@ -5,7 +5,7 @@ driving logic, and the dates shown on screen. If one of these changes silently,
 the tool is lying to its user, so each is pinned explicitly.
 """
 
-from backend.main import safe_float, safe_float_or
+from backend.xer import safe_float, safe_float_or
 
 
 # ── Project-level stats ──────────────────────────────────────────────────────
