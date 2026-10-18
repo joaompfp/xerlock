@@ -4,6 +4,31 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.2.0] - unreleased
+
+### Added
+- Microsoft Project files. Project XML (File > Save As > XML) is read by both builds;
+  `.mpp` (Project 98 to current) on the server, converted in memory by MPXJ (LGPL-2.1,
+  Java; the container carries a headless JRE). Every view and check works on them. Project's
+  own stored dates, slack, critical flags, actuals, Baseline 0, constraints and calendars are
+  read, never recomputed; the recalculation and the Critical Path Test are not yet available
+  for Project files and say so. `docs/METHODOLOGY.md` maps every field and check.
+- Project-specific checks: manually scheduled tasks, logic on summary tasks, elapsed and
+  percentage lags, inactive tasks (left out of every population and counted).
+- `project.source_format` (`xer` | `mspdi` | `mpp`) in the API, and the UI names the file's
+  own tool. Checks that need a P6-only concept report "not checkable" with the reason.
+- `examples/sample-schedule.xml`: the demo project as Project would save it, on the upload
+  screen beside the `.xer` sample.
+- `scripts/fetch_msp_corpus.sh` and `scripts/msp_corpus.py`: MPXJ's test corpus at a pinned
+  commit, and an aggregate report of what parses and whether `.mpp` and XML twins agree.
+
+### Changed
+- The parsing core is split into readers (`backend/xer.py`, `backend/mspdi.py`,
+  `backend/mpp.py`) and shared analysis (`backend/analysis.py`); `backend/schedule.py` picks
+  the reader from the file's content. `.xer` results are unchanged apart from the new
+  `source_format` field (verified byte-for-byte on the sample and on 12 real exports).
+- The upload endpoint accepts `.xer`, `.xml` and `.mpp`.
+
 ## [1.1.0] - 2026-10-14
 
 ### Added
@@ -51,5 +76,6 @@ its working: every figure is either P6's own value or recomputed and checked aga
 - Licensed AGPL-3.0-or-later with an attribution term (see NOTICE); contributions under
   the CLA. Versions published before 12 October 2026 remain available under MIT.
 
+[1.2.0]: https://github.com/joaompfp/xerlock/compare/v1.1.0...main
 [1.1.0]: https://github.com/joaompfp/xerlock/releases/tag/v1.1.0
 [1.0.0]: https://github.com/joaompfp/xerlock/releases/tag/v1.0.0

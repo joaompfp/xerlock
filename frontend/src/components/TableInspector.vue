@@ -3,15 +3,16 @@
     <div class="view-bar">
       <div class="strip-title">
         <span class="strip-sub">
-          Every table in the .xer, verbatim — audit what the file actually contains, not this app's interpretation.
-          <template v-if="ermhdr.version"> P6 {{ ermhdr.version }} &middot; exported {{ ermhdr.export_date }}</template>
+          Every {{ isProject ? 'record' : 'table' }} in the file, verbatim — audit what the file actually contains, not this app's interpretation.
+          <template v-if="ermhdr.version && isProject"> Microsoft Project, save version {{ ermhdr.version }} &middot; saved {{ ermhdr.export_date }}</template>
+          <template v-else-if="ermhdr.version"> P6 {{ ermhdr.version }} &middot; exported {{ ermhdr.export_date }}</template>
         </span>
       </div>
     </div>
 
     <div v-if="omitted" class="empty-state">
       The browser-cached copy of this schedule is too large to keep the raw tables.
-      Re-upload the original .xer file to inspect them.
+      Re-upload the original file to inspect them.
     </div>
     <div v-else-if="tableNames.length === 0" class="empty-state">No raw tables available for this file.</div>
 
@@ -100,6 +101,7 @@
 import { defineComponent, type PropType } from 'vue'
 import type { RawTable } from '../types/schedule'
 import type { StoredSchedule } from '../utils/lastFile'
+import { isProjectFile } from '../utils/source'
 
 const PAGE_SIZE = 200
 
@@ -136,6 +138,9 @@ export default defineComponent({
     },
     omitted(): boolean {
       return !!this.data.raw_tables_omitted
+    },
+    isProject(): boolean {
+      return isProjectFile(this.data.project)
     },
     ermhdr(): StoredSchedule['ermhdr'] {
       return this.data.ermhdr || {}

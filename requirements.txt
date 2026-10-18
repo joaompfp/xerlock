@@ -4,3 +4,7 @@ PyP6XER==1.16.0
 fastapi==0.143.0
 uvicorn==0.54.0
 python-multipart==0.0.32
+# Microsoft Project .mpp files (server only): MPXJ (LGPL-2.1, Java) through JPype. Needs a
+# JRE on the machine; the Dockerfile installs one. The standalone build does not use them.
+mpxj==16.10.0
+JPype1==1.7.1

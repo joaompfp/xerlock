@@ -55,7 +55,13 @@
          the passes collapse to a quiet strip, and what can't be checked is a footnote.
          Colour covers a small fraction of the view, so failures are pre-attentive. -->
     <!-- The settings every computed date depends on. Read before trusting any of them. -->
-    <div v-if="schedOpts.present" class="hc-options">
+    <div v-if="isProjectFile" class="hc-options">
+      <span class="hc-group-label">Microsoft Project scheduling settings</span>
+      <span v-for="o in mspOptionRows" :key="o.label" class="hc-opt" :class="{ warn: o.warn }" :title="o.warn || ''">
+        {{ o.label }} <b>{{ o.value }}</b>
+      </span>
+    </div>
+    <div v-else-if="schedOpts.present" class="hc-options">
       <span class="hc-group-label">P6 scheduling options</span>
       <span v-for="o in schedOptionRows" :key="o.label" class="hc-opt" :class="{ warn: o.warn }" :title="o.warn || ''">
         {{ o.label }} <b>{{ o.value }}</b>
@@ -156,6 +162,23 @@
               <td><span class="code">{{ r.succ.task_code }}</span><span class="tbl-name">{{ r.succ.task_name }}</span></td>
               <td class="num-cell">{{ formatDate(displayStart(r.succ)) }}</td>
               <td class="num-cell">{{ formatHours(r.succ.duration_hrs, r.succ.calendar_hrs_per_day) }}</td>
+              <td class="tg-cell"><button class="to-gantt" title="Show in Gantt" @click.stop="$emit('jump', r.succ.task_id)">↗</button></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h4 v-if="relationshipStats.oddLags.length">Elapsed &amp; percentage lags — {{ relationshipStats.oddLags.length }}</h4>
+        <p v-if="relationshipStats.oddLags.length" class="section-note">An elapsed lag counts on the 24-hour clock, not the calendar; a percentage lag is a share of the predecessor's duration and moves when that duration changes. The lag column shows each as working hours.</p>
+        <table v-if="relationshipStats.oddLags.length" class="health-table">
+          <thead><tr><th>Predecessor</th><th>Type</th><th class="num">Lag</th><th>Kind</th><th>Successor</th><th class="num">Start</th><th class="tg-th"></th></tr></thead>
+          <tbody>
+            <tr v-for="(r, i) in relationshipStats.oddLags" :key="'odd' + i" class="jump-row" title="Show details" @click="openDetail(r.succ.task_id)">
+              <td><span class="code">{{ codeOf(r.predId) }}</span><span class="tbl-name">{{ predOf(r.predId)?.task_name }}</span></td>
+              <td>{{ relTypeLabels[r.type] || r.type }}</td>
+              <td class="num-cell">{{ formatLag(r.lag, r.succ.calendar_hrs_per_day) }}</td>
+              <td><span class="issue-badge issue-warn">{{ r.pct != null ? r.pct + '% of predecessor' + (r.elapsed ? ', elapsed' : '') : 'Elapsed' }}</span></td>
+              <td><span class="code">{{ r.succ.task_code }}</span><span class="tbl-name">{{ r.succ.task_name }}</span></td>
+              <td class="num-cell">{{ formatDate(displayStart(r.succ)) }}</td>
               <td class="tg-cell"><button class="to-gantt" title="Show in Gantt" @click.stop="$emit('jump', r.succ.task_id)">↗</button></td>
             </tr>
           </tbody>
@@ -311,7 +334,7 @@
     <section class="health-section" v-if="availability.missed" ref="sec-missed">
       <button class="section-head" @click="toggle('missed')">
         <span class="section-title">Missed Tasks <em>({{ missedTasksList.length }})</em></span>
-        <span class="section-hint">Planned to finish by the data date but still open, or finished late (DCMA 11). Measured against P6's Planned Finish, not a baseline — a single .xer carries none</span>
+        <span class="section-hint">Planned to finish by the data date but still open, or finished late (DCMA 11). {{ isProjectFile ? "Measured against the file's Baseline 0 finish" : "Measured against P6's Planned Finish, not a baseline — a single .xer carries none" }}</span>
         <span class="chevron" :class="{ open: expanded.missed }">&rsaquo;</span>
       </button>
       <div v-if="expanded.missed" class="section-body">
@@ -381,6 +404,54 @@
       </div>
     </section>
 
+    <!-- Microsoft Project: manually scheduled tasks -->
+    <section class="health-section" v-if="availability.manual" ref="sec-manual">
+      <button class="section-head" @click="toggle('manual')">
+        <span class="section-title">Manually Scheduled Tasks <em :class="{ pass: manualList.length === 0 }">({{ manualList.length }})</em></span>
+        <span class="section-hint">Incomplete tasks in Manual task mode: Project keeps their typed dates and does not move them for their predecessors, so logic through them is not a calculation and their float is not a measure</span>
+        <span class="chevron" :class="{ open: expanded.manual }">&rsaquo;</span>
+      </button>
+      <div v-if="expanded.manual" class="section-body">
+        <div v-if="manualList.length === 0" class="empty-state">✓ Every incomplete task is auto-scheduled.</div>
+        <table v-else class="health-table">
+          <thead><tr><th>Code</th><th>Activity</th><th class="num">Start</th><th class="num">Finish</th><th class="num">Float</th><th>WBS</th><th class="tg-th"></th></tr></thead>
+          <tbody>
+            <tr v-for="a in manualList" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
+              <td class="code">{{ a.task_code }}</td>
+              <td class="name-cell">{{ a.task_name }}</td>
+              <td class="num-cell">{{ formatDate(displayStart(a)) }}</td>
+              <td class="num-cell">{{ formatDate(displayEnd(a)) }}</td>
+              <td class="num-cell">{{ formatFloat(a.total_float_hrs, a.calendar_hrs_per_day) }}</td>
+              <td class="wbs-cell">{{ a.wbs_path }}</td>
+            <td class="tg-cell"><button class="to-gantt" title="Show in Gantt" @click.stop="$emit('jump', a.task_id)">↗</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Microsoft Project: relationships on summary tasks -->
+    <section class="health-section" v-if="availability.summarylogic" ref="sec-summarylogic">
+      <button class="section-head" @click="toggle('summarylogic')">
+        <span class="section-title">Logic on Summary Tasks <em :class="{ pass: summaryLinkList.length === 0 }">({{ summaryLinkList.length }})</em></span>
+        <span class="section-hint">Relationships with a summary task at either end. Project allows them; they move every task under the summary at once, unseen in the task logic, and are left out of the network shown here</span>
+        <span class="chevron" :class="{ open: expanded.summarylogic }">&rsaquo;</span>
+      </button>
+      <div v-if="expanded.summarylogic" class="section-body">
+        <div v-if="summaryLinkList.length === 0" class="empty-state">✓ Every relationship joins two tasks.</div>
+        <table v-else class="health-table">
+          <thead><tr><th>Predecessor</th><th>Type</th><th class="num">Lag</th><th>Successor</th></tr></thead>
+          <tbody>
+            <tr v-for="(l, i) in summaryLinkList" :key="'sl' + i">
+              <td><span class="issue-badge" :class="l.pred_is_summary ? 'issue-severe' : 'issue-warn'">{{ l.pred_is_summary ? 'Summary' : 'Task' }}</span> <span class="tbl-name">{{ l.pred_name }}</span></td>
+              <td>{{ relTypeLabels[l.type] || l.type }}</td>
+              <td class="num-cell">{{ formatLag(l.lag_hrs, data.activities[0]?.calendar_hrs_per_day || 8) }}</td>
+              <td><span class="issue-badge" :class="l.succ_is_summary ? 'issue-severe' : 'issue-warn'">{{ l.succ_is_summary ? 'Summary' : 'Task' }}</span> <span class="tbl-name">{{ l.succ_name }}</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- Driving path cross-check -->
     <section class="health-section" v-if="drivingPathAvailable" ref="sec-driving">
       <button class="section-head" @click="toggle('driving')">
@@ -408,7 +479,7 @@
     <section class="health-section" v-if="recalculation" ref="sec-recalc">
       <button class="section-head" @click="toggle('recalc')">
         <span class="section-title">Recalculation <em v-if="recalculation.supported" :class="{ pass: recalcDifferences.length === 0 }">({{ recalculation.differing }})</em><em v-else>(—)</em></span>
-        <span class="section-hint">The schedule rescheduled in memory from its own logic, durations, calendars, constraints, progress and options, against the dates and float P6 stored — a difference means an edit without a reschedule, or a feature the engine does not model</span>
+        <span class="section-hint">The schedule rescheduled in memory from its own logic, durations, calendars, constraints, progress and options, against the dates and float {{ toolName }} stored — a difference means an edit without a reschedule, or a feature the engine does not model</span>
         <span class="chevron" :class="{ open: expanded.recalc }">&rsaquo;</span>
       </button>
       <div v-if="expanded.recalc" class="section-body">
@@ -416,10 +487,10 @@
         <template v-else>
           <p class="section-note">
             {{ recalculation.compared }} activities compared on early and late dates, total and free float
-            ({{ recalculation.excluded.complete }} completed{{ recalculation.excluded.wbs_summary ? ', ' + recalculation.excluded.wbs_summary + ' WBS summaries' : '' }} excluded: P6 computes no remaining dates or float for them).
+            ({{ recalculation.excluded.complete }} completed{{ recalculation.excluded.wbs_summary ? ', ' + recalculation.excluded.wbs_summary + ' WBS summaries' : '' }} excluded: {{ toolName }} computes no remaining dates or float for them).
             Engine settings from the file: {{ progressModeLabel }}, {{ floatTypeLabel }}, lag on the {{ lagCalendarLabel }} calendar.
           </p>
-          <div v-if="recalcDifferences.length === 0" class="empty-state">✓ Every recalculated date and float matches P6's stored value to the minute.</div>
+          <div v-if="recalcDifferences.length === 0" class="empty-state">✓ Every recalculated date and float matches {{ toolName }}'s stored value to the minute.</div>
           <template v-else>
             <div class="rel-mix">
               <div v-for="f in recalcFieldOrder" :key="f" class="rel-mix-item">
@@ -429,7 +500,7 @@
             </div>
             <p v-if="recalculation.truncated" class="section-note">Showing the first {{ recalcDifferences.length }} differences.</p>
             <table class="health-table">
-              <thead><tr><th>Code</th><th>Activity</th><th>Field</th><th class="num">Recalculated</th><th class="num">P6 stored</th><th class="num">Δ</th><th class="tg-th"></th></tr></thead>
+              <thead><tr><th>Code</th><th>Activity</th><th>Field</th><th class="num">Recalculated</th><th class="num">{{ toolName }} stored</th><th class="num">Δ</th><th class="tg-th"></th></tr></thead>
               <tbody>
                 <tr v-for="(d, i) in recalcDifferences" :key="i" class="jump-row" title="Show details" @click="openDetail(d.activity.task_id)">
                   <td class="code">{{ d.activity.task_code }}</td>
@@ -547,11 +618,11 @@ import { REL_TYPE_LABELS, CSTR_LABELS, displayStart, displayEnd } from '../utils
 import { CHECK_DEFS, CFG_VERSION, defaultConfig, runChecks, weightedScore } from '../utils/healthChecks'
 import type { CheckDef, CheckKey, CheckResult, HealthConfig } from '../utils/healthChecks'
 import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
-import type { Activity, Schedule, ScheduleOptions } from '../types/schedule'
+import type { Activity, MspOptions, Schedule, ScheduleOptions } from '../types/schedule'
 import type { Annotations } from '../utils/annotations'
 
 type Checks = ReturnType<typeof runChecks>
-type SectionKey = 'openEnds' | 'rel' | 'constraints' | 'alap' | 'negfloat' | 'highfloat' | 'invdates'
+type SectionKey = 'openEnds' | 'rel' | 'constraints' | 'alap' | 'negfloat' | 'highfloat' | 'invdates' | 'manual' | 'summarylogic'
   | 'missed' | 'highdur' | 'loe' | 'driving' | 'recalc' | 'cpt' | 'oos' | 'resources'
 
 const RECALC_FIELD_LABELS: Record<string, string> = {
@@ -610,6 +681,8 @@ export default defineComponent({
         cpt: true,
         oos: false,
         resources: false,
+        manual: true,
+        summarylogic: true,
       } as Record<SectionKey, boolean>,
       showConfig: false,
       selectedTaskId: null as number | null,
@@ -668,6 +741,24 @@ export default defineComponent({
           warn: o.use_expected_finish ? 'Expected Finish lets an entered date set remaining duration instead of the estimate' : '' },
       ]
     },
+    // Microsoft Project's own settings, as the file stores them (backend/mspdi.py).
+    mspOptionRows(): { label: string; value: string; warn?: string }[] {
+      const o: Partial<MspOptions> = this.data.project.msp_options || {}
+      const yn = (v: boolean | null | undefined) => (v == null ? '—' : v ? 'Yes' : 'No')
+      return [
+        { label: 'Status date', value: o.status_date ? formatDate(o.status_date) : 'none',
+          warn: o.status_date ? '' : 'Without a status date the data date is unknown, so the date-based checks cannot run' },
+        { label: 'Schedule from', value: o.schedule_from_start == null ? '—' : o.schedule_from_start ? 'Project start' : 'Project finish',
+          warn: o.schedule_from_start === false ? 'Scheduled from the finish: every task is As Late As Possible by default' : '' },
+        { label: 'Critical', value: `TS ≤ ${o.critical_slack_limit_days ?? 0} d` },
+        { label: 'Multiple critical paths', value: yn(o.multiple_critical_paths),
+          warn: o.multiple_critical_paths ? 'Every open-ended chain is marked critical, not only the longest' : '' },
+        { label: 'Honour constraint dates', value: yn(o.honor_constraints) },
+        { label: 'New tasks manual', value: yn(o.new_tasks_manual),
+          warn: o.new_tasks_manual ? 'New tasks are created manually scheduled: check the Manually Scheduled Tasks list' : '' },
+        { label: 'Hours per day', value: `${(o.minutes_per_day ?? 480) / 60}` },
+      ]
+    },
     // All check logic lives in utils/healthChecks.js; these are views onto one run.
     checks(): Checks {
       return runChecks(this.data, this.cfg)
@@ -692,6 +783,10 @@ export default defineComponent({
     recalcDifferences(): Checks['recalcDifferences'] { return this.checks.recalcDifferences },
     criticalPathTest(): Checks['criticalPathTest'] { return this.checks.criticalPathTest },
     naReasons(): Checks['naReasons'] { return this.checks.naReasons },
+    manualList(): Checks['manualList'] { return this.checks.manualList },
+    summaryLinkList(): Checks['summaryLinkList'] { return this.checks.summaryLinkList },
+    isProjectFile(): boolean { return this.checks.isProjectFile },
+    toolName(): string { return this.checks.toolName },
     availability(): Checks['availability'] { return this.checks.availability },
     // The engine's reading of the file's options, in the words the options strip uses.
     progressModeLabel(): string {

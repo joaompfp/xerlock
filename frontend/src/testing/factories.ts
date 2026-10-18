@@ -29,7 +29,7 @@ export function makeProject(over: Partial<ProjectSummary> = {}): ProjectSummary 
     total_longest_path: 0, total_negative_float: 0, total_milestones: 0, total_complete: 0,
     total_active: 0, total_not_started: 0, pct_complete: 0, earliest_start: null, latest_end: null,
     data_date: '2026-03-02 08:00', has_resources: false, has_activity_codes: false,
-    activity_code_types: [], cpli: null,
+    activity_code_types: [], cpli: null, source_format: 'xer',
     ...over,
   }
 }

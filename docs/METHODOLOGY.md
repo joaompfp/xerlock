@@ -3,7 +3,9 @@
 How XERlock computes every figure it shows, which standard each one follows, and where it
 departs from that standard. Written for a reviewer who has to defend a finding: each
 definition names the `.xer` fields it reads, so it can be re-checked by hand in the
-**Raw tables** view against the file as exported.
+**Raw tables** view against the file as exported. Microsoft Project files are mapped into
+the same vocabulary; the section *Microsoft Project files* names the MSPDI element behind
+each field and the checks that do not apply.
 
 ## The principle: read P6's results, recompute to cross-check
 
@@ -335,6 +337,96 @@ additive or subtractive). It is the evidence-gathering step those methods start 
   - Spreading is linear in calendar time, not working time. At monthly resolution the
     difference is small, and the curve does not depend on calendar decoding.
 
+## Microsoft Project files
+
+XERlock reads Microsoft Project files since 1.2.0: Project XML (File > Save As > XML, the
+MSPDI format) anywhere, and `.mpp` (Project 98 to current) on the server, where
+[MPXJ](https://www.mpxj.org) converts the `.mpp` to MSPDI in memory and the same reader
+reads the result. The file is mapped into the P6 vocabulary the rest of XERlock uses
+(`backend/mspdi.py`), so every view and check works the same way; this section says what
+each field and check means on a Project file and where the meaning differs. Element
+names below are the MSPDI ones, as the **Raw tables** view shows them (one table per
+record type: Project, Tasks, PredecessorLinks, TaskBaselines, Calendars, CalendarWeekDays,
+CalendarExceptions, Resources, Assignments; nested records carry their parent's UID as
+the first column; nothing is interpreted).
+
+**The principle holds: Project's own stored values, nothing recomputed.** Each figure is
+read from the file; the recomputed figures are the same ones as for P6 (driving links,
+Longest Path, CPLI) and the recalculation is **not yet available** for Project files
+(phase 3 of `SPEC-MSPROJECT.md`): the Health Check says so, and the Critical Path Test is
+withheld. The mapping was verified against MPXJ's MSPDI reader source and on MPXJ's test
+corpus (`scripts/fetch_msp_corpus.sh`, 609 `.mpp` and 143 MSPDI files saved by Project
+98-2019; `scripts/msp_corpus.py` reports the aggregates).
+
+| Field | Read from | Rule |
+|---|---|---|
+| Activity id (`task_code`) | Task `UID` | Project's row `ID` renumbers when rows move, so Compare matches on the unique id (shown as the code; Project's Unique ID column) |
+| Name, WBS | `Name`, `OutlineLevel`, `WBS` | A task with children, flagged `Summary`, or UID 0 (the project summary) is a WBS node, not an activity; files without a UID 0 task get the project as root |
+| Early dates | `Start`, `Finish` | Project's scheduled dates. `EarlyStart`/`EarlyFinish` equal them on every task in the corpus (10,669 of 10,669) |
+| Late dates | `LateStart`, `LateFinish` | As stored |
+| Total float, free float | `TotalSlack`, `FreeSlack` | Tenths of a minute, shown in hours and days. Absent in Project's own XML means unknown (blank); after a `.mpp` conversion absent means zero, because MPXJ's writer omits zero slack (4,946 of 4,946 absent values in the corpus twins are 0 in Project's XML) |
+| Critical | `Critical` | Project's flag, as stored (Project: total slack ≤ `CriticalSlackLimit`, and not manually scheduled) |
+| Duration, remaining | `Duration`, `RemainingDuration` | ISO 8601 (`PT40H0M0S`) in hours; days are `MinutesPerDay` per day for every task, as Project converts them |
+| Status | `ActualStart`, `ActualFinish` | Not started / in progress / complete from which actuals exist |
+| % complete | `PercentComplete` | Project's duration % complete (`CP_Drtn`) |
+| Planned dates (`target_start`/`target_end`) | `Baseline` number 0 | Blank when no baseline was saved; Missed Tasks is then not checkable |
+| Constraints | `ConstraintType`, `ConstraintDate` | 0 none, 1 ALAP, 2 Must Start On → **Mandatory Start**, 3 Must Finish On → **Mandatory Finish**, 4/5 Start No Earlier/Later Than → Start On or After/Before, 6/7 Finish No Earlier/Later Than → Finish On or After/Before. Must Start/Finish On map to P6's Mandatory constraints because Project holds the date against later logic and shows the conflict as negative slack (corpus file `slack9.mpp`: a Must Finish On milestone kept at its date while its predecessor finishes a day later); P6's Start/Finish On would let logic move the date. `HonorConstraints` cannot refine this: Project writes 0 and MPXJ 1 for the same project, so it is shown but not used |
+| Deadline | `Deadline` | Shown on the activity; not a constraint (DCMA 05 does not count it), though it bounds the late finish and so can produce negative slack |
+| Milestones | `Milestone` with zero `Duration` | A finish milestone (`TT_FinMile`): Project places a zero-duration milestone at the instant its FS predecessor finishes (Friday 17:00, not Monday 08:00), which is P6's finish-milestone convention. A task flagged milestone with a duration stays a task |
+| Relationships | `PredecessorLink` `Type` 0 FF, 1 FS, 2 SF, 3 SS; `LinkLag` in tenths of a minute | Links to tasks in other project files (`CrossProject`) are left out with a warning |
+| Lag kinds | `LagFormat` | Elapsed units (em, eh, ed, ew, emo, e%) count on the 24-hour clock: the driving rule uses that calendar for them. Percentage lags are `LinkLag` % of the predecessor's duration, converted to hours. Both are listed by the *Elapsed & percentage lags* check |
+| Lag calendar | — | A lag counts on the successor's task calendar, else the project calendar (Microsoft's rule for lead and lag time); XERlock's `lag_calendar` is therefore *successor*. Every lagged link in the corpus has both ends on the same calendar, so the corpus confirms only that lags are working time (the 24-hour reading matched none of the 136 lagged links), not the choice of calendar |
+| Calendars | `Calendars`, `WeekDays`, `Exceptions` | Day types 1-7 = Sunday-Saturday, as P6. A derived calendar inherits the days and exceptions of its `BaseCalendarUID` and overrides what it defines. Exceptions are the `Exceptions` list (Project 2007 and later) or, when the list is absent, the legacy `DayType` 0 entries; recurring exceptions (daily, weekly, monthly, yearly, absolute and relative) are expanded to dates the way MPXJ's `RecurringData` expands them. Hours per day are the project's `MinutesPerDay` |
+| Task calendar | `CalendarUID` | The task's own calendar, else the project calendar (`CalendarUID` on the project) |
+| Data date | `StatusDate` | Blank when the file has none (a warning says so); the checks that compare dates with it, and the CPLI, are then not checkable. `CurrentDate` is the save date, not a status date, and is not used |
+| Resources | `Resources`, `Assignments` | Resource names per task; DCMA 10 runs when the file has named resources |
+| Inactive tasks | `Active` 0 | Left out of every population, with their relationships; counted (Project 2010 and later) |
+| Manual tasks | `Manual` 1 | Kept as activities, flagged `manual`; listed by the *Manually scheduled tasks* check |
+| Critical threshold | `CriticalSlackLimit` | Days, converted with `MinutesPerDay` |
+| Version | `SaveVersion`, `LastSaved` | Shown in the Raw tables header |
+
+**Not mapped** (visible in the raw tables only): outline codes and custom fields (P6
+activity codes stay empty), resource calendars' effect on task dates, timephased data,
+subprojects' contents beyond what the file embeds (a warning counts them), alternate
+work weeks (`WorkWeeks`: none in the corpus; the base week applies throughout), and
+elapsed task durations (`DurationFormat` in elapsed units: the stored hours are shown,
+divided by the project day like any other duration, so "3 edays" reads as 72 h).
+
+**Checks on Project files.** The DCMA checks run unchanged on the mapped fields. Those
+that need a P6-only concept say so instead of guessing:
+
+| Check | On a Project file |
+|---|---|
+| Driving path cross-check | Not checkable: Project stores no Longest Path flag. The recomputed Longest Path stands alone |
+| LOE on critical | Not applicable: Project has no level-of-effort task type |
+| Recalculation, Critical Path Test (DCMA 12) | Not yet available (phase 3). The Critical Path Test is withheld |
+| Invalid dates (DCMA 09), Missed tasks (DCMA 11), CPLI (DCMA 13) | Not checkable without a `StatusDate`; Missed tasks also needs a Baseline 0 |
+| Longest Path | Traced through driving links from Project's stored dates exactly as for P6. Project keeps a completed predecessor's real finish where P6 resets it to the data date, so on a progressed Project file the trace ends at the first activity held by the status date; completed work is not on it |
+
+**Project-specific checks** (source "XERlock"), not applicable to P6 files:
+
+| Check | Finding | Measured as | Default target |
+|---|---|---|---|
+| Manually scheduled tasks | Incomplete task in Manual task mode (`Manual` 1): its dates are typed, not placed by logic, so the path through it is not a calculation and its float is not a measure | count | 0 |
+| Logic on summary tasks | A relationship with a summary task at either end. Project allows it; it moves every task under the summary at once, unseen in the task logic. Reported from the file; such links are not part of the network XERlock traces | count | 0 |
+| Elapsed & percentage lags | A lag in elapsed units (24-hour clock) or as a percentage of the predecessor's duration, on a link into incomplete work | count | 0 |
+| Inactive tasks | Tasks with `Active` 0, left out of every population. Deactivated scope deserves a look | count | 0 |
+
+**Scheduling settings** shown above the results for a Project file: status date,
+schedule from start or finish, critical slack limit, multiple critical paths, honour
+constraint dates, new tasks manual, hours per day. They are the file's own values
+(`msp_options`), shown so a reviewer reads them before trusting a date.
+
+**`.mpp` files.** MPXJ reads the `.mpp` and writes it as MSPDI; the result is read like
+any Project XML and marked `mpp`. On the corpus, every `.mpp` saved alongside an MSPDI
+file by the same Project version was read through both paths and compared on dates,
+float, flags, constraints and links; the remaining differences come from what MPXJ
+reads from the binary format, not from the reader: MPXJ reads a different task mode
+(`Manual`) than Project wrote in its XML on some Project 2010-2019 files, and Project's
+`Critical` flag and the Start No Earlier Than constraint it keeps on manually scheduled
+tasks follow from that. The corpus report lists the counts. Password-protected files are
+refused with MPXJ's message.
+
 ## Not done
 
 - Modelling of resource-dependent activities, resource levelling, cross-project
@@ -354,7 +446,15 @@ additive or subtractive). It is the evidence-gathering step those methods start 
 - `scripts/cpm_oracle.py` runs the recalculation on any `.xer` files you hold and prints
   per-file match counts only (no activity content), for checking the engine against your
   own P6 exports.
+- `tests/test_mspdi.py` covers every Microsoft Project rule above on minimal MSPDI
+  documents, and the agreement of `examples/sample-schedule.xml` (the same demo project
+  as Project would save it) with the `.xer` sample on the critical set; `tests/test_mpp.py`
+  the `.mpp` conversion (skipped without a Java runtime).
+- `scripts/msp_corpus.py` runs both readers over MPXJ's test corpus and reports, in
+  aggregate, what parses, what is refused and why, and whether each `.mpp` agrees with
+  its MSPDI twin.
 - `npm run test:run` in `frontend/` covers each health-check rule on minimal synthetic
-  schedules, plus pinned finding counts on the sample.
+  schedules, plus pinned finding counts on both samples.
 - For any finding, the **Raw tables** view shows the exact `TASK`, `TASKPRED`, `CALENDAR`
-  and `SCHEDOPTIONS` rows it came from.
+  and `SCHEDOPTIONS` rows (or, for a Project file, the Tasks, PredecessorLinks and
+  Calendars records) it came from.

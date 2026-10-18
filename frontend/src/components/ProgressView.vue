@@ -69,7 +69,7 @@
       <div class="section-body">
         <p class="section-note">
           Weighted by duration across {{ curve ? curve.totalDays : 0 }} working days of task work; milestones and level of effort excluded.
-          "Planned" uses this file's P6 planned dates, not a locked baseline.
+          "Planned" uses {{ isProject ? "the file's Baseline 0 dates" : "this file's P6 planned dates, not a locked baseline" }}.
           <template v-if="curve && curve.skipped">{{ curve.skipped }} activities without planned dates are left out of the planned line.</template>
         </p>
         <div v-if="!curve || curve.points.length < 2" class="empty-state warn">Not enough date data to draw a trend.</div>
@@ -105,6 +105,7 @@ import { formatDate, formatHours, formatFloat, isMilestone } from '../utils/form
 import { displayEnd } from '../utils/p6'
 import { durationSCurve, type SCurve, type SCurvePoint } from '../utils/sCurve'
 import type { Activity, Schedule } from '../types/schedule'
+import { isProjectFile } from '../utils/source'
 
 type MilestoneStatus = 'achieved' | 'on-track' | 'watch' | 'at-risk' | 'unknown'
 type CurveSeries = 'planned' | 'actual' | 'forecast'
@@ -138,6 +139,7 @@ export default defineComponent({
     }
   },
   computed: {
+    isProject(): boolean { return isProjectFile(this.data.project) },
     dataDateObj(): Date | null {
       return this.data.project.data_date ? new Date(this.data.project.data_date) : null
     },

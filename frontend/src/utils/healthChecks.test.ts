@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import fixture from './fixtures/sample-schedule.json'
+import xmlFixture from './fixtures/sample-schedule-xml.json'
 import { runChecks, defaultConfig, weightedScore } from './healthChecks'
 import type { CheckResult } from './healthChecks'
 import type { Activity, CriticalPathTest, ProjectSummary, Recalculation, ScheduleCore } from '../types/schedule'
@@ -27,22 +28,80 @@ describe('runChecks on the sample schedule', () => {
         "hardcstr": 2,
         "highdur": 2,
         "highfloat": 5,
+        "inactive": 0,
         "invdates": 0,
         "lags": 4,
         "leads": 0,
         "loe": 0,
+        "manual": 0,
         "missed": 4,
         "negfloat": 0,
         "noresource": 0,
+        "oddlags": 0,
         "oos": 2,
         "openends": 2,
         "recalc": 0,
+        "summarylogic": 0,
       }
     `)
   })
 
   it('scores', () => {
     expect(weightedScore(out.results, defaultConfig())).toMatchInlineSnapshot(`58`)
+  })
+})
+
+// Fixture: the backend's parse of examples/sample-schedule.xml, the same demo project as
+// Project would save it, plus one manual task, one inactive task, one summary
+// relationship and one deadline. tests/test_mspdi.py keeps it current.
+const sampleXml: ScheduleCore = xmlFixture
+
+describe('runChecks on the Project XML sample', () => {
+  const out = runChecks(sampleXml, defaultConfig())
+
+  it('produces the pinned finding counts', () => {
+    expect(counts(out.results)).toMatchInlineSnapshot(`
+      {
+        "alap": 0,
+        "cpli": 1,
+        "cpt": 0,
+        "driving": 0,
+        "fs": 93,
+        "hardcstr": 2,
+        "highdur": 2,
+        "highfloat": 5,
+        "inactive": 1,
+        "invdates": 0,
+        "lags": 4,
+        "leads": 0,
+        "loe": 0,
+        "manual": 1,
+        "missed": 4,
+        "negfloat": 0,
+        "noresource": 0,
+        "oddlags": 0,
+        "oos": 2,
+        "openends": 2,
+        "recalc": 0,
+        "summarylogic": 1,
+      }
+    `)
+  })
+
+  it('names what cannot be checked on a Project file, and why', () => {
+    expect(out.isProjectFile).toBe(true)
+    expect(out.availability.driving).toBe(false)
+    expect(out.naReasons.driving).toMatch(/stores no Longest Path flag/)
+    expect(out.availability.loe).toBe(false)
+    expect(out.availability.recalc).toBe(false)
+    expect(out.naReasons.recalc).toMatch(/not yet available for Microsoft Project files/)
+    expect(out.naReasons.cpt).toMatch(/withheld: not yet available/)
+    expect(out.availability.manual).toBe(true)
+    expect(out.availability.missed).toBe(true)   // the sample has a Baseline 0
+  })
+
+  it('scores', () => {
+    expect(weightedScore(out.results, defaultConfig())).toMatchInlineSnapshot(`42`)
   })
 })
 
@@ -158,5 +217,59 @@ describe('recalculation and the Critical Path Test', () => {
     const fail = run([act()], { recalculation: recalc(), critical_path_test: cptResult({ passed: false, finish_delta_hrs: 0, absorbed_by_task_id: 1 }) })
     expect(fail.results.cpt).toMatchObject({ count: 1, pass: false, included: true, display: 'Fail' })
     expect(fail.criticalPathTest?.absorbed_by_task_id).toBe(1)
+  })
+})
+
+describe('Microsoft Project rules', () => {
+  const msp = { source_format: 'mspdi' as const }
+
+  it('are not applicable to a P6 file, and say so', () => {
+    const out = run([act()])
+    for (const k of ['manual', 'summarylogic', 'oddlags', 'inactive'] as const) {
+      expect(out.availability[k]).toBe(false)
+      expect(out.naReasons[k]).toMatch(/not applicable: a P6 file/)
+    }
+    expect(out.availability.loe).toBe(true)
+  })
+
+  it('counts manually scheduled tasks among incomplete work', () => {
+    const out = run([act({ manual: true }), act({ manual: true, status: 'TK_Complete' }), act()], msp)
+    expect(out.results.manual.count).toBe(1)
+    expect(out.manualList.map(a => a.manual)).toEqual([true])
+  })
+
+  it('counts relationships on summary tasks from the backend list', () => {
+    const summary_links = [{ pred_id: 1, pred_name: 'Phase', pred_is_summary: true, succ_id: 2, succ_name: 'Task', succ_is_summary: false, type: 'PR_FS', lag_hrs: 0 }]
+    expect(run([act()], { ...msp, summary_links }).results.summarylogic.count).toBe(1)
+  })
+
+  it('lists elapsed and percentage lags, not ordinary ones', () => {
+    const a = act(), b = act(), c = act(), d = act()
+    link(a, b, 'PR_FS', 8); b.predecessors[0].lag_elapsed = true
+    link(a, c, 'PR_FS', 8); c.predecessors[0].lag_pct = 50
+    link(a, d, 'PR_FS', 8)
+    const out = run([a, b, c, d], msp)
+    expect(out.results.oddlags.count).toBe(2)
+    expect(out.relationshipStats.oddLags.map(l => [l.elapsed, l.pct])).toEqual([[true, null], [false, 50]])
+  })
+
+  it('reports inactive tasks as a count, from the backend', () => {
+    expect(run([act()], { ...msp, inactive_activities: 3 }).results.inactive.count).toBe(3)
+  })
+
+  it('withholds the date checks without a status date, and Missed Tasks without a baseline', () => {
+    const noDate = run([act()], { ...msp, data_date: null })
+    expect(noDate.availability.invdates).toBe(false)
+    expect(noDate.naReasons.invdates).toMatch(/no status date/)
+    const noBaseline = run([act({ target_end: null })], msp)
+    expect(noBaseline.availability.missed).toBe(false)
+    expect(noBaseline.naReasons.missed).toMatch(/no Baseline 0/)
+    expect(run([act({ target_end: '2026-02-20 16:00:00' })], msp).availability.missed).toBe(true)
+  })
+
+  it('does not run the driving cross-check or LOE on a Project file', () => {
+    const out = run([act({ task_type: 'TT_LOE', is_critical: true })], msp)
+    expect(out.availability.driving).toBe(false)
+    expect(out.availability.loe).toBe(false)
   })
 })

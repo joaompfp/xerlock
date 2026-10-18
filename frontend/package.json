@@ -1,9 +1,9 @@
 {
   "name": "xerlock",
-  "description": "XERlock — self-hosted, read-only Primavera P6 .xer review tool: Gantt, critical path, health checks, progress, compare",
+  "description": "XERlock — self-hosted, read-only Primavera P6 .xer and Microsoft Project review tool: Gantt, critical path, health checks, progress, compare",
   "license": "AGPL-3.0-or-later",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

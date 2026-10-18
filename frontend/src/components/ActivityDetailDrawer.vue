@@ -52,6 +52,18 @@
           <span v-if="activity.cstr_date2">{{ formatDate(activity.cstr_date2) }}</span>
         </template>
       </div>
+      <!-- Microsoft Project only: a deadline bounds the late finish without being a
+           constraint; a manually scheduled task owes its dates to nobody. -->
+      <div v-if="activity.deadline" class="detail-constraint">
+        <span class="constraint-label">Deadline</span>
+        <strong>{{ formatDate(activity.deadline) }}</strong>
+        <span>&middot; late finish bounded; not a constraint</span>
+      </div>
+      <div v-if="activity.manual" class="detail-constraint">
+        <span class="constraint-label">Task mode</span>
+        <strong>Manually scheduled</strong>
+        <span>&middot; dates typed in, not placed by logic</span>
+      </div>
 
       <!-- The driving chain, not two flat lists: what actually controls this
            activity's dates, in sequence, with the link type and lag per hop. -->

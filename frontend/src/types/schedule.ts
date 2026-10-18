@@ -1,13 +1,18 @@
-// The shape of POST /api/upload's response (backend/main.py: parse_xer), the one contract
-// between parser and UI. Dates are P6 timestamps as strings ("YYYY-MM-DD HH:MM[:SS]");
-// durations, float and lags are hours. tests/test_fixture.py keeps a parsed sample in
-// utils/fixtures/, and healthChecks.test.ts types it as Schedule, so the backend and
+// The shape of POST /api/upload's response (backend/main.py: parse_schedule), the one
+// contract between parser and UI. The vocabulary is P6's: a Microsoft Project file is
+// mapped into it by backend/mspdi.py (docs/METHODOLOGY.md, "Microsoft Project files").
+// Dates are timestamps as strings ("YYYY-MM-DD HH:MM[:SS]"); durations, float and lags
+// are hours. tests/test_fixture.py and tests/test_mspdi.py keep parsed samples in
+// utils/fixtures/, and healthChecks.test.ts types them as Schedule, so the backend and
 // these declarations cannot drift apart unnoticed.
 //
 // Fields marked optional were added after the first release. Snapshots saved in users'
 // browsers (utils/snapshots.ts) may predate them, so every reader must cope without them.
 
 export type P6Date = string
+
+/** Which tool wrote the file. Absent on snapshots saved before 1.2.0, which are all .xer. */
+export type SourceFormat = 'xer' | 'mspdi' | 'mpp'
 
 export type RelType = 'PR_FS' | 'PR_SS' | 'PR_FF' | 'PR_SF'
 export type TaskType = 'TT_Task' | 'TT_Rsrc' | 'TT_Mile' | 'TT_StartMile' | 'TT_FinMile' | 'TT_LOE' | 'TT_WBS'
@@ -23,6 +28,10 @@ export interface Relationship {
   /** Relationship free float in working hours; driving when it is zero. */
   free_float_hrs?: number | null
   driving: boolean
+  /** Microsoft Project only: the lag counts on the 24-hour clock (e.g. "2ed"). */
+  lag_elapsed?: boolean
+  /** Microsoft Project only: a percentage lag; lag_hrs is that share of the predecessor's duration. */
+  lag_pct?: number | null
 }
 
 export interface ActivityCode {
@@ -68,6 +77,10 @@ export interface Activity {
   target_end: P6Date | null
   activity_codes: ActivityCode[]
   resource_names: string[]
+  /** Microsoft Project only: manually scheduled (Task Mode), so logic does not place it. */
+  manual?: boolean
+  /** Microsoft Project only: a deadline, which bounds the late finish without being a constraint. */
+  deadline?: P6Date | null
 }
 
 export interface ScheduleOptions {
@@ -136,6 +149,33 @@ export interface CriticalPathTest {
   absorbed_by_task_id: number | null
 }
 
+/** Microsoft Project only: a relationship with a summary task at one or both ends. */
+export interface SummaryLink {
+  pred_id: number
+  pred_name: string
+  pred_is_summary: boolean
+  succ_id: number
+  succ_name: string
+  succ_is_summary: boolean
+  type: RelType | string
+  lag_hrs: number
+  lag_elapsed?: boolean
+  lag_pct?: number | null
+}
+
+/** Microsoft Project only: the file's own scheduling settings, as stored. */
+export interface MspOptions {
+  schedule_from_start: boolean | null
+  honor_constraints: boolean | null
+  minutes_per_day: number
+  critical_slack_limit_days: number
+  multiple_critical_paths: boolean | null
+  new_tasks_manual: boolean | null
+  splits_in_progress_tasks: boolean | null
+  status_date: P6Date | null
+  current_date: P6Date | null
+}
+
 export interface ProjectSummary {
   proj_short_name: string
   total_activities: number
@@ -159,6 +199,12 @@ export interface ProjectSummary {
   cpli?: Cpli | null
   recalculation?: Recalculation | null
   critical_path_test?: CriticalPathTest | null
+  /** Normally a SourceFormat; kept open as JSON fixtures and snapshots widen it to string. */
+  source_format?: SourceFormat | string
+  /** Microsoft Project only: inactive tasks, left out of every population. */
+  inactive_activities?: number | null
+  summary_links?: SummaryLink[] | null
+  msp_options?: MspOptions | null
 }
 
 export interface WbsNode {

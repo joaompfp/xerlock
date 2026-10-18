@@ -76,7 +76,11 @@
    "expected_delta_hrs": 4800.0,
    "finish_delta_hrs": 4800.0,
    "absorbed_by_task_id": null
-  }
+  },
+  "source_format": "xer",
+  "inactive_activities": null,
+  "summary_links": null,
+  "msp_options": null
  },
  "activities": [
   {
