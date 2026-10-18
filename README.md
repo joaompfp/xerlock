@@ -4,14 +4,15 @@
 
 ![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue) ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB) ![Vue 3](https://img.shields.io/badge/vue-3-42b883) ![Self-hosted](https://img.shields.io/badge/self--hosted-yes-8250df)
 
-**Review a contractor's programme in full - without a P6 license.** Upload a `.xer` export and get
+**Review a contractor's programme in full - without a P6 or Project licence.** Upload a P6 `.xer`
+export, a Microsoft Project XML file or a `.mpp` and get
 an interactive Gantt chart, a critical-path network diagram, configurable DCMA-14-style schedule
 quality checks, calendar and raw-table inspection, progress tracking, and snapshot comparison -
 everything a planner needs to review a schedule in detail, self-hosted so the file never leaves
 your own infrastructure.
 
 The name is the promise: XERlock is **locked read-only**. It never modifies, never re-saves, and
-never stores your `.xer` - files are parsed in memory and discarded.
+never stores your file - files are parsed in memory and discarded.
 
 It is also, you will have noticed, a detective. Every programme arrives with a story - "the
 critical path runs through commissioning", "we are on track for practical completion" - and
@@ -151,28 +152,48 @@ meaning. Works down to a phone, where the sidebar slides over from a hamburger.
 
 The **Load the sample project** button on the upload screen loads a synthetic 24-activity
 data-centre fit-out (realistic logic, a critical path, negative float, in-progress work) - the
-same file ships in [`examples/sample-schedule.xer`](examples/sample-schedule.xer).
+same file ships in [`examples/sample-schedule.xer`](examples/sample-schedule.xer). The link
+beside it loads the same project as Microsoft Project would save it
+([`examples/sample-schedule.xml`](examples/sample-schedule.xml)).
+
+## Microsoft Project files
+
+Since 1.2.0 XERlock reads Microsoft Project files too: **Project XML** (File > Save As >
+XML) in both builds, and **`.mpp`** (Project 98 to current) on the server, where
+[MPXJ](https://www.mpxj.org) converts it to Project XML in memory. The standalone build has no
+Java, so it asks for the XML. Every view and check works on them; the file's own stored
+dates, slack, critical flags, actuals, Baseline 0, constraints and calendars are read, never
+recomputed, and the checks that need a P6-only concept say "not checkable" and why. Project
+adds its own checks: manually scheduled tasks, logic on summary tasks, elapsed and percentage
+lags, inactive tasks. The recalculation and the Critical Path Test are not yet available for
+Project files. [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) ("Microsoft Project files") maps
+every field and check, with the evidence for each decision.
 
 ## Architecture
 
 ```
-┌────────────┐  .xer upload   ┌──────────────────┐
-│  Vue 3 SPA │ ─────────────▶ │ FastAPI backend   │
-│  (Vite)    │ ◀───────────── │ + PyP6XER parser  │
-└────────────┘  parsed JSON   └──────────────────┘
+┌────────────┐  file upload   ┌─────────────────────────────┐
+│  Vue 3 SPA │ ─────────────▶ │ FastAPI backend              │
+│  (Vite)    │ ◀───────────── │ readers: .xer (PyP6XER),     │
+└────────────┘  parsed JSON   │ Project XML, .mpp (MPXJ)     │
+                              └─────────────────────────────┘
 ```
 
-- **Backend** (`backend/main.py`): FastAPI + [PyP6XER](https://pypi.org/project/PyP6XER/).
-  One endpoint (`POST /api/upload`) parses the `.xer` in memory and returns the full schedule as
-  JSON - activities with float/constraints/actuals/codes, the WBS tree, and project stats
-  including a longest-path trace. **Nothing is persisted server-side**; files are parsed and
-  discarded.
+- **Backend** (`backend/main.py`): FastAPI. One endpoint (`POST /api/upload`) picks the reader
+  from the file's content (`backend/schedule.py`): `backend/xer.py` with
+  [PyP6XER](https://pypi.org/project/PyP6XER/) for `.xer`, `backend/mspdi.py` (standard
+  library only) for Project XML, `backend/mpp.py` with [MPXJ](https://www.mpxj.org) over JPype
+  for `.mpp`. `backend/analysis.py` derives what both formats share (driving links, Longest
+  Path, CPLI, WBS roll-ups) and returns the full schedule as JSON - activities with
+  float/constraints/actuals/codes, the WBS tree, and project stats. **Nothing is persisted
+  server-side**; files are parsed and discarded.
 - **Frontend** (`frontend/`): Vue 3 (Options API) + Vite, in strict TypeScript; `src/types/schedule.ts` declares the API contract, and the build fails if it drifts from what the backend returns. No UI framework - hand-rolled CSS on a
   design-token system. [dagre](https://github.com/dagrejs/dagre) computes the network layout;
   [ExcelJS](https://github.com/exceljs/exceljs) (lazy-loaded) generates the Excel exports.
   Annotations and the last-opened file live in `localStorage` only.
 - In production, FastAPI serves the built frontend from `frontend/dist/` - a single container
-  runs everything.
+  runs everything. The container carries a headless JRE for MPXJ; running outside it, install
+  a Java runtime (`JAVA_HOME`, or `java` on the path) to read `.mpp` files.
 
 ## Run locally
 
@@ -196,10 +217,11 @@ Open http://localhost:5173 - the dev server proxies `/api` to the backend on por
 cd frontend && npm install && npm run build:standalone    # -> frontend/dist-standalone/
 ```
 
-The same Python parsing core the server runs (`backend/xer.py`) runs in the browser under
-[Pyodide](https://pyodide.org), in a Web Worker. The output is plain static files: host them
+The same Python parsing core the server runs (`backend/xer.py`, `backend/mspdi.py`,
+`backend/analysis.py`) runs in the browser under [Pyodide](https://pyodide.org), in a Web
+Worker; `.mpp` files need Java and so the server, the page says to save them as XML. The output is plain static files: host them
 anywhere that serves files over HTTP (GitHub Pages, an intranet web server, any static host);
-there is no backend. **The `.xer` file never leaves the user's computer**, so parsing works with
+there is no backend. **The file never leaves the user's computer**, so parsing works with
 the network disconnected once the page has loaded. Everything is served from the app's own
 origin: no CDN, nothing for a corporate proxy to block. The first visit downloads about 6.5 MB
 (measured on GitHub Pages) for the Python runtime; the browser caches it afterwards. Results are identical to the
@@ -247,9 +269,13 @@ calendars, the driving rule and its agreement with P6's own Longest Path, the CP
 calculation, % complete per P6 type, float/day conversion, the display-date convention,
 calendar exception decoding, every CPM engine rule on a minimal network and exact reproduction
 of the sample - plus the API contract, including that no uploaded file survives the request.
-The frontend suite tests each health-check rule on a minimal synthetic schedule. Both suites run
-on every push (`.github/workflows/test.yml`). `scripts/cpm_oracle.py` checks the engine against
-your own P6 exports and prints match counts only, never activity content.
+`tests/test_mspdi.py` pins every Microsoft Project mapping rule on minimal XML documents and
+the agreement of the two samples; `tests/test_mpp.py` the `.mpp` conversion (skipped without
+Java; CI installs a JRE). The frontend suite tests each health-check rule on a minimal
+synthetic schedule. Both suites run on every push (`.github/workflows/test.yml`).
+`scripts/cpm_oracle.py` checks the engine against your own P6 exports and prints match counts
+only, never activity content; `scripts/fetch_msp_corpus.sh` and `scripts/msp_corpus.py` run
+the Project readers over MPXJ's test corpus and report aggregates.
 
 ## Development notes
 
