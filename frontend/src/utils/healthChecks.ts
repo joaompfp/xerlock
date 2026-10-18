@@ -3,12 +3,13 @@
 // unit-tested and audited in one place; docs/METHODOLOGY.md cites this file.
 
 import { HARD_CONSTRAINT_TYPES } from './p6'
-import type { Activity, RecalcDifference, ScheduleCore } from '../types/schedule'
+import { isProjectFile, toolName } from './source'
+import type { Activity, RecalcDifference, ScheduleCore, SummaryLink } from '../types/schedule'
 
 export type CheckKey =
   | 'openends' | 'leads' | 'lags' | 'fs' | 'hardcstr' | 'highfloat' | 'negfloat' | 'highdur'
   | 'invdates' | 'noresource' | 'missed' | 'cpt' | 'cpli' | 'oos' | 'alap' | 'loe' | 'driving'
-  | 'recalc'
+  | 'recalc' | 'manual' | 'summarylogic' | 'oddlags' | 'inactive'
 
 export interface CheckDef {
   key: CheckKey
@@ -71,7 +72,12 @@ export const CHECK_DEFS: readonly CheckDef[] = [
   { key: 'alap', source: 'XERlock', label: 'ALAP Constraints', section: 'alap', unit: 'count', cmp: 'lte', target: 0, weight: 1 },
   { key: 'loe', source: 'XERlock', label: 'LOE on Critical', section: 'loe', unit: 'count', cmp: 'lte', target: 0, weight: 1 },
   { key: 'driving', source: 'XERlock', label: 'Driving Path Cross-Check', section: 'driving', unit: 'count', cmp: 'lte', target: 0, weight: 1 },
-  { key: 'recalc', source: 'XERlock', label: 'Recalculation matches P6', section: 'recalc', unit: 'count', cmp: 'lte', target: 0, weight: 1 },
+  { key: 'recalc', source: 'XERlock', label: 'Recalculation matches the file', section: 'recalc', unit: 'count', cmp: 'lte', target: 0, weight: 1 },
+  // Microsoft Project files only (docs/METHODOLOGY.md, "Microsoft Project files").
+  { key: 'manual', source: 'XERlock', label: 'Manually scheduled tasks', section: 'manual', unit: 'count', cmp: 'lte', target: 0, weight: 1 },
+  { key: 'summarylogic', source: 'XERlock', label: 'Logic on summary tasks', section: 'summarylogic', unit: 'count', cmp: 'lte', target: 0, weight: 1 },
+  { key: 'oddlags', source: 'XERlock', label: 'Elapsed & percentage lags', section: 'rel', unit: 'count', cmp: 'lte', target: 0, weight: 1 },
+  { key: 'inactive', source: 'XERlock', label: 'Inactive tasks', section: null, unit: 'count', cmp: 'lte', target: 0, weight: 1 },
 ]
 
 // DCMA's population for its percentage metrics: incomplete activities, less
@@ -94,6 +100,9 @@ export interface LinkFinding {
   predId: number
   type: string
   lag: number
+  /** Microsoft Project lag kinds (oddLags only). */
+  elapsed?: boolean
+  pct?: number | null
 }
 
 export interface OpenEnd extends Activity {
@@ -135,6 +144,8 @@ export function runChecks(data: ScheduleCore, cfg: HealthConfig) {
   const acts = data.activities
   const byId = new Map(acts.map(a => [a.task_id, a]))
   const dd = data.project.data_date ? new Date(data.project.data_date) : null
+  const project = isProjectFile(data.project)
+  const tool = toolName(data.project)
 
   const scope = acts.filter(inScope)
 
@@ -173,6 +184,10 @@ export function runChecks(data: ScheduleCore, cfg: HealthConfig) {
     // DCMA 02-04 count the relationships of incomplete work: a lag on a link
     // between two finished activities can no longer move anything.
     const lagOverDays = cfg.lags.param ?? 0
+    // Microsoft Project lags that are not plain working time: elapsed (24-hour clock)
+    // or a percentage of the predecessor's duration. Both move with things a reviewer
+    // cannot see in the lag column, so each is listed.
+    const oddLags: LinkFinding[] = []
     let total = 0
     for (const a of scope) {
       for (const p of a.predecessors) {
@@ -180,13 +195,23 @@ export function runChecks(data: ScheduleCore, cfg: HealthConfig) {
         counts[p.type] = (counts[p.type] || 0) + 1
         if (p.lag_hrs < 0) leads.push({ succ: a, predId: p.task_id, type: p.type, lag: p.lag_hrs })
         else if (p.lag_hrs > 0 && p.lag_hrs / hrsPerDay(a) > lagOverDays) bigLags.push({ succ: a, predId: p.task_id, type: p.type, lag: p.lag_hrs })
+        if (p.lag_elapsed || p.lag_pct != null) oddLags.push({ succ: a, predId: p.task_id, type: p.type, lag: p.lag_hrs, elapsed: !!p.lag_elapsed, pct: p.lag_pct ?? null })
       }
     }
     leads.sort((x, y) => x.lag - y.lag)
     bigLags.sort((x, y) => y.lag - x.lag)
     const pctFs = total ? Math.round((100 * (counts.PR_FS || 0)) / total) : 100
-    return { total, counts, leads, bigLags, pctFs }
+    return { total, counts, leads, bigLags, oddLags, pctFs }
   })()
+
+  // Microsoft Project: a manually scheduled task sits where it was typed, so its dates
+  // owe nothing to its logic; the critical path through it is not a calculation.
+  const manualList = scope.filter(a => a.manual)
+  // Relationships on summary tasks: Project allows them, and they drive (or are driven
+  // by) every task under the summary, invisibly. Reported by the backend because the
+  // summary tasks themselves are WBS nodes here, not activities.
+  const summaryLinkList: SummaryLink[] = data.project.summary_links ?? []
+  const inactiveCount = data.project.inactive_activities ?? 0
 
   // Primary and secondary constraint both count: P6 applies both.
   const constraintList = acts
@@ -282,6 +307,10 @@ export function runChecks(data: ScheduleCore, cfg: HealthConfig) {
     const activity = byId.get(d.task_id)
     return activity ? [{ ...d, activity }] : []
   })
+  // DCMA 11 needs planned finishes: P6 always carries them; a Project file only when a
+  // baseline was saved.
+  const hasPlannedDates = acts.some(a => a.target_end)
+
   // Why a check cannot run on this file, where the reason is the file's rather than
   // the check's own (CheckDef.naReason).
   const naReasons: Partial<Record<CheckKey, string>> = {}
@@ -292,22 +321,42 @@ export function runChecks(data: ScheduleCore, cfg: HealthConfig) {
     naReasons.recalc = `not checkable: ${recalculation.reason}`
     naReasons.cpt = `withheld: ${recalculation.reason}`
   } else if (recalculation.differing) {
-    naReasons.cpt = `withheld: the recalculation differs from P6 on ${recalculation.differing} activit${recalculation.differing === 1 ? 'y' : 'ies'}`
+    naReasons.cpt = `withheld: the recalculation differs from ${tool} on ${recalculation.differing} activit${recalculation.differing === 1 ? 'y' : 'ies'}`
   } else if (!criticalPathTest) {
     naReasons.cpt = 'not performed: no incomplete activity on the Longest Path has a duration whose finish drives the path'
+  }
+  if (!dd) {
+    const why = project ? 'not checkable: the file has no status date' : 'not checkable: the file has no data date'
+    naReasons.invdates = why
+    naReasons.missed = why
+    naReasons.cpli = why
+  } else if (project && !hasPlannedDates) {
+    naReasons.missed = 'not checkable: the file has no Baseline 0, so there are no planned finishes to measure against'
+  }
+  if (project) {
+    naReasons.driving = 'not checkable: Microsoft Project stores no Longest Path flag to compare with the recomputed path'
+    naReasons.loe = 'not applicable: Microsoft Project has no level-of-effort task type'
+  } else {
+    const p6 = 'not applicable: a P6 file has no '
+    naReasons.manual = p6 + 'manually scheduled activities'
+    naReasons.summarylogic = p6 + 'relationships on WBS summaries'
+    naReasons.oddlags = p6 + 'elapsed or percentage lags'
+    naReasons.inactive = p6 + 'inactive activities'
   }
 
   const availability = {
     openends: true, leads: true, lags: true, fs: true, hardcstr: true, alap: true, negfloat: true,
-    highfloat: true, highdur: true, oos: true, loe: true,
+    highfloat: true, highdur: true, oos: true,
+    loe: !project,
     invdates: !!dd,
-    missed: !!dd,
+    missed: !!dd && (!project || hasPlannedDates),
     driving: drivingPathAvailable,
     noresource: data.project.has_resources,
     // DCMA 12 is reported only on a file the recalculation reproduces exactly.
     cpt: !!criticalPathTest,
     cpli: !!data.project.cpli,
     recalc: !!recalculation?.supported,
+    manual: project, summarylogic: project, oddlags: project, inactive: project,
   }
 
   // Per-check measurement: count of findings, the value the target is compared
@@ -335,6 +384,10 @@ export function runChecks(data: ScheduleCore, cfg: HealthConfig) {
       displayOverride: criticalPathTest ? (criticalPathTest.passed ? 'Pass' : 'Fail') : '—' },
     cpli: { count: cpli ?? 0, denom: 1, valueOverride: cpli ?? 0, displayOverride: cpli != null ? cpli.toFixed(2) : '—' },
     recalc: { count: recalculation?.differing ?? 0, denom: nAct },
+    manual: { count: manualList.length, denom: nAct },
+    summarylogic: { count: summaryLinkList.length, denom: nRel },
+    oddlags: { count: relationshipStats.oddLags.length, denom: nRel },
+    inactive: { count: inactiveCount, denom: nAct },
   }
   const results = {} as Record<CheckKey, CheckResult>
   for (const def of CHECK_DEFS) {
@@ -358,6 +411,7 @@ export function runChecks(data: ScheduleCore, cfg: HealthConfig) {
     highFloatList, invalidDatesList, plannedDoneCount, missedTasksList, highDurationList,
     loeOnCriticalList, drivingPathAvailable, drivingMismatchList, outOfSequenceList, noResourceList,
     recalculation, recalcDifferences, criticalPathTest, naReasons,
+    manualList, summaryLinkList, inactiveCount, isProjectFile: project, toolName: tool,
     availability, results,
   }
 }

@@ -7,7 +7,7 @@
           <XerlockMark :size="64" />
         </div>
         <h1>XERlock</h1>
-        <p class="subtitle">Review Primavera P6 schedules — no P6 license required.</p>
+        <p class="subtitle">Review Primavera P6 and Microsoft Project schedules — no licence required.</p>
         <p class="feature-strip">Interactive Gantt &middot; critical-path network &middot; configurable health checks &middot; calendar &amp; raw-table audit &middot; snapshot compare &middot; Excel review reports</p>
 
         <div class="reopen-card" v-if="lastFile">
@@ -28,20 +28,20 @@
           @drop.prevent="handleDrop"
           :class="{ active: dragOver }"
         >
-          <input type="file" accept=".xer" @change="handleFile" id="fileInput" />
+          <input type="file" :accept="accept" @change="handleFile" id="fileInput" />
           <label for="fileInput">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M12 5v14M5 12h14" />
             </svg>
-            <span v-if="!loading">Drop a .xer file here, or click to browse</span>
+            <span v-if="!loading">{{ dropPrompt }}</span>
             <span v-else class="loading">{{ parsingMessage }}</span>
           </label>
         </div>
         <p v-if="uploadError" class="upload-error">{{ uploadError }}</p>
-        <button v-if="!loading" class="sample-link" @click="loadSample">
+        <button v-if="!loading" class="sample-link" @click="loadSample()">
           No file handy? <strong>Load the sample project &rarr;</strong>
         </button>
-        <p v-if="!loading" class="sample-sub">A 24-activity data-centre fit-out with a real critical path, negative float, and in-progress work.</p>
+        <p v-if="!loading" class="sample-sub">A 24-activity data-centre fit-out with a real critical path, negative float, and in-progress work. <button class="sample-alt" @click="loadSample('xml')">The same project as Microsoft Project XML &rarr;</button></p>
         <p v-if="parserMode === 'local'" class="hint">XERlock is read-only by design — the lock in the name. <strong>Your file is parsed on this computer and never uploaded</strong>: it works with the network unplugged. Your last file is kept in this browser only, so you can reopen it without reloading.</p>
         <p v-else class="hint">XERlock is read-only by design — the lock in the name: files are parsed in memory, never stored, never modified. Your last file is kept in this browser only, so you can reopen it without re-uploading.</p>
         <a class="gh-link" href="https://github.com/joaompfp/xerlock" target="_blank" rel="noopener">
@@ -99,7 +99,7 @@
           <div class="sb-theme" role="group" aria-label="Colour theme">
             <button v-for="(label, key) in themeOptions" :key="key" :class="{ active: theme === key }" @click="theme = key">{{ label }}</button>
           </div>
-          <button class="sb-load" @click="data = null">Load another .xer</button>
+          <button class="sb-load" @click="data = null">Load another file</button>
           <!-- Same notice as the upload screen, so it stays reachable while the app is in use. -->
           <p class="sb-legal">
             AGPL-3.0 &middot; Based on XERlock by joaompfp &middot;
@@ -123,7 +123,7 @@
             <div class="tb-metric" v-if="data.project.total_negative_float > 0"><b class="is-crit">{{ data.project.total_negative_float }}</b><span>Neg. float</span></div>
             <div class="tb-metric"><b>{{ data.project.total_longest_path }}</b><span>Longest path</span></div>
             <div class="tb-metric"><b>{{ data.project.total_milestones }}</b><span>Milestones</span></div>
-            <div class="tb-metric tb-metric-pct" title="Share of activities with status Complete. A count, not weighted by duration, cost or units; per-activity % complete uses each activity's own P6 percent-complete type.">
+            <div class="tb-metric tb-metric-pct" title="Share of activities with status Complete. A count, not weighted by duration, cost or units; per-activity % complete uses each activity's own percent-complete type.">
               <b>{{ data.project.pct_complete }}%</b><span>Activities done</span>
               <i class="tb-bar"><u :style="{ width: data.project.pct_complete + '%' }"></u></i>
             </div>
@@ -419,12 +419,12 @@
             @drop.prevent="handleCompareDrop"
             :class="{ active: compareDragOver }"
           >
-            <input type="file" accept=".xer" @change="handleCompareFile" id="compareFileInput" />
+            <input type="file" :accept="accept" @change="handleCompareFile" id="compareFileInput" />
             <label for="compareFileInput">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M12 5v14M5 12h14" />
               </svg>
-              <span v-if="!compareLoading">Drop a .xer file here, or click to browse</span>
+              <span v-if="!compareLoading">{{ dropPrompt }}</span>
               <span v-else class="loading">Parsing schedule...</span>
             </label>
           </div>
@@ -460,6 +460,7 @@ import { compareBy, type SortDir } from './utils/sort'
 import { buildWbsRollups, type WbsRollup } from './utils/wbs'
 import type { Activity } from './types/schedule'
 import { parseSchedule, prepareParser, PARSER_MODE } from './utils/parseSchedule'
+import { ACCEPT, DROP_PROMPT, hasAcceptedExtension } from './utils/source'
 
 type Theme = 'light' | 'dark'
 type SortField = 'task_code' | 'task_name' | 'status' | 'pct_complete' | 'duration_hrs' | 'early_start' | 'early_end' | 'total_float_hrs'
@@ -493,6 +494,8 @@ export default defineComponent({
       loading: false,
       parsingNote: '',
       parserMode: PARSER_MODE,
+      accept: ACCEPT,
+      dropPrompt: DROP_PROMPT,
       dragOver: false,
       tab: 'gantt',
       search: '',
@@ -706,8 +709,8 @@ export default defineComponent({
       if (file) await this.uploadCompareFile(file)
     },
     async uploadCompareFile(file: File) {
-      if (!file.name.toLowerCase().endsWith('.xer')) {
-        alert('Only .xer files are accepted')
+      if (!hasAcceptedExtension(file.name)) {
+        alert('Only .xer, Microsoft Project XML and .mpp files are accepted')
         return
       }
       this.compareLoading = true
@@ -721,8 +724,8 @@ export default defineComponent({
       }
     },
     async uploadFile(file: File) {
-      if (!file.name.toLowerCase().endsWith('.xer')) {
-        alert('Only .xer files are accepted')
+      if (!hasAcceptedExtension(file.name)) {
+        alert('Only .xer, Microsoft Project XML and .mpp files are accepted')
         return
       }
       this.loading = true
@@ -737,19 +740,21 @@ export default defineComponent({
         saveLastFile(file.name, parsed)
         this.lastFile = loadLastFile()
       } catch (e) {
-        this.uploadError = `${(e as Error).message} — check the file is a P6 .xer export, or try the sample project below.`
+        this.uploadError = `${(e as Error).message} — check the file is a P6 .xer export or a Microsoft Project XML or .mpp file, or try the sample project below.`
       } finally {
         clearInterval(stageTimer)
         this.loading = false
       }
     },
-    async loadSample() {
-      // The bundled demo schedule (fully synthetic) — fetched from our own static assets
-      // and pushed through the exact same upload path as a user file.
+    async loadSample(kind: 'xer' | 'xml' = 'xer') {
+      // The bundled demo schedule (fully synthetic), as a P6 export or as Project would
+      // save it — fetched from our own static assets and pushed through the exact same
+      // upload path as a user file.
       try {
-        const res = await fetch(import.meta.env.BASE_URL + 'sample-schedule.xer')
+        const name = 'sample-schedule.' + kind
+        const res = await fetch(import.meta.env.BASE_URL + name)
         const blob = await res.blob()
-        await this.uploadFile(new File([blob], 'sample-schedule.xer'))
+        await this.uploadFile(new File([blob], name))
       } catch {
         this.uploadError = 'Could not load the sample project.'
       }
@@ -1097,6 +1102,8 @@ th.num { text-align: right !important; }
 .sample-link strong { color: var(--accent); }
 .sample-link:hover strong { text-decoration: underline; }
 .sample-sub { font: var(--text-micro); color: var(--gray-500); margin-top: 4px; }
+.sample-alt { border: none; background: none; cursor: pointer; font: inherit; color: var(--accent); padding: 0; }
+.sample-alt:hover { text-decoration: underline; }
 .upload-error { margin-top: var(--space-3); font: var(--text-small); color: var(--crit); background: var(--crit-tint); border: 1px solid var(--crit); border-radius: var(--radius-sm); padding: 8px 12px; }
 .tab-report-btn { margin-left: var(--space-2); margin-bottom: 4px; padding: 5px 12px; font: var(--text-small); font-weight: 700; color: var(--on-solid); background: var(--accent); border: none; border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap; }
 .tab-report-btn:hover { opacity: 0.92; }
