@@ -387,7 +387,10 @@ corpus (`scripts/fetch_msp_corpus.sh`, 609 `.mpp` and 143 MSPDI files saved by P
 
 **Not mapped** (visible in the raw tables only): outline codes and custom fields (P6
 activity codes stay empty), resource calendars' effect on task dates, timephased data,
-subprojects' contents beyond what the file embeds (a warning counts them).
+subprojects' contents beyond what the file embeds (a warning counts them), alternate
+work weeks (`WorkWeeks`: none in the corpus; the base week applies throughout), and
+elapsed task durations (`DurationFormat` in elapsed units: the stored hours are shown,
+divided by the project day like any other duration, so "3 edays" reads as 72 h).
 
 **Checks on Project files.** The DCMA checks run unchanged on the mapped fields. Those
 that need a P6-only concept say so instead of guessing:
