@@ -5,6 +5,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Microsoft Project .mpp files are read by MPXJ, a Java library (backend/mpp.py), so the
+# image carries a headless JRE. JPype finds it through JAVA_HOME.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends default-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
+ENV JAVA_HOME=/usr/lib/jvm/default-java
+
 # Every dependency ships as a binary wheel for this image, so no compiler is installed.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
