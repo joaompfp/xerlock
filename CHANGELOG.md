@@ -25,8 +25,9 @@ snapshots rely on, is a major version.
 ### Changed
 - The parsing core is split into readers (`backend/xer.py`, `backend/mspdi.py`,
   `backend/mpp.py`) and shared analysis (`backend/analysis.py`); `backend/schedule.py` picks
-  the reader from the file's content. `.xer` results are unchanged apart from the new
-  `source_format` field (verified byte-for-byte on the sample and on 12 real exports).
+  the reader from the file's content. `.xer` results are unchanged apart from four new optional
+  project fields (`source_format`, and `inactive_activities`, `summary_links` and
+  `msp_options`, which are null for P6), verified on the sample and on 12 real exports.
 - The upload endpoint accepts `.xer`, `.xml` and `.mpp`.
 
 ## [1.1.0] - 2026-10-14
