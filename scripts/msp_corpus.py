@@ -25,7 +25,7 @@ from backend.schedule import parse_schedule  # noqa: E402
 
 COMPARED = ("early_start", "early_end", "late_start", "late_end", "total_float_hrs",
             "free_float_hrs", "is_critical", "is_longest_path", "status", "task_type",
-            "cstr_type", "cstr_date", "act_start", "act_end", "duration_hrs")
+            "cstr_type", "cstr_date", "act_start", "act_end", "duration_hrs", "manual")
 
 
 def core(data):

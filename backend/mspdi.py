@@ -467,6 +467,13 @@ def read_mspdi(source, source_format: str = "mspdi") -> dict:
     g = _getter(root)
     warnings = []
 
+    # MPXJ's MSPDI writer leaves TotalSlack and FreeSlack out when they are zero
+    # (DatatypeConverter.printDurationInIntegerTenthsOfMinutes), so after a .mpp
+    # conversion an absent slack is a zero one. Project's own XML always writes them;
+    # there, absent stays unknown. Evidence: docs/METHODOLOGY.md, "Microsoft Project
+    # files".
+    absent_slack = 0.0 if source_format == "mpp" else None
+
     minutes_per_day = _int(g("MinutesPerDay"), 480) or 480
     hrs_per_day = minutes_per_day / 60
     hrs_per_week = (_int(g("MinutesPerWeek"), 2400) or 2400) / 60
@@ -531,7 +538,10 @@ def read_mspdi(source, source_format: str = "mspdi") -> dict:
     for task in tasks:
         if _flag(task["t"]("Active")) is False or (task["parent"] and task["parent"]["uid"] in inactive):
             inactive.add(task["uid"])
-    is_summary = {task["uid"]: task["children"] > 0 or _flag(task["t"]("Summary")) is True for task in tasks}
+    # UID 0 is the project summary task, a summary even when the file does not flag it
+    # (MPXJ's own reader makes the same assumption).
+    is_summary = {task["uid"]: task["children"] > 0 or _flag(task["t"]("Summary")) is True or task["uid"] == 0
+                  for task in tasks}
 
     wbs = []
     has_root = any(task["level"] == 0 for task in tasks)
@@ -609,6 +619,8 @@ def read_mspdi(source, source_format: str = "mspdi") -> dict:
         baseline = next((b for b in task["el"].findall(_T + "Baseline")
                          if (b.findtext(_T + "Number") or "0").strip() == "0"), None)
         tf = tenths_of_minutes_hours(t("TotalSlack"))
+        if tf is None:
+            tf = absent_slack
         activities.append({
             "task_id": uid,
             "task_code": str(uid),
