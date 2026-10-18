@@ -1,20 +1,19 @@
 """
-XERlock parsing core: a P6 .xer file in, the schedule structure out.
+XERlock's P6 reader: a .xer file in, the neutral intermediate out (see analysis.build),
+and `parse_xer` for the full schedule structure the API serves.
 
 Pure Python with no web framework, so it runs both behind the FastAPI app (backend/main.py)
 and in the browser under Pyodide, where the file never leaves the user's machine.
 """
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
 
 from xerparser.reader import Reader
 
-from backend import recalc
-from backend.cpm import lag_calendar
-from backend.worktime import ALL_HOURS, WorkCalendar
+from backend import analysis, recalc
 
 logger = logging.getLogger("schedule-app")
 
@@ -23,10 +22,6 @@ logger = logging.getLogger("schedule-app")
 # (TASKPRED on a 10k-activity file is ~30k rows, which still fits) but bounds the JSON
 # payload; the frontend surfaces `truncated` explicitly so nothing is silently dropped.
 RAW_TABLE_ROW_CAP = 50_000
-
-# A relationship drives its successor when its free float is zero. Dates in a .xer are
-# minute-resolution, so anything within a minute either side is zero.
-DRIVING_TOLERANCE_HRS = 1 / 60
 
 # P6 stores calendar exception dates as day serials with this epoch (Excel-compatible).
 _CAL_EPOCH = date(1899, 12, 30)
@@ -175,27 +170,6 @@ def parse_calendars(raw_tables: dict):
     return out
 
 
-def build_calendars(calendars: list, activities: list):
-    """Calendar register: each calendar with how many activities use it."""
-    assigned = {}
-    for a in activities:
-        assigned[a["clndr_id"]] = assigned.get(a["clndr_id"], 0) + 1
-    out = [{**c, "assigned_count": assigned.get(c["clndr_id"], 0)} for c in calendars]
-    # Most-used first; unused resource calendars sink to the bottom.
-    out.sort(key=lambda c: -c["assigned_count"])
-    return out
-
-def parse_p6_datetime(val):
-    """P6 dates arrive as datetime objects from PyP6XER or 'YYYY-MM-DD HH:MM' strings
-    from the raw tables."""
-    if val is None or isinstance(val, datetime):
-        return val
-    try:
-        return datetime.fromisoformat(str(val).strip())
-    except ValueError:
-        return None
-
-
 def schedule_options_for(raw_tables: dict, proj_id) -> dict:
     """The scheduling options P6 used for this project. Every computed date, float and
     critical flag in the file depends on them, so an auditor reads them first
@@ -261,10 +235,11 @@ def safe_float_or(val, default=999.0):
         return default
     return float(val)
 
-def parse_xer(filepath: str) -> dict:
-    """Parse a .xer into the schedule structure the API serves (see main.ScheduleData and
-    frontend/src/types/schedule.ts). Pure: no web framework, so the same code runs on the
-    server and, under Pyodide, in the browser."""
+
+
+def read_xer(filepath: str) -> dict:
+    """Read a .xer into the neutral intermediate (analysis.build documents its keys):
+    the file's own activities, links, WBS, calendars and options, with nothing derived."""
     # Raw pass first, independent of PyP6XER: decode as UTF-8 with cp1252 fallback
     # (P6's usual export encoding), so the table inspector shows accented characters
     # correctly even where the object parser drops them.
@@ -303,58 +278,14 @@ def parse_xer(filepath: str) -> dict:
             f"(also present: {others})."
         )
 
-    # Build WBS tree
-    wbs_dict = {}
-    for w in project.wbss:
-        wbs_dict[w.wbs_id] = {
-            "wbs_id": w.wbs_id,
-            "wbs_short_name": w.wbs_short_name,
-            "wbs_name": w.wbs_name,
-            "parent_wbs_id": w.parent_wbs_id if w.parent_wbs_id and w.parent_wbs_id != "0" else None,
-            "seq_num": int(getattr(w, "seq_num", 0) or 0),
-            "level": 0,
-            "children": [],
-            "activity_count": 0,
-        }
+    wbs = [{
+        "wbs_id": w.wbs_id,
+        "wbs_short_name": w.wbs_short_name,
+        "wbs_name": w.wbs_name,
+        "parent_wbs_id": w.parent_wbs_id if w.parent_wbs_id and w.parent_wbs_id != "0" else None,
+        "seq_num": int(getattr(w, "seq_num", 0) or 0),
+    } for w in project.wbss]
 
-    # Build parent-child relationships
-    root_ids = []
-    for wid, w in wbs_dict.items():
-        parent = w["parent_wbs_id"]
-        if parent and int(parent) in wbs_dict:
-            wbs_dict[int(parent)]["children"].append(wid)
-        else:
-            root_ids.append(wid)
-
-    # Assign levels
-    def assign_level(wid, level):
-        wbs_dict[wid]["level"] = level
-        for child in wbs_dict[wid]["children"]:
-            assign_level(child, level + 1)
-
-    for rid in root_ids:
-        assign_level(rid, 0)
-
-    # WBS breadcrumb per node (e.g. "MAIN WORKS / Level 01 / Electrical"), memoized
-    # since many activities share the same WBS chain.
-    wbs_path_cache = {}
-    def wbs_path_for(wid):
-        if wid is None or wid not in wbs_dict:
-            return ""
-        if wid in wbs_path_cache:
-            return wbs_path_cache[wid]
-        node = wbs_dict[wid]
-        if node["level"] == 0:
-            # The root WBS node is the project itself, already shown in the page header —
-            # omit it so breadcrumbs start from the first real WBS level.
-            path = ""
-        else:
-            parent_path = wbs_path_for(node["parent_wbs_id"])
-            path = f"{parent_path} / {node['wbs_name']}" if parent_path else node["wbs_name"]
-        wbs_path_cache[wid] = path
-        return path
-
-    # Build activity lookup
     cal_dict = {}
     cal_hrs_dict = {}
     for c in reader.calendars:
@@ -378,11 +309,11 @@ def parse_xer(filepath: str) -> dict:
             continue
         task_codes_map.setdefault(assignment.task_id, []).append({"type": type_name, "code": code_name})
 
-    # Resources: task.resources looks up TASKRSRC rows for the activity; resolve each to
-    # its RSRC name. Many contractor XER exports carry no resource data at all — degrade
-    # to empty lists/flags rather than erroring.
+    # Resources: TASKRSRC rows per activity, each resolved to its RSRC name. Many
+    # contractor XER exports carry no resource data at all — degrade to empty
+    # lists/flags rather than erroring. Indexed once from the raw table rather than
+    # through PyP6XER's per-task lookups, which rescan every row for every activity.
     rsrc_names = {res.rsrc_id: res.rsrc_name for res in reader.resources if res.rsrc_id}
-    # Indexed once from raw TASKRSRC for the same reason as TASKPRED above.
     task_rsrc = {}
     rsrc_tbl = raw_tables.get("TASKRSRC")
     if rsrc_tbl:
@@ -397,23 +328,12 @@ def parse_xer(filepath: str) -> dict:
                 if name:
                     task_rsrc.setdefault(tid, set()).add(name)
 
-    def resource_names_for(a):
-        return sorted(task_rsrc.get(a.task_id, ()))
-
-    # Build predecessor/successor maps. succ_map is derived from pred_map in a
-    # separate pass (rather than populated inline while building pred_map) because
-    # every activity unconditionally resets its own succ_map[tid] = [] when its turn
-    # in the project.activities loop comes up — if that reset ran after an earlier
-    # activity had already recorded itself as tid's successor, the earlier entry
-    # would be silently wiped. Deriving succ_map by inverting the completed pred_map
-    # afterward makes the result independent of iteration order.
-    # Built from the raw TASKPRED table in one pass rather than from PyP6XER's
-    # task.predecessors, which rescans every relationship row for every activity —
-    # O(activities x relationships). On a 4,217-activity export that was 96 million
-    # comparisons and about 25 of the 31 seconds spent parsing.
+    # Relationships from the raw TASKPRED table in one pass (PyP6XER's
+    # task.predecessors is O(activities x relationships): 96 million comparisons on a
+    # 4,217-activity export). Cross-project relationships point outside this schedule;
+    # the graph would dangle, so they are left out.
     own_ids = {a.task_id for a in project.activities}
-    pred_map = {tid: [] for tid in own_ids}
-    succ_map = {tid: [] for tid in own_ids}
+    links = []
     pred_tbl = raw_tables.get("TASKPRED")
     if pred_tbl:
         idx = {f: n for n, f in enumerate(pred_tbl["fields"])}
@@ -423,8 +343,6 @@ def parse_xer(filepath: str) -> dict:
                 pred_id = int(row[idx["pred_task_id"]])
             except (ValueError, KeyError, IndexError):
                 continue
-            # Cross-project relationships point outside this schedule; the graph
-            # would dangle, so they are left out (as they were before).
             if succ_id not in own_ids or pred_id not in own_ids:
                 continue
             lag_raw = row[idx["lag_hr_cnt"]] if "lag_hr_cnt" in idx else ""
@@ -432,135 +350,15 @@ def parse_xer(filepath: str) -> dict:
                 lag = float(lag_raw or 0)
             except ValueError:
                 lag = 0.0
-            pred_map[succ_id].append({
-                "task_id": pred_id,
+            links.append({
+                "pred_id": pred_id,
+                "succ_id": succ_id,
                 "type": row[idx["pred_type"]] if "pred_type" in idx else "",
                 "lag_hrs": lag,
             })
-    for tid, preds in pred_map.items():
-        for p in preds:
-            succ_map.setdefault(p["task_id"], []).append({
-                "task_id": tid,
-                "type": p["type"],
-                "lag_hrs": p["lag_hrs"],
-            })
 
-    # Driving relationships, the way P6 defines them: a link drives its successor when
-    # its *relationship free float* is zero — the successor's date sits exactly where
-    # the link (plus its lag) puts it, measured in working time. Measured in clock time
-    # instead, an ordinary Friday-to-Monday FS link shows a 64-hour "gap", nothing is
-    # ever exactly driving, and picking the closest predecessor marks links driving
-    # that P6 does not (an activity held by a constraint or by the data date has no
-    # driving predecessor at all, and the trace must stop there).
-    #   lag:  applied on the calendar the project's scheduling options name
-    #         (SCHEDOPTIONS.sched_calendar_on_relationship_lag);
-    #   gap:  measured on the successor's calendar, since P6 places the successor at
-    #         the first working moment on its own calendar after the link allows.
-    act_lookup = {a.task_id: a for a in project.activities}
     sched_options = schedule_options_for(raw_tables, project.proj_id)
-    work_cals = {c["clndr_id"]: WorkCalendar(c["weekdays"], c["exceptions"]) for c in calendars}
-    default_cal = next((work_cals[c["clndr_id"]] for c in calendars if c["default_flag"]), None)
-
-    def cal_of(a):
-        return work_cals.get(str(a.clndr_id)) or default_cal or ALL_HOURS
-
-    lag_basis = sched_options.get("lag_calendar", "rcal_Predecessor")
-
-    def lag_cal(pred_a, succ_a):
-        return lag_calendar(lag_basis, cal_of(pred_a), cal_of(succ_a), default_cal)
-
-    def relationship_free_float_hrs(succ_a, pred_a, link_type, lag_hrs):
-        """Working hours between where the link puts the successor and where it is.
-        None when either date is missing or the link type is unknown."""
-        ends = {
-            "PR_FS": (pred_a.early_end_date, succ_a.early_start_date),
-            "PR_SS": (pred_a.early_start_date, succ_a.early_start_date),
-            "PR_FF": (pred_a.early_end_date, succ_a.early_end_date),
-            "PR_SF": (pred_a.early_start_date, succ_a.early_end_date),
-        }.get(link_type)
-        if not ends or None in ends:
-            return None
-        implied = lag_cal(pred_a, succ_a).add_working_hours(ends[0], lag_hrs)
-        return cal_of(succ_a).working_hours_between(implied, ends[1])
-
-    for a in project.activities:
-        for p in pred_map.get(a.task_id, []):
-            pred_a = act_lookup.get(p["task_id"])
-            rff = relationship_free_float_hrs(a, pred_a, p["type"], p["lag_hrs"]) if pred_a else None
-            p["free_float_hrs"] = None if rff is None else round(rff, 2)
-            p["driving"] = rff is not None and abs(rff) <= DRIVING_TOLERANCE_HRS
-    # Mirror onto the successor lists so both directions of the panel carry the flag.
-    for tid, succs in succ_map.items():
-        for s in succs:
-            s["driving"] = False
-            s["free_float_hrs"] = None
-            for p in pred_map.get(s["task_id"], []):
-                if p["task_id"] == tid and p["type"] == s["type"] and p["lag_hrs"] == s["lag_hrs"]:
-                    s["driving"] = p["driving"]
-                    s["free_float_hrs"] = p["free_float_hrs"]
-                    break
-
-    # Longest Path (P6's alternate critical definition, AACE 49R-06's preferred one):
-    # from the activity finishing last, walk backward through driving links only. The
-    # chain ends where no link drives — at the project start, or at an activity held
-    # by a constraint or the data date. Computed independently of P6's own stored flag
-    # (driving_path_flag) so the two can be cross-checked: a disagreement means either
-    # this trace is wrong or the schedule was not recalculated after its last edit.
-    finish_activity = max(
-        (a for a in project.activities if not succ_map.get(a.task_id) and a.early_end_date),
-        key=lambda a: a.early_end_date,
-        default=None,
-    )
-    longest_path_ids = set()
-    if finish_activity:
-        finish_end = finish_activity.early_end_date
-        stack = [a.task_id for a in project.activities
-                 if not succ_map.get(a.task_id) and a.early_end_date == finish_end]
-        while stack:
-            tid = stack.pop()
-            if tid in longest_path_ids:
-                continue
-            longest_path_ids.add(tid)
-            stack.extend(p["task_id"] for p in pred_map.get(tid, []) if p["driving"])
-
-    # Critical Path Length Index (DCMA check 13): (CPL + TF) / CPL, where CPL is the
-    # working time from the data date to the project finish and TF the finish's total
-    # float. Below 0.95 the remaining path must be compressed to make the date.
-    cpli = None
-    data_date = parse_p6_datetime(project.last_recalc_date)
-    if finish_activity and data_date and finish_activity.total_float_hr_cnt is not None:
-        cpl_hrs = cal_of(finish_activity).working_hours_between(data_date, finish_activity.early_end_date)
-        if cpl_hrs > 0:
-            tf_hrs = float(finish_activity.total_float_hr_cnt)
-            cpli = {
-                "value": round((cpl_hrs + tf_hrs) / cpl_hrs, 3),
-                "cpl_hrs": round(cpl_hrs, 1),
-                "tf_hrs": tf_hrs,
-                "finish_task_id": finish_activity.task_id,
-            }
-
-    # Critical, as this project defines it (PROJECT.critical_path_type): either total
-    # float at or below the project's own threshold (critical_drtn_hr_cnt — P6's
-    # default is 0, but contracts often set it higher), or P6's Longest Path.
-    crit_threshold = sched_options["critical_float_hrs"]
-    p6_flags_present = any(a.driving_path_flag == "Y" for a in project.activities)
-
-    def critical(a, tf):
-        if sched_options["critical_type"] == "CT_DrivPath":
-            return (a.driving_path_flag == "Y") if p6_flags_present else a.task_id in longest_path_ids
-        return tf is not None and tf <= crit_threshold
-
     task_rows = {r.get("task_id"): r for r in table_records(raw_tables, "TASK")}
-
-    # Recalculate the schedule from its own logic and compare with what P6 stored;
-    # the Critical Path Test runs only when the two agree (see docs/METHODOLOGY.md).
-    recalculation, critical_path_test = recalc.run(
-        list(task_rows.values()), table_records(raw_tables, "TASKPRED"),
-        next((r for r in table_records(raw_tables, "PROJECT") if r.get("proj_id") == str(project.proj_id)), {}),
-        next((r for r in table_records(raw_tables, "SCHEDOPTIONS") if r.get("proj_id") == str(project.proj_id)), {}),
-        work_cals, default_cal, sorted(longest_path_ids),
-        hrs_per_day={c["clndr_id"]: c["day_hr_cnt"] for c in calendars},
-    )
     units_done = {}
     for r in table_records(raw_tables, "TASKRSRC"):
         act = sum(safe_float(_num(r.get(f))) for f in ("act_reg_qty", "act_ot_qty"))
@@ -569,90 +367,40 @@ def parse_xer(filepath: str) -> dict:
         units_done[r.get("task_id")] = (d + act, t + act + rem)
 
     activities = []
-    wbs_act_count = {}
     for a in project.activities:
-        wbs_act_count[a.wbs_id] = wbs_act_count.get(a.wbs_id, 0) + 1
-        es = str(a.early_start_date) if a.early_start_date else None
-        ee = str(a.early_end_date) if a.early_end_date else None
-        ls = str(a.late_start_date) if a.late_start_date else None
-        le = str(a.late_end_date) if a.late_end_date else None
-        cal_name = cal_dict.get(a.clndr_id, "")
-        tf = float(a.total_float_hr_cnt) if a.total_float_hr_cnt is not None else None
+        row = task_rows.get(str(a.task_id), {})
         activities.append({
             "task_id": a.task_id,
             "task_code": a.task_code,
             "task_name": a.task_name,
             "wbs_id": a.wbs_id,
-            "wbs_path": wbs_path_for(a.wbs_id),
             "status": a.status_code or "",
-            "pct_complete": percent_complete(task_rows.get(str(a.task_id), {}), units_done.get(str(a.task_id))),
-            "pct_complete_type": task_rows.get(str(a.task_id), {}).get("complete_pct_type", ""),
-            "early_start": es,
-            "early_end": ee,
-            "late_start": ls,
-            "late_end": le,
-            "total_float_hrs": tf,
+            "pct_complete": percent_complete(row, units_done.get(str(a.task_id))),
+            "pct_complete_type": row.get("complete_pct_type", ""),
+            "early_start": a.early_start_date,
+            "early_end": a.early_end_date,
+            "late_start": a.late_start_date,
+            "late_end": a.late_end_date,
+            "total_float_hrs": float(a.total_float_hr_cnt) if a.total_float_hr_cnt is not None else None,
             "free_float_hrs": safe_float(a.free_float_hr_cnt),
             "duration_hrs": safe_float(a.target_drtn_hr_cnt),
             "remain_duration_hrs": safe_float(a.remain_drtn_hr_cnt),
             "task_type": a.task_type or "",
             "clndr_id": str(a.clndr_id) if a.clndr_id is not None else "",
-            "calendar": cal_name,
+            "calendar": cal_dict.get(a.clndr_id, ""),
             "calendar_hrs_per_day": cal_hrs_dict.get(a.clndr_id, 8.0),
-            "predecessors": pred_map.get(a.task_id, []),
-            "successors": succ_map.get(a.task_id, []),
-            # Negative float is critical too (it is below any threshold);
-            # is_negative_float lets the frontend give it a visually distinct treatment.
-            "is_critical": critical(a, tf),
-            "is_longest_path": a.task_id in longest_path_ids,
-            "is_negative_float": tf is not None and tf < 0,
             "driving_path_flag": a.driving_path_flag == "Y",
             "cstr_type": a.cstr_type,
-            "cstr_date": str(a.cstr_date) if a.cstr_date else None,
+            "cstr_date": a.cstr_date,
             "cstr_type2": a.cstr_type2,
-            "cstr_date2": str(a.cstr_date2) if a.cstr_date2 else None,
-            "act_start": str(a.act_start_date) if a.act_start_date else None,
-            "act_end": str(a.act_end_date) if a.act_end_date else None,
-            "target_start": str(a.target_start_date) if a.target_start_date else None,
-            "target_end": str(a.target_end_date) if a.target_end_date else None,
+            "cstr_date2": a.cstr_date2,
+            "act_start": a.act_start_date,
+            "act_end": a.act_end_date,
+            "target_start": a.target_start_date,
+            "target_end": a.target_end_date,
             "activity_codes": task_codes_map.get(a.task_id, []),
-            "resource_names": resource_names_for(a),
+            "resource_names": sorted(task_rsrc.get(a.task_id, ())),
         })
-
-    # Update WBS activity counts
-    for wid in wbs_act_count:
-        if wid in wbs_dict:
-            wbs_dict[wid]["activity_count"] = wbs_act_count[wid]
-
-    # Build WBS tree as nested list
-    def build_tree(wid):
-        node = wbs_dict[wid].copy()
-        node["children"] = [build_tree(c) for c in wbs_dict[wid]["children"]]
-        return node
-
-    wbs_tree = [build_tree(rid) for rid in root_ids]
-
-    # Stats
-    total = len(activities)
-    critical = sum(1 for a in activities if a["is_critical"])
-    longest_path = sum(1 for a in activities if a["is_longest_path"])
-    negative_float = sum(1 for a in activities if a["is_negative_float"])
-    milestones = sum(1 for a in activities if a["task_type"] in ("TT_Mile", "TT_FinMile", "TT_StartMile"))
-    complete = sum(1 for a in activities if a["status"] == "TK_Complete")
-    active = sum(1 for a in activities if a["status"] == "TK_Active")
-    not_started = sum(1 for a in activities if a["status"] == "TK_NotStart")
-    pct = (complete / total * 100) if total > 0 else 0
-
-    # Project range uses the display-date convention (actual once started/finished,
-    # early otherwise): completed work's early dates are reset to the data date by P6,
-    # so an early-dates-only range would exclude everything already built.
-    starts = [(a["act_start"] or a["early_start"]) for a in activities]
-    ends = [(a["act_end"] or a["early_end"]) for a in activities]
-    earliest = min((d for d in starts if d), default=None)
-    latest = max((d for d in ends if d), default=None)
-
-    has_resources = len(rsrc_names) > 0
-    activity_code_types = sorted(set(actv_type_names.values()))
 
     # PyP6XER opens files with errors='ignore', which silently DROPS bytes that aren't valid
     # UTF-8, and P6 commonly exports cp1252, so accented characters in activity names can
@@ -663,34 +411,35 @@ def parse_xer(filepath: str) -> dict:
             "special characters in activity names may be missing."
         )
 
-    return dict(
-        project=dict(
-            proj_short_name=project.proj_short_name,
-            total_activities=total,
-            total_wbs=len(wbs_dict),
-            total_critical=critical,
-            total_longest_path=longest_path,
-            total_negative_float=negative_float,
-            total_milestones=milestones,
-            total_complete=complete,
-            total_active=active,
-            total_not_started=not_started,
-            pct_complete=round(pct, 1),
-            earliest_start=earliest,
-            latest_end=latest,
-            data_date=str(project.last_recalc_date) if project.last_recalc_date else None,
-            has_resources=has_resources,
-            has_activity_codes=len(activity_code_types) > 0,
-            activity_code_types=activity_code_types,
-            schedule_options=sched_options,
-            cpli=cpli,
-            recalculation=recalculation,
-            critical_path_test=critical_path_test,
-        ),
-        wbs_tree=wbs_tree,
-        activities=activities,
-        warnings=warnings,
-        calendars=build_calendars(calendars, activities),
-        raw_tables=raw_tables,
-        ermhdr=ermhdr,
-    )
+    pid = str(project.proj_id)
+    project_row = next((r for r in table_records(raw_tables, "PROJECT") if r.get("proj_id") == pid), {})
+    sched_row = next((r for r in table_records(raw_tables, "SCHEDOPTIONS") if r.get("proj_id") == pid), {})
+
+    def recalculate(work_cals, default_cal, longest_path_ids, hrs_per_day):
+        return recalc.run(list(task_rows.values()), table_records(raw_tables, "TASKPRED"),
+                          project_row, sched_row, work_cals, default_cal, longest_path_ids,
+                          hrs_per_day=hrs_per_day)
+
+    return {
+        "project": {
+            "proj_short_name": project.proj_short_name,
+            "data_date": str(project.last_recalc_date) if project.last_recalc_date else None,
+            "schedule_options": sched_options,
+        },
+        "activities": activities,
+        "links": links,
+        "wbs": wbs,
+        "calendars": calendars,
+        "has_resources": len(rsrc_names) > 0,
+        "activity_code_types": sorted(set(actv_type_names.values())),
+        "warnings": warnings,
+        "raw_tables": raw_tables,
+        "ermhdr": ermhdr,
+        "recalculate": recalculate,
+    }
+
+
+def parse_xer(filepath: str) -> dict:
+    """Parse a .xer into the schedule structure the API serves (see main.ScheduleData and
+    frontend/src/types/schedule.ts)."""
+    return analysis.build(read_xer(filepath))

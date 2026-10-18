@@ -7,7 +7,7 @@ elapsed clock time. A finish-to-start link from Friday 16:00 to Monday 08:00 on 
 Any test of "is this relationship driving?" or "how long is the remaining critical
 path?" has to be measured in the same units P6 used, or it is measuring weekends.
 
-Calendars come from ``parse_calendar_data`` in ``main``: weekday keys "1".."7" are
+Calendars come from ``parse_calendar_data`` in ``xer``: weekday keys "1".."7" are
 Sunday..Saturday, each a list of {"start": "HH:MM", "finish": "HH:MM"} periods; dated
 exceptions replace the weekday pattern for that date (no periods = non-working).
 """
