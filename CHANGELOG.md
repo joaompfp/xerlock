@@ -4,7 +4,7 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
-## [1.2.0] - unreleased
+## [1.2.0] - 2026-10-19
 
 ### Added
 - Microsoft Project files. Project XML (File > Save As > XML) is read by both builds;
