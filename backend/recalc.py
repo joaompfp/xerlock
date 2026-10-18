@@ -111,6 +111,22 @@ def _iso(v):
     return v.isoformat(sep=" ", timespec="minutes") if isinstance(v, datetime) else v
 
 
+def unsupported(reason: str, delay_days: int = CPT_DELAY_DAYS) -> dict:
+    """The report for a file the engine does not model at all (a format it has no
+    rules for yet): the same shape as `run` returns, with nothing compared."""
+    return {
+        "supported": False,
+        "reason": reason,
+        "options": {"progress_mode": "", "float_type": "", "lag_calendar": "", "delay_days": delay_days},
+        "compared": 0,
+        "excluded": {"complete": 0, "wbs_summary": 0},
+        "differing": 0,
+        "by_field": {f: 0 for f in cpm.DATE_FIELDS + cpm.FLOAT_FIELDS},
+        "differences": [],
+        "truncated": False,
+    }
+
+
 def run(task_rows: list, pred_rows: list, project: dict, sched: dict, calendars: dict,
         default_cal, longest_path_ids, delay_days: int = CPT_DELAY_DAYS, hrs_per_day=None):
     """The recalculation report and, when it reproduces P6, the Critical Path Test.

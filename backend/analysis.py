@@ -14,9 +14,21 @@ from datetime import datetime
 from backend.cpm import lag_calendar
 from backend.worktime import ALL_HOURS, WorkCalendar
 
+# Per-table row cap for the raw inspector. Far above any real single-project export
+# (TASKPRED on a 10k-activity file is ~30k rows, which still fits) but bounds the JSON
+# payload; the frontend surfaces `truncated` explicitly so nothing is silently dropped.
+RAW_TABLE_ROW_CAP = 50_000
+
 # A relationship drives its successor when its free float is zero. Dates in a .xer are
 # minute-resolution, so anything within a minute either side is zero.
 DRIVING_TOLERANCE_HRS = 1 / 60
+
+# Contract fields a reader may add beyond the P6 set (frontend/src/types/schedule.ts
+# marks them optional). They are emitted only when the reader supplies them, so a P6
+# file's output does not change.
+OPTIONAL_PROJECT_FIELDS = ("source_format", "inactive_activities", "summary_links", "msp_options")
+OPTIONAL_ACTIVITY_FIELDS = ("manual", "deadline")
+OPTIONAL_LINK_FIELDS = ("lag_elapsed", "lag_pct")
 
 
 def parse_datetime(val):
@@ -64,7 +76,8 @@ def build_wbs(nodes: list):
     root_ids = []
     for wid, w in wbs_dict.items():
         parent = w["parent_wbs_id"]
-        if parent and int(parent) in wbs_dict:
+        # None means a root; 0 is a real id in Project files (the project summary task).
+        if parent is not None and int(parent) in wbs_dict:
             wbs_dict[int(parent)]["children"].append(wid)
         else:
             root_ids.append(wid)
@@ -138,6 +151,7 @@ def build(parsed: dict) -> dict:
             "task_id": l["pred_id"],
             "type": l["type"],
             "lag_hrs": l["lag_hrs"],
+            **{k: l[k] for k in OPTIONAL_LINK_FIELDS if k in l},
         })
     for tid, preds in pred_map.items():
         for p in preds:
@@ -145,6 +159,7 @@ def build(parsed: dict) -> dict:
                 "task_id": tid,
                 "type": p["type"],
                 "lag_hrs": p["lag_hrs"],
+                **{k: p[k] for k in OPTIONAL_LINK_FIELDS if k in p},
             })
 
     # Driving relationships, the way P6 defines them: a link drives its successor when
@@ -154,7 +169,8 @@ def build(parsed: dict) -> dict:
     # ever exactly driving, and picking the closest predecessor marks links driving
     # that P6 does not (an activity held by a constraint or by the data date has no
     # driving predecessor at all, and the trace must stop there).
-    #   lag:  applied on the calendar the project's scheduling options name;
+    #   lag:  applied on the calendar the project's scheduling options name (an
+    #         elapsed lag, a Project concept, counts on the 24-hour calendar);
     #   gap:  measured on the successor's calendar, since the successor is placed at
     #         the first working moment on its own calendar after the link allows.
     act_lookup = {a["task_id"]: a for a in activities_in}
@@ -166,10 +182,12 @@ def build(parsed: dict) -> dict:
 
     lag_basis = sched_options.get("lag_calendar", "rcal_Predecessor")
 
-    def lag_cal(pred_a, succ_a):
+    def lag_cal(pred_a, succ_a, elapsed=False):
+        if elapsed:
+            return ALL_HOURS
         return lag_calendar(lag_basis, cal_of(pred_a), cal_of(succ_a), default_cal)
 
-    def relationship_free_float_hrs(succ_a, pred_a, link_type, lag_hrs):
+    def relationship_free_float_hrs(succ_a, pred_a, link):
         """Working hours between where the link puts the successor and where it is.
         None when either date is missing or the link type is unknown."""
         ends = {
@@ -177,16 +195,16 @@ def build(parsed: dict) -> dict:
             "PR_SS": (pred_a["early_start"], succ_a["early_start"]),
             "PR_FF": (pred_a["early_end"], succ_a["early_end"]),
             "PR_SF": (pred_a["early_start"], succ_a["early_end"]),
-        }.get(link_type)
+        }.get(link["type"])
         if not ends or None in ends:
             return None
-        implied = lag_cal(pred_a, succ_a).add_working_hours(ends[0], lag_hrs)
+        implied = lag_cal(pred_a, succ_a, link.get("lag_elapsed", False)).add_working_hours(ends[0], link["lag_hrs"])
         return cal_of(succ_a).working_hours_between(implied, ends[1])
 
     for a in activities_in:
         for p in pred_map.get(a["task_id"], []):
             pred_a = act_lookup.get(p["task_id"])
-            rff = relationship_free_float_hrs(a, pred_a, p["type"], p["lag_hrs"]) if pred_a else None
+            rff = relationship_free_float_hrs(a, pred_a, p) if pred_a else None
             p["free_float_hrs"] = None if rff is None else round(rff, 2)
             p["driving"] = rff is not None and abs(rff) <= DRIVING_TOLERANCE_HRS
     # Mirror onto the successor lists so both directions of the panel carry the flag.
@@ -241,11 +259,15 @@ def build(parsed: dict) -> dict:
 
     # Critical, as this project defines it (critical_type): either total float at or
     # below the project's own threshold (critical_float_hrs — P6's default is 0, but
-    # contracts often set it higher), or the stored Longest Path flag.
+    # contracts often set it higher), or the stored Longest Path flag. A reader that
+    # has the file's own stored critical flag (Project's Critical) supplies it as
+    # `critical`, and that is used as it is.
     crit_threshold = sched_options["critical_float_hrs"]
     flags_present = any(a["driving_path_flag"] for a in activities_in)
 
     def critical(a, tf):
+        if "critical" in a:
+            return a["critical"]
         if sched_options["critical_type"] == "CT_DrivPath":
             return a["driving_path_flag"] if flags_present else a["task_id"] in longest_path_ids
         return tf is not None and tf <= crit_threshold
@@ -301,6 +323,8 @@ def build(parsed: dict) -> dict:
             "target_end": _date_str(a["target_end"]),
             "activity_codes": a["activity_codes"],
             "resource_names": a["resource_names"],
+            **{k: (_date_str(a[k]) if isinstance(a[k], datetime) else a[k])
+               for k in OPTIONAL_ACTIVITY_FIELDS if k in a},
         })
 
     for wid in wbs_act_count:
@@ -358,6 +382,7 @@ def build(parsed: dict) -> dict:
             cpli=cpli,
             recalculation=recalculation,
             critical_path_test=critical_path_test,
+            **{k: project[k] for k in OPTIONAL_PROJECT_FIELDS if k in project},
         ),
         wbs_tree=wbs_tree,
         activities=activities,

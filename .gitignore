@@ -11,6 +11,13 @@ dist/
 # (tests/test_fixture.py checks).
 !frontend/public/sample-schedule.xer
 
+# Microsoft Project corpus (scripts/fetch_msp_corpus.sh), third-party and large: never committed
+.corpus/
+# No client schedules in any format
+*.mpp
+!examples/*.xml
+!frontend/public/sample-schedule.xml
+
 # test artefacts
 .pytest_cache/
 __pycache__/

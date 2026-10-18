@@ -18,10 +18,7 @@ from backend import analysis, recalc
 logger = logging.getLogger("schedule-app")
 
 
-# Per-table row cap for the raw inspector. Far above any real single-project export
-# (TASKPRED on a 10k-activity file is ~30k rows, which still fits) but bounds the JSON
-# payload; the frontend surfaces `truncated` explicitly so nothing is silently dropped.
-RAW_TABLE_ROW_CAP = 50_000
+RAW_TABLE_ROW_CAP = analysis.RAW_TABLE_ROW_CAP
 
 # P6 stores calendar exception dates as day serials with this epoch (Excel-compatible).
 _CAL_EPOCH = date(1899, 12, 30)
@@ -425,6 +422,7 @@ def read_xer(filepath: str) -> dict:
             "proj_short_name": project.proj_short_name,
             "data_date": str(project.last_recalc_date) if project.last_recalc_date else None,
             "schedule_options": sched_options,
+            "source_format": "xer",
         },
         "activities": activities,
         "links": links,

@@ -23,9 +23,10 @@ MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 app = FastAPI(
     title="XERlock",
-    version="1.1.0",
-    description="Parses Primavera P6 .xer exports in memory and returns the full schedule "
-    "(activities, WBS tree, project stats, longest-path trace) as JSON. Nothing is persisted.",
+    version="1.2.0",
+    description="Parses Primavera P6 .xer exports and Microsoft Project files (XML, .mpp) in "
+    "memory and returns the full schedule (activities, WBS tree, project stats, longest-path "
+    "trace) as JSON. Nothing is persisted.",
 )
 
 # No CORS middleware: the frontend is served same-origin by this app in production, and the
@@ -87,6 +88,9 @@ class ActivitySummary(BaseModel):
     target_end: Optional[str]
     activity_codes: list
     resource_names: list
+    # Microsoft Project files only (backend/mspdi.py): manually scheduled task, deadline.
+    manual: Optional[bool] = None
+    deadline: Optional[str] = None
 
 class WBSNode(BaseModel):
     wbs_id: int
@@ -125,6 +129,13 @@ class ProjectSummary(BaseModel):
     recalculation: Optional[dict] = None
     # DCMA check 12, only when the recalculation reproduces P6 exactly.
     critical_path_test: Optional[dict] = None
+    # Which tool wrote the file: xer | mspdi | mpp. The UI names the tool from it.
+    source_format: Optional[str] = None
+    # Microsoft Project files only (backend/mspdi.py): inactive tasks left out of every
+    # population, relationships on summary tasks, Project's own scheduling settings.
+    inactive_activities: Optional[int] = None
+    summary_links: Optional[list] = None
+    msp_options: Optional[dict] = None
 
 class ScheduleData(BaseModel):
     project: ProjectSummary
@@ -137,12 +148,16 @@ class ScheduleData(BaseModel):
     ermhdr: dict = {}
 
 
-from backend.xer import parse_xer as parse_xer_dict
+from backend.schedule import EXTENSIONS, parse_schedule as parse_schedule_dict
 
 
-def parse_xer(filepath: str) -> ScheduleData:
+def parse_schedule(filepath: str) -> ScheduleData:
     """The parsing core's result, validated against the API models."""
-    return ScheduleData(**parse_xer_dict(filepath))
+    return ScheduleData(**parse_schedule_dict(filepath))
+
+
+# The name the tests and scripts used when .xer was the only format.
+parse_xer = parse_schedule
 
 
 # ── API Routes ────────────────────────────────────────────────────────────────
@@ -153,14 +168,15 @@ def health():
 
 
 @app.post("/api/upload", response_model=ScheduleData)
-async def upload_xer(file: UploadFile = File(...)):
-    if not file.filename or not file.filename.lower().endswith(".xer"):
-        raise HTTPException(400, "Only .xer files are accepted")
+async def upload_schedule(file: UploadFile = File(...)):
+    if not file.filename or not file.filename.lower().endswith(EXTENSIONS):
+        raise HTTPException(400, "Only .xer, .xml (Microsoft Project) and .mpp files are accepted")
 
     # Stream to a temp file in chunks, enforcing the size cap as bytes arrive rather than
-    # slurping an unbounded body into memory first.
+    # slurping an unbounded body into memory first. The reader is chosen by content, not
+    # by this suffix (backend/schedule.py).
     size = 0
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".xer") as tmp:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".upload") as tmp:
         tmp_path = tmp.name
         while chunk := await file.read(1024 * 1024):
             size += len(chunk)
@@ -172,13 +188,13 @@ async def upload_xer(file: UploadFile = File(...)):
     try:
         # The parse is CPU-bound and can take seconds-to-minutes on large schedules;
         # run it off the event loop so one upload doesn't freeze the server for everyone.
-        data = await run_in_threadpool(parse_xer, tmp_path)
+        data = await run_in_threadpool(parse_schedule, tmp_path)
     except ValueError as e:
         # Deliberate validation errors (e.g. "no projects") are safe to show verbatim.
         raise HTTPException(422, str(e))
     except Exception:
-        logger.exception("Failed to parse uploaded XER %r", file.filename)
-        raise HTTPException(422, "Could not parse this file as a valid P6 .xer export")
+        logger.exception("Failed to parse uploaded schedule %r", file.filename)
+        raise HTTPException(422, "Could not parse this file as a P6 .xer export or a Microsoft Project file")
     finally:
         os.unlink(tmp_path)
 

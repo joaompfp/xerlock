@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
-// Runs XERlock's Python parsing core (backend/xer.py) in the browser under Pyodide.
+// Runs XERlock's Python parsing core (backend/schedule.py and the readers it dispatches
+// to) in the browser under Pyodide.
 // Lives in a worker so a large file never freezes the page. Every asset (the Python
 // runtime, the PyP6XER wheel, the parser source) is served from this app's own origin
 // under py/, prepared by scripts/prepare-local-parser.mjs: no CDN, nothing for a
@@ -36,14 +37,16 @@ async function boot(stage: (s: string) => void): Promise<PyodideInterface> {
   return py
 }
 
-// The parser's own messages for files it rejects (ValueError) are written for users and
-// shown verbatim, as the server does; anything else is a crash, reported generically.
+// The parser's own messages for files it rejects (ValueError and its subclasses) are
+// written for users and shown verbatim, as the server does; anything else is a crash,
+// reported generically. A .mpp always lands here: this build has no Java, so
+// backend/schedule.py says to save it as XML.
 function userMessage(err: unknown): string {
   const text = String((err as Error)?.message ?? err)
-  const valueError = text.match(/ValueError: (.+)\s*$/)
+  const valueError = text.match(/(?:ValueError|UnsupportedFile): (.+)\s*$/)
   if (valueError) return valueError[1].trim()
   console.error('XERlock local parser:', text)
-  return 'Could not parse this file as a valid P6 .xer export'
+  return 'Could not parse this file as a P6 .xer export or a Microsoft Project file'
 }
 
 self.onmessage = async (e: MessageEvent<ParseRequest>) => {
@@ -54,14 +57,14 @@ self.onmessage = async (e: MessageEvent<ParseRequest>) => {
     const py = await ready.catch(err => { ready = null; throw err })
     if (!bytes) { post({ id, ok: true, json: 'null' }); return }
     stage('Parsing on this computer — nothing is uploaded…')
-    py.FS.writeFile('/tmp/upload.xer', new Uint8Array(bytes))
+    py.FS.writeFile('/tmp/upload.bin', new Uint8Array(bytes))
     try {
       const json = py.runPython(
-        "import json\nfrom backend.xer import parse_xer\njson.dumps(parse_xer('/tmp/upload.xer'))",
+        "import json\nfrom backend.schedule import parse_schedule\njson.dumps(parse_schedule('/tmp/upload.bin'))",
       ) as string
       post({ id, ok: true, json })
     } finally {
-      py.FS.unlink('/tmp/upload.xer')
+      py.FS.unlink('/tmp/upload.bin')
     }
   } catch (err) {
     post({ id, ok: false, error: userMessage(err) })

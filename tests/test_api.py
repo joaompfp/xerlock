@@ -7,6 +7,7 @@ so it gets an explicit test rather than being assumed from reading the code.
 import glob
 import os
 import tempfile
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -41,10 +42,32 @@ def test_upload_returns_the_parsed_schedule(sample_bytes):
     assert data["warnings"] == []
 
 
-def test_upload_rejects_non_xer_extensions(sample_bytes):
-    r = post("schedule.mpp", sample_bytes)
+def test_upload_rejects_unknown_extensions(sample_bytes):
+    r = post("schedule.pdf", sample_bytes)
     assert r.status_code == 400
-    assert ".xer" in r.json()["detail"]
+    assert ".xer" in r.json()["detail"] and ".mpp" in r.json()["detail"]
+
+
+def test_upload_accepts_a_project_xml_file():
+    with open(str(Path(__file__).resolve().parent.parent / "examples" / "sample-schedule.xml"), "rb") as fh:
+        r = post("sample-schedule.xml", fh.read())
+    assert r.status_code == 200
+    assert r.json()["project"]["source_format"] == "mspdi"
+    assert r.json()["project"]["total_activities"] == 24
+
+
+def test_upload_chooses_the_reader_by_content_not_name(sample_bytes):
+    """A .xer renamed .xml is still read as a .xer: the content decides."""
+    r = post("renamed.xml", sample_bytes)
+    assert r.status_code == 200
+    assert r.json()["project"]["source_format"] == "xer"
+
+
+def test_upload_refuses_p6_xml_with_a_reason():
+    p6xml = b'<?xml version="1.0"?><APIBusinessObjects xmlns="http://xmlns.oracle.com/Primavera/P6/V8.3/API/BusinessObjects"/>'
+    r = post("export.xml", p6xml)
+    assert r.status_code == 422
+    assert "Primavera P6 XML" in r.json()["detail"]
 
 
 def test_upload_rejects_unparseable_content():
@@ -78,16 +101,16 @@ def test_non_utf8_file_warns_about_dropped_characters(sample_bytes):
 
 def test_nothing_is_persisted_server_side(sample_bytes):
     """The lock promise: no uploaded file survives the request."""
-    before = set(glob.glob(os.path.join(tempfile.gettempdir(), "*.xer")))
+    before = set(glob.glob(os.path.join(tempfile.gettempdir(), "*.upload")))
     assert post("sample-schedule.xer", sample_bytes).status_code == 200
-    after = set(glob.glob(os.path.join(tempfile.gettempdir(), "*.xer")))
+    after = set(glob.glob(os.path.join(tempfile.gettempdir(), "*.upload")))
     assert after == before, f"upload left files behind: {after - before}"
 
 
 def test_temp_file_is_removed_even_when_parsing_fails():
-    before = set(glob.glob(os.path.join(tempfile.gettempdir(), "*.xer")))
+    before = set(glob.glob(os.path.join(tempfile.gettempdir(), "*.upload")))
     assert post("bad.xer", b"nonsense").status_code == 422
-    after = set(glob.glob(os.path.join(tempfile.gettempdir(), "*.xer")))
+    after = set(glob.glob(os.path.join(tempfile.gettempdir(), "*.upload")))
     assert after == before
 
 
