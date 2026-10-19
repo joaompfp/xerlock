@@ -4,6 +4,25 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.4.1] - 2026-10-19
+
+### Added
+- Gantt Slip column on WBS rows: the WBS finish against the latest compared finish of the
+  same activities.
+
+### Fixed
+- Gantt printout:
+  - The app header, toolbar, legend and filter strip no longer print.
+  - The page background is white.
+  - Dates and column headings are no longer cut off.
+  - The timeline fits the sheet with all of its columns, and the last milestone and
+    month label are no longer clipped.
+  - The "Data date" tag no longer covers a month label.
+- The printout gains:
+  - a heading with the project, data date, active filters and compared file;
+  - the Float column, WBS start and finish dates, and a data-date line;
+  - with a compared schedule, its outlined bars and the Slip column.
+
 ## [1.4.0] - 2026-10-19
 
 ### Added

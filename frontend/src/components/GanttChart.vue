@@ -302,7 +302,7 @@
               <span class="g-col-date">{{ row.start ? formatDateShort(row.start) : '' }}</span>
               <span class="g-col-date">{{ row.finish ? formatDateShort(row.finish) : '' }}</span>
               <span class="g-col-float"></span>
-              <span v-if="showSlip" class="g-col-slip"></span>
+              <span v-if="showSlip" class="g-col-slip" :class="wbsSlipCell(row).cls" :title="wbsSlipCell(row).title">{{ wbsSlipCell(row).text }}</span>
             </template>
             <template v-else>
               <i v-if="annotations[row.activity.task_id]" class="annotation-flag" :class="'sev-' + annotations[row.activity.task_id].severity" :title="annotations[row.activity.task_id].note"></i>
@@ -379,13 +379,22 @@
          browser behavior, not a CSS trick. Cross-row relationship links are left out
          of the printout by design — the Critical Path tab is the tool for tracing
          those; a shared canvas is exactly the mechanism that made printing unsafe. -->
-    <table class="print-table">
+    <div class="print-title">
+      <strong>{{ data.project.proj_short_name }}</strong>
+      <span v-if="data.project.data_date">Data date {{ formatDate(data.project.data_date) }}</span>
+      <span v-if="activeFilterChips.length">Filtered: {{ activeFilterChips.map(c => c.label).join(', ') }}</span>
+      <span v-if="isolatedIds">Chain trace: {{ isolatedIds.size }} {{ isolatedIds.size === 1 ? 'activity' : 'activities' }}</span>
+      <span v-if="showSlip">Compared with {{ baselineFilename || 'the loaded baseline' }}: outlined bars, Slip in calendar days</span>
+    </div>
+    <table class="print-table" :style="{ width: (labelColWidth + printFixedColsWidth + printTimelineWidth) + 'px' }">
       <colgroup>
         <col :style="{ width: labelColWidth + 'px' }" />
-        <col class="pt-col-num" />
-        <col class="pt-col-date" />
-        <col class="pt-col-date" />
-        <col :style="{ width: totalWidth + 'px' }" />
+        <col :style="{ width: printCol.num + 'px' }" />
+        <col :style="{ width: printCol.date + 'px' }" />
+        <col :style="{ width: printCol.date + 'px' }" />
+        <col :style="{ width: printCol.float + 'px' }" />
+        <col v-if="showSlip" :style="{ width: printCol.slip + 'px' }" />
+        <col :style="{ width: printTimelineWidth + 'px' }" />
       </colgroup>
       <thead>
         <tr>
@@ -393,6 +402,8 @@
           <th class="pt-num">Dur</th>
           <th class="pt-num">Start</th>
           <th class="pt-num">Finish</th>
+          <th class="pt-num">Float</th>
+          <th v-if="showSlip" class="pt-num">Slip</th>
           <th class="pt-timeline">
             <span v-for="t in monthTicks" :key="t.x" class="pt-tick" :style="{ left: t.x + 'px' }">{{ t.label }}</span>
             <span v-if="printDataDateX !== null" class="pt-dd-tick" :style="{ left: printDataDateX + 'px' }">Data date</span>
@@ -404,9 +415,12 @@
           <template v-if="row.type === 'wbs'">
             <td class="pt-label" :style="{ paddingLeft: (8 + row.level * 11) + 'px' }">{{ row.name }}</td>
             <td class="pt-num">{{ row.count }}</td>
+            <td class="pt-num">{{ row.start ? formatDateShort(row.start.toISOString()) : '' }}</td>
+            <td class="pt-num">{{ row.finish ? formatDateShort(row.finish.toISOString()) : '' }}</td>
             <td class="pt-num"></td>
-            <td class="pt-num"></td>
+            <td v-if="showSlip" class="pt-num g-col-slip" :class="wbsSlipCell(row).cls">{{ wbsSlipCell(row).text }}</td>
             <td class="pt-timeline">
+              <div v-if="printDataDateX !== null" class="pt-dd-line" :style="{ left: printDataDateX + 'px' }"></div>
               <div v-if="row.start && row.finish" class="g-bar-wbs" :style="wbsBarStyle(row)"></div>
             </td>
           </template>
@@ -415,7 +429,14 @@
             <td class="pt-num">{{ formatHours(row.activity.duration_hrs, row.activity.calendar_hrs_per_day) }}</td>
             <td class="pt-num">{{ formatDateShort(displayStart(row.activity)) }}</td>
             <td class="pt-num">{{ formatDateShort(displayEnd(row.activity)) }}</td>
+            <td class="pt-num" :class="floatCellClass(row.activity)">{{ formatFloat(row.activity.total_float_hrs, row.activity.calendar_hrs_per_day) }}</td>
+            <td v-if="showSlip" class="pt-num g-col-slip" :class="slipCell(row.activity).cls">{{ slipCell(row.activity).text }}</td>
             <td class="pt-timeline">
+              <div v-if="printDataDateX !== null" class="pt-dd-line" :style="{ left: printDataDateX + 'px' }"></div>
+              <template v-if="ghostFor(row.activity)">
+                <div v-if="row.milestone" class="g-milestone-ghost" :style="{ left: ghostFor(row.activity)!.x + 'px' }"></div>
+                <div v-else class="g-bar-ghost" :style="{ left: ghostFor(row.activity)!.x + 'px', width: ghostFor(row.activity)!.w + 'px' }"></div>
+              </template>
               <div v-if="row.milestone" class="g-milestone" :class="row.cls" :style="{ left: row.x + 'px' }"></div>
               <div v-else class="g-bar" :class="row.cls" :style="{ left: row.x + 'px', width: row.w + 'px' }"></div>
             </td>
@@ -458,7 +479,7 @@ const FLOAT_TAIL_MAX_DAYS = 26
 const STATUS_LABELS: Record<string, string> = { TK_NotStart: 'Not started', TK_Active: 'Active', TK_Complete: 'Complete' }
 import fullscreenMixin from '../mixins/fullscreen'
 import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
-import { finishSlipDays } from '../utils/compareChecks'
+import { dateSlipDays, finishSlipDays } from '../utils/compareChecks'
 import { PAPER_SIZES, paperOrDefault, usableWidthPx } from '../utils/paper'
 import {
   type Zoom,
@@ -499,7 +520,26 @@ interface SavedView {
 /** WBS ids, plus the synthetic group holding activities with no known WBS. */
 type WbsKey = number | '__unassigned'
 
-interface Rollup { start: Date | null; finish: Date | null; count: number }
+// baseFinish: the latest compared finish of the activities under the node that the
+// compared schedule also has (null without a compared schedule or with none in common).
+interface SlipCell { text: string; cls: string; title: string }
+const NO_SLIP: SlipCell = { text: '', cls: '', title: '' }
+function slipCellOf(d: number, was: string, what: string): SlipCell {
+  return {
+    text: (d > 0 ? '+' : '') + d + 'd',
+    cls: d > 0 ? 'slip-late' : d < 0 ? 'slip-early' : '',
+    title: d === 0 ? `${what} unchanged (${was})` : `${what} ${d > 0 ? 'later' : 'earlier'} by ${Math.abs(d)} calendar day${Math.abs(d) === 1 ? '' : 's'} (was ${was})`,
+  }
+}
+
+// Printout column widths in CSS px. The fit-to-page calculation subtracts them from the
+// sheet, so they live here rather than only in the stylesheet.
+const PRINT_COL = { num: 40, date: 60, float: 50, slip: 46 }
+// Room past the last day for a milestone diamond on the range's final instant and for the
+// last month label, which starts a few days before the range ends.
+const PRINT_END_PAD = 24
+
+interface Rollup { start: Date | null; finish: Date | null; baseFinish: Date | null; count: number }
 
 interface WbsRow {
   type: 'wbs'
@@ -510,6 +550,7 @@ interface WbsRow {
   count: number
   start?: Date | null
   finish?: Date | null
+  baseFinish?: Date | null
   index: number
 }
 
@@ -574,6 +615,8 @@ export default defineComponent({
     // Parsed baseline schedule (from the Compare tab's snapshot/upload). When present,
     // activities matched by code can draw a ghost bar at their baseline position.
     baseline: { type: Object as PropType<Schedule | null>, default: null },
+    // Its file name, for the printout's heading.
+    baselineFilename: { type: String, default: '' },
   },
   emits: ['jumped', 'annotate', 'unannotate', 'return-to-origin'],
   data() {
@@ -856,6 +899,15 @@ export default defineComponent({
     showSlip(): boolean {
       return !!this.baseline && this.showBaseline
     },
+    printFixedColsWidth(): number {
+      return PRINT_COL.num + 2 * PRINT_COL.date + PRINT_COL.float + (this.showSlip ? PRINT_COL.slip : 0)
+    },
+    printCol() {
+      return PRINT_COL
+    },
+    printTimelineWidth(): number {
+      return this.totalWidth + PRINT_END_PAD
+    },
     baselineByCode(): Map<string, Activity> | null {
       if (!this.baseline) return null
       const m = new Map<string, Activity>()
@@ -902,7 +954,7 @@ export default defineComponent({
       const walk = (nodes: WbsNode[], level: number) => {
         const sorted = [...nodes].sort((a, b) => a.seq_num - b.seq_num)
         for (const node of sorted) {
-          const roll = rollups.get(node.wbs_id) || { start: null, finish: null, count: 0 }
+          const roll = rollups.get(node.wbs_id) || { start: null, finish: null, baseFinish: null, count: 0 }
           if (filtering && roll.count === 0) continue
           rows.push({
             type: 'wbs',
@@ -913,6 +965,7 @@ export default defineComponent({
             count: roll.count,
             start: roll.start,
             finish: roll.finish,
+            baseFinish: roll.baseFinish,
           })
           const expanded = filtering ? !this.filterCollapsed.has(node.wbs_id) : this.expandedWbs.has(node.wbs_id)
           if (expanded) {
@@ -1005,11 +1058,18 @@ export default defineComponent({
     computeRollups(matchFn: ((a: Activity) => boolean) | null): Map<number, Rollup> {
       const map = new Map<number, Rollup>()
       const activitiesByWbs = this.activitiesByWbs
+      const baselineByCode = this.baselineByCode
       const visit = (node: WbsNode): Rollup => {
-        let start: Date | null = null, finish: Date | null = null, count = 0
+        let start: Date | null = null, finish: Date | null = null, baseFinish: Date | null = null, count = 0
         for (const a of activitiesByWbs.get(node.wbs_id) || []) {
           if (matchFn && !matchFn(a)) continue
           count++
+          const b = baselineByCode?.get(a.task_code)
+          const be = b ? displayEnd(b) : null
+          if (be) {
+            const d = new Date(be)
+            if (!baseFinish || d > baseFinish) baseFinish = d
+          }
           const ds = displayStart(a)
           const de = displayEnd(a)
           if (ds) {
@@ -1026,8 +1086,9 @@ export default defineComponent({
           count += r.count
           if (r.start && (!start || r.start < start)) start = r.start
           if (r.finish && (!finish || r.finish > finish)) finish = r.finish
+          if (r.baseFinish && (!baseFinish || r.baseFinish > baseFinish)) baseFinish = r.baseFinish
         }
-        const roll = { start, finish, count }
+        const roll = { start, finish, baseFinish, count }
         map.set(node.wbs_id, roll)
         return roll
       }
@@ -1078,17 +1139,18 @@ export default defineComponent({
       // `?? 0` mirrors JS's null-to-0 coercion in subtraction.
       return { left: x + 'px', width: Math.max((xEnd ?? 0) - (x ?? 0), 3) + 'px' }
     },
-    slipCell(a: Activity): { text: string; cls: string; title: string } {
+    slipCell(a: Activity): SlipCell {
       const b = this.baselineByCode?.get(a.task_code)
       if (!b) return { text: 'new', cls: 'slip-new', title: 'Not in the compared schedule' }
       const d = finishSlipDays(a, b)
-      if (d === null) return { text: '', cls: '', title: '' }
-      const was = formatDateShort(displayEnd(b))
-      return {
-        text: (d > 0 ? '+' : '') + d + 'd',
-        cls: d > 0 ? 'slip-late' : d < 0 ? 'slip-early' : '',
-        title: d === 0 ? `Finish unchanged (${was})` : `Finish ${d > 0 ? 'later' : 'earlier'} by ${Math.abs(d)} calendar day${Math.abs(d) === 1 ? '' : 's'} (was ${was})`,
-      }
+      return d === null ? NO_SLIP : slipCellOf(d, formatDateShort(displayEnd(b)), 'Finish')
+    },
+    // A WBS row's finish is the latest finish under it, as shown in its Finish cell; it is
+    // measured against the latest compared finish of the same activities.
+    wbsSlipCell(row: WbsRow): SlipCell {
+      if (!row.finish) return NO_SLIP
+      if (!row.baseFinish) return { text: 'new', cls: 'slip-new', title: 'None of these activities is in the compared schedule' }
+      return slipCellOf(dateSlipDays(row.finish, row.baseFinish), formatDateShort(row.baseFinish.toISOString()), 'Latest finish')
     },
     ghostFor(a: Activity): { x: number | null; w: number; label: string } | null {
       if (!this.showBaseline || !this.baselineByCode) return null
@@ -1302,7 +1364,7 @@ export default defineComponent({
       // paper's usable width precisely — no clipping, no wasted margin, no new
       // rendering path to distrust.
       const days = Math.max(1, (this.rangeEnd.getTime() - this.rangeStart.getTime()) / 86400000)
-      const target = paperUsableWidthPx(this.printPaperSize) - this.labelColWidth
+      const target = paperUsableWidthPx(this.printPaperSize) - this.labelColWidth - this.printFixedColsWidth - PRINT_END_PAD
       const fitDayWidth = clampDayWidth(target / days)
       const prevOverride = this.dayWidthOverride
       this.dayWidthOverride = fitDayWidth
@@ -1685,29 +1747,42 @@ export default defineComponent({
    at a glance instead of buried in an inline sentence. */
 
 
-.print-table { display: none; }
+.print-table, .print-title { display: none; }
 
 @media print {
   @page { size: landscape; margin: 10mm; }
-  .gantt-strip, .gantt-controls, .filter-bar { display: none; }
+  .view-bar, .gantt-toolbar, .filter-strip, .g-resize-handle { display: none !important; }
+  .gantt-body { display: block !important; }
+  .print-title { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; margin: 0 0 6px; font: 11px/1.4 var(--font-ui); color: var(--ink-soft); }
+  .print-title strong { font-size: 13px; color: var(--ink); }
   .gantt-wrap, .gantt-wrap.is-fullscreen { border: none; box-shadow: none; height: auto; overflow: visible; display: block; }
   /* The interactive canvas (position:absolute rows, an SVG links overlay spanning the
      whole multi-page height) doesn't survive Chromium's print pagination reliably —
      see the print-table's own template comment for what was tried and why it's a real
      <table> instead. */
   .gantt-scroll, .gantt-grid { display: none !important; }
-  .print-table { display: table; width: 100%; border-collapse: collapse; table-layout: fixed; font: 11px/1.4 var(--font-ui); }
+  .print-table { display: table; border-collapse: collapse; table-layout: fixed; font: 11px/1.4 var(--font-ui); }
   .print-table thead { display: table-header-group; }
   .print-table th, .print-table td { border-bottom: 1px solid var(--gray-300); padding: 0 6px; height: 20px; box-sizing: border-box; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .print-table th { text-align: left; font-weight: 700; color: var(--gray-700); background: var(--gray-100); border-bottom: 2px solid var(--gray-300); height: 28px; }
-  .pt-num, .pt-col-num { font-family: var(--font-mono); text-align: right; width: 42px; }
-  .pt-col-date { width: 52px; }
+  .pt-num { font-family: var(--font-mono); text-align: right; }
+  .print-table .pt-num.fl-crit, .print-table .pt-num.fl-neg { color: var(--crit); font-weight: 700; }
+  .print-table .pt-num.fl-near { color: var(--near); font-weight: 600; }
+  .print-table .g-col-slip { width: auto; margin: 0; }
+  .pt-dd-line { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed var(--milestone); }
   .pt-timeline { position: relative; padding: 0; }
   .pt-stripe { background: var(--gray-100); }
   .pt-wbs-row { font-weight: 700; background: var(--gray-150); }
-  .pt-tick { position: absolute; top: 6px; font: 700 10px var(--font-ui); color: var(--ink); white-space: nowrap; }
-  .pt-dd-tick { position: absolute; top: 6px; font: 700 9px var(--font-mono); color: var(--on-solid); background: var(--milestone); padding: 1px 4px; border-radius: 2px; transform: translateX(-4px); white-space: nowrap; }
-  .print-table .g-bar, .print-table .g-milestone, .print-table .g-bar-wbs { position: absolute; }
+  .pt-tick { position: absolute; top: 1px; font: 700 10px var(--font-ui); color: var(--ink); white-space: nowrap; }
+  .pt-dd-tick { position: absolute; top: 14px; font: 700 9px var(--font-mono); color: var(--on-solid); background: var(--milestone); padding: 1px 4px; border-radius: 2px; transform: translateX(-4px); white-space: nowrap; }
+  /* Rows are 20px in print (26px on screen): bar above, compared-schedule outline below. */
+  .print-table .g-bar, .print-table .g-milestone, .print-table .g-bar-wbs,
+  .print-table .g-bar-ghost, .print-table .g-milestone-ghost { position: absolute; }
+  .print-table .g-bar { top: 3px; height: 11px; }
+  .print-table .g-milestone { top: 3px; width: 10px; height: 10px; }
+  .print-table .g-bar-ghost { top: 15px; height: 4px; }
+  .print-table .g-milestone-ghost { top: 12px; }
+  .print-table .g-bar-wbs { top: 7px; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 }
 </style>
