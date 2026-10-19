@@ -26,7 +26,7 @@ for (const f of ['pyodide.mjs', 'pyodide.asm.mjs', 'pyodide.asm.wasm', 'python_s
   cpSync(join(pyodide, f), join(py, f))
 }
 
-const pythonFiles = ['schedule.py', 'xer.py', 'mspdi.py', 'analysis.py', 'worktime.py', 'cpm.py', 'recalc.py']
+const pythonFiles = ['schedule.py', 'xer.py', 'mspdi.py', 'analysis.py', 'worktime.py', 'cpm_core.py', 'cpm.py', 'recalc.py']
 for (const f of pythonFiles) cpSync(join(repo, 'backend', f), join(py, 'backend', f))
 
 // One source of truth for the parser library's version: the server's requirements.txt.
