@@ -4,6 +4,37 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.3.0] - Unreleased
+
+### Added
+- Recalculation and the Critical Path Test (DCMA 12) for Microsoft Project files. A second
+  CPM engine (`backend/cpm_msp.py`) reschedules the file with Project's rules, each taken
+  from MPXJ 16.10.0's `MicrosoftScheduler` (LGPL; rules, not code) or Microsoft's own pages
+  and cited in `docs/METHODOLOGY.md`, and `backend/recalc_msp.py` compares Start/Finish,
+  late dates and slack with what Project stored. Validated on MPXJ's corpus: 32 of the 33
+  files with logic the engine accepts reproduce with 0 differences (the exception, a Project
+  2003 file, is documented), and the one real-world `.mpp` available reproduces and passes
+  the test.
+- Refusals with their reasons: scheduling from the finish date, incomplete manually
+  scheduled tasks, levelling delays, split or contoured tasks, recurring tasks, inserted or
+  external projects, summary-task constraints, the multiple-critical-paths option, and
+  resource assignments on other working time than the task's.
+- `recalculation.uncovered`: the rules a Project file rests on that the oracle corpus has
+  not validated (deadlines, ALAP and late-side constraints, elapsed durations and lags,
+  percentage lags, cross-calendar links). The file is still compared; the Critical Path Test
+  is withheld and the Health Check names the rules.
+- `scripts/msp_oracle_coverage.py`: what the corpus can prove, feature by feature, with
+  MPXJ's own scheduler as a second reference; `scripts/msp_corpus.py` reports the
+  recalculation's result per file.
+
+### Changed
+- `backend/cpm_core.py` holds what both engines share (result and link types, ordering,
+  comparison, Critical Path Test); P6 results are unchanged, proved on the sample and on 12
+  real exports.
+- `Recalculation.options` carries Project's settings on a Project file (`schedule_from`,
+  `lag_calendar`, `critical_slack_limit_days`, `multiple_critical_paths`); the P6 keys are
+  unchanged.
+
 ## [1.2.0] - 2026-10-19
 
 ### Added

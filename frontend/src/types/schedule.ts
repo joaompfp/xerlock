@@ -104,7 +104,7 @@ export interface Cpli {
   finish_task_id: number
 }
 
-/** One field on one activity where the recalculation and P6's stored value differ. */
+/** One field on one activity where the recalculation and the file's stored value differ. */
 export interface RecalcDifference {
   task_id: number
   /** es, ef, ls, lf (dates) or tf, ff (hours). */
@@ -115,21 +115,32 @@ export interface RecalcDifference {
   delta_hrs: number | null
 }
 
-/** The CPM engine's reproduction of P6's dates and float (backend/recalc.py). */
+/**
+ * The CPM engine's reproduction of the file's dates and float: P6's rules
+ * (backend/recalc.py) or Microsoft Project's (backend/recalc_msp.py).
+ */
 export interface Recalculation {
   /** False when the engine refuses the file; `reason` says why. */
   supported: boolean
   reason: string | null
-  options: { progress_mode: string; float_type: string; lag_calendar: string; delay_days: number }
+  /** P6: progress_mode, float_type, lag_calendar. Project: schedule_from, lag_calendar,
+   *  critical_slack_limit_days, multiple_critical_paths. Both: delay_days. */
+  options: {
+    progress_mode?: string; float_type?: string; lag_calendar: string; delay_days: number
+    schedule_from?: string; critical_slack_limit_days?: number; multiple_critical_paths?: boolean
+  }
   compared: number
   excluded: { complete: number; wbs_summary: number }
   differing: number
   by_field: Record<string, number>
   differences: RecalcDifference[]
   truncated: boolean
+  /** Project files only: rules the file rests on that the oracle corpus has not
+   *  validated (named for the reviewer). The CPT is withheld while any is present. */
+  uncovered?: string[]
 }
 
-/** DCMA 12, reported only when the recalculation reproduces P6 exactly. */
+/** DCMA 12, reported only when the recalculation reproduces the file exactly. */
 export interface CriticalPathTest {
   passed: boolean
   /** The finish moved by the delay to the minute. */

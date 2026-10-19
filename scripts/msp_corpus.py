@@ -9,9 +9,10 @@ given directories exactly as the app does and print aggregates only.
 Not part of CI (it needs Java for the .mpp files and takes minutes). Prints, per
 directory: files parsed / refused by reason, activity and link counts, and for every
 .mpp that has an MSPDI twin (same stem, saved by the same Project version) whether the
-two paths agree on dates, float, flags and links, with the fields that differ. Files
-are identified by their basename only; nothing from inside them is printed, so it
-is safe on confidential files too.
+two paths agree on dates, float, flags and links, with the fields that differ; and the
+recalculation's result per file (refused with its reason, differs, or match with the
+Critical Path Test's verdict). Files are identified by their basename only; nothing
+from inside them is printed, so it is safe on confidential files too.
 """
 
 import os
@@ -49,6 +50,12 @@ def twin_of(mpp: Path):
     return cand if cand.exists() else None
 
 
+def reason_category(reason) -> str:
+    """A refusal reason without its counts, so like reasons group together."""
+    import re
+    return re.sub(r"^\d+ ", "", reason or "unknown")
+
+
 def refusal_category(msg: str) -> str:
     for key in ("password", "Primavera", "not well-formed", "DTD", "not a Microsoft Project XML",
                 "did not recognise", "not a P6", "MPXJ could not read"):
@@ -68,6 +75,8 @@ def main(dirs):
         refused = Counter()
         crashed = Counter()
         counts = Counter()
+        refusals = Counter()
+        differing = []
         for p in files:
             try:
                 data = parse_schedule(str(p))
@@ -88,6 +97,22 @@ def main(dirs):
             counts[kind + " manual"] += sum(1 for a in data["activities"] if a.get("manual"))
             counts[kind + " elapsed/pct lags"] += sum(1 for a in data["activities"] for l in a["predecessors"]
                                                     if l.get("lag_elapsed") or l.get("lag_pct") is not None)
+            # The recalculation (backend/recalc_msp.py): refused with a reason, or compared
+            # with Project's stored values; the CPT runs only on an exact match.
+            r = data["project"].get("recalculation") or {}
+            cpt = data["project"].get("critical_path_test")
+            if not r.get("supported"):
+                refusals[(kind, reason_category(r.get("reason")))] += 1
+            elif r.get("differing"):
+                counts[kind + " recalc: differs"] += 1
+                differing.append((p.name, r["differing"], r["compared"], {f: n for f, n in r["by_field"].items() if n}))
+            else:
+                counts[kind + " recalc: match"] += 1
+                counts[kind + " recalc: match with logic"] += bool(any(a["predecessors"] for a in data["activities"]))
+                if cpt:
+                    counts[kind + " recalc: CPT " + ("pass" if cpt["passed"] else "FAIL")] += 1
+                elif r.get("uncovered"):
+                    counts[kind + " recalc: CPT withheld (uncovered)"] += 1
         print(f"== {d}: {len(files)} files")
         for k, v in sorted(counts.items()):
             print(f"   {k:32} {v}")
@@ -95,6 +120,10 @@ def main(dirs):
             print(f"   refused {ext} ({why}): {n}")
         for (ext, why), n in sorted(crashed.items()):
             print(f"   CRASH {ext} ({why}): {n}")
+        for (kind, why), n in sorted(refusals.items()):
+            print(f"   {kind} recalc refused ({why}): {n}")
+        for name, n, cmp, fields in differing:
+            print(f"   recalc differs: {name}: {n} of {cmp} tasks, fields {fields}")
 
         # .mpp vs .xml twins
         agree = differ = 0

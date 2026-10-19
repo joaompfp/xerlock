@@ -262,12 +262,11 @@ def test_critical_slack_limit_is_in_days_of_the_project_day():
     assert act(d, 1)["calendar_hrs_per_day"] == 10
 
 
-def test_recalculation_is_reported_as_not_available():
-    d = parse(tasks=task(1))
+def test_recalculation_runs_on_project_files():
+    """The rules are in test_cpm_msp.py and the layer in test_recalc_msp.py."""
+    d = parse(tasks=task(1), project="<StartDate>2026-03-02T08:00:00</StartDate>")
     r = d["project"]["recalculation"]
-    assert r["supported"] is False and r["reason"] == mspdi.RECALC_UNAVAILABLE
-    assert r["compared"] == 0 and r["differences"] == []
-    assert d["project"]["critical_path_test"] is None
+    assert r["supported"] is True and r["compared"] == 1 and "uncovered" in r
 
 
 def test_resources_come_from_assignments():

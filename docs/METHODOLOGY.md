@@ -352,11 +352,12 @@ the first column; nothing is interpreted).
 
 **The principle holds: Project's own stored values, nothing recomputed.** Each figure is
 read from the file; the recomputed figures are the same ones as for P6 (driving links,
-Longest Path, CPLI) and the recalculation is **not yet available** for Project files
-(phase 3 of `SPEC-MSPROJECT.md`): the Health Check says so, and the Critical Path Test is
-withheld. The mapping was verified against MPXJ's MSPDI reader source and on MPXJ's test
-corpus (`scripts/fetch_msp_corpus.sh`, 609 `.mpp` and 143 MSPDI files saved by Project
-98-2019; `scripts/msp_corpus.py` reports the aggregates).
+Longest Path, CPLI) and, since 1.3.0, the recalculation, which reschedules the file with
+**Project's** rules and compares the result with what Project stored (section
+*Recalculation of Microsoft Project files*). The mapping was verified against MPXJ's
+MSPDI reader source and on MPXJ's test corpus (`scripts/fetch_msp_corpus.sh`, 609 `.mpp`
+and 143 MSPDI files saved by Project 98-2019; `scripts/msp_corpus.py` reports the
+aggregates).
 
 | Field | Read from | Rule |
 |---|---|---|
@@ -399,7 +400,7 @@ that need a P6-only concept say so instead of guessing:
 |---|---|
 | Driving path cross-check | Not checkable: Project stores no Longest Path flag. The recomputed Longest Path stands alone |
 | LOE on critical | Not applicable: Project has no level-of-effort task type |
-| Recalculation, Critical Path Test (DCMA 12) | Not yet available (phase 3). The Critical Path Test is withheld |
+| Recalculation, Critical Path Test (DCMA 12) | Run with Project's rules (*Recalculation of Microsoft Project files*). The test is withheld on a refused file, on any difference, and while the file rests on a rule the oracle corpus has not validated |
 | Invalid dates (DCMA 09), Missed tasks (DCMA 11), CPLI (DCMA 13) | Not checkable without a `StatusDate`; Missed tasks also needs a Baseline 0 |
 | Longest Path | Traced through driving links from Project's stored dates exactly as for P6. Project keeps a completed predecessor's real finish where P6 resets it to the data date, so on a progressed Project file the trace ends at the first activity held by the status date; completed work is not on it |
 
@@ -427,11 +428,106 @@ reads from the binary format, not from the reader: MPXJ reads a different task m
 tasks follow from that. The corpus report lists the counts. Password-protected files are
 refused with MPXJ's message.
 
+## Recalculation of Microsoft Project files
+
+`backend/cpm_msp.py` is a second CPM engine, with Microsoft Project's rules, on the same
+format-free core as the P6 one (`backend/cpm_core.py`: result and link types, ordering,
+the comparison, the Critical Path Test). `backend/recalc_msp.py` builds its input from the
+MSPDI elements, decides what must be refused, runs it and compares the result with the
+`Start`, `Finish`, `LateStart`, `LateFinish`, `TotalSlack` and `FreeSlack` Project stored,
+task by task: dates to the minute, slack to 0.01 h of working time on the task's calendar
+(the file stores tenths of a minute). Completed tasks are compared too (their actual
+dates, slack 0); summary tasks roll up and are not. **Project is the oracle**: the engine
+is trusted on a file only when it reproduces every stored value, and a difference is a
+finding (an edit without a recalculation, or a feature the engine does not model), never
+a tolerance. `SPEC-MSPROJECT.md` §7 is the design record, with the sources by file and
+line.
+
+**Sources.** The rules were taken (rules, not code) from MPXJ 16.10.0's
+`org.mpxj.cpm.MicrosoftScheduler` and `MicrosoftSlackCalculator`, read at tag v16.10.0,
+which MPXJ's author built by observing Project and which reproduce 31 of the 33 corpus
+files in scope; from Microsoft's field pages (*Total Slack*, *Start Slack*, *Free Slack*,
+*Late Finish*, *Deadline*, *Task Calendar*, the *Predecessors tab* of the Task Information
+dialog, the *Tasks aren't scheduled as expected* troubleshooting page, the *OptionsSchedule*
+and *OptionsCalculation* VBA references); and, for three rules MPXJ's working-time
+tolerance hides, from the oracle files themselves. Each rule below says which.
+
+**Rules.** Scheduled tasks are the active, non-summary tasks; logic on a summary task is
+expanded to its leaf descendants (a summary predecessor of an SS or SF link stands for its
+earliest-starting leaf, of an FS or FF link for every leaf; a summary successor for every
+leaf). There is no data date: Project's passes never read the status date, and the
+"move completed/remaining parts to the status date" options act when actuals are entered.
+
+| Rule | What the engine does | Source |
+|---|---|---|
+| Start | A task without predecessors starts at the first working moment at or after the project `StartDate` (SNET at its date; FNET a duration before it). With predecessors, at the latest instant any link allows, moved to the next working start on the task's calendar; a milestone may sit at the end of a period (the Friday 17:00 rule) | MPXJ MS L251, L260, L1403-1412 |
+| Links | FS: predecessor finish + lag. SS: predecessor start + lag (a finished predecessor: its actual start). FF: predecessor finish minus the successor's remaining duration, + lag, never before the project start. SF: the successor's **finish** is fixed at the predecessor's start + lag, exactly where that lands (a Monday 08:00 finish for a task ending where its predecessor starts), and its start is a full duration earlier | MPXJ MS L538-667; SF finish from mpp9relations.mpp and twins |
+| Lag | On the successor's task calendar, else the project calendar; an elapsed lag on the clock; a percentage lag that share of the predecessor's duration | Microsoft, Predecessors tab: "If a successor uses a task calendar, lag time duration is based on that calendar; otherwise ... the project calendar"; MPXJ MS L955-996 |
+| Duration | `Duration` in working time on the task's effective calendar; an elapsed duration (`DurationFormat` in elapsed units) on the clock | MPXJ MS L1198-1206, ProjectCalendar.getDate |
+| Constraints (forward) | Honoured over logic: SNET and FNET hold the task back, **SNLT and FNLT pull it earlier** than its logic, MSO and MFO set the date; the constraint date is taken as it is. `HonorConstraints` is not read: Project writes 0 in every XML it saves and 1 is read from every `.mpp`, and the behaviour on the corpus is the honouring one (`slack9.mpp`) | Microsoft, "the Tasks will always honor their constraint dates setting overrides the task relationship links"; MPXJ MS L262-321 |
+| Progress | A started task keeps its actual start and its **full** duration (actual finish when complete); logic does not move it and no status date does. An FNET constraint raises a started task's finish to its date | Microsoft, "If you entered a percent complete on a task, and the task has already started, you can't change the Start Date automatically"; MPXJ MS L323-353 |
+| Late finish | The project finish (the latest early finish) for a task with no unfinished successor; else the earliest a successor allows: FS, the successor's calculated late start minus lag; FF, its late finish minus lag; SF, its late finish plus the predecessor's duration minus lag; SS, its late start read as a next-work-start on the predecessor's calendar minus lag, plus the predecessor's duration; capped at the project finish. MSO: date + duration; MFO: the date; SNLT and FNLT cap it; a **deadline** caps it. A late finish at a period's start becomes the previous period's end, **except for a zero-duration or elapsed task**, which keeps it where its successor's late start is | Microsoft, Late Finish and Start Slack pages; MPXJ MS L380-493; the zero-duration exception from the confidential oracle file, sf259.mpp and every zero-duration task at a project start in the corpus |
+| Late start | Late finish minus the **remaining** duration. A finished task has its actual dates as late dates; a started task shows its actual start as late start, while its FS predecessors read the calculated one | MPXJ MS L464-491, L847 |
+| ALAP | After the backward pass a second forward pass runs in which an ALAP predecessor feeds a non-ALAP successor from its late dates; an ALAP task shows its late dates as Start/Finish and has slack 0 | MPXJ MS L106-119, L1431-1434; SC L51-54 |
+| Total slack | The smaller of start slack (late minus early start) and finish slack (late minus early finish), in working time on the task's calendar (on the clock for an elapsed duration); the finish slack once the task has started. A Must Start/Finish On task shows its constraint date but measures its slack from where logic puts it when that is later: `slack9.mpp` shows a Must Finish On milestone with all four dates on its constraint date and a total slack of -1 day, its predecessor finishing a day after the date | Microsoft, "the smaller value of the Late Finish minus the Early Finish field, and the Late Start minus the Early Start field"; Start Slack page, "If a task has an actual start date and a deadline, the start slack is 0"; MPXJ SC L135-199; the MSO/MFO reading from slack9.mpp |
+| Free slack | 0 once finished; else the smallest, over unfinished successors, of the working time from this task's date to the successor's (FS finish to start, SS start to start, FF finish to finish, SF start to finish) on **this** task's calendar, minus the lag; the total slack when no successor is left; never negative, and **never more than the total slack** (slack9.mpp, where MPXJ's uncapped value differs from Project's) | Microsoft, Free Slack page, "If the task has no successor tasks, free slack is the same as total slack"; Start Slack page, "The smaller of the start slack and finish slack amounts determines the amount of free slack available"; MPXJ SC L92-133 |
+| Critical | Shown as stored (`Critical`); Project's own rule is total slack at or below `CriticalSlackLimit`, not complete, auto-scheduled | MPXJ Task.calculateCritical L6820-6839 |
+
+**Refused files** (reported with the reason; nothing is approximated):
+
+| Refusal | Reason given | Why |
+|---|---|---|
+| Scheduled from finish (`ScheduleFromStart` 0) | the project is scheduled from its finish date; only start-date scheduling is modelled | No rule (MPXJ: unsupported); 6 corpus files, none with logic |
+| Incomplete manually scheduled tasks | N manually scheduled tasks are incomplete: their dates are typed, not computed, so the schedule cannot be recalculated | MPXJ's pass-through rule reproduces 0 of the 6 corpus files refused only for this |
+| Levelling delay (task or assignment) | N tasks carry a levelling delay: resource levelling is not reproducible | Levelling heuristics |
+| Split or contoured tasks | N tasks are split or contoured: the stored dates span more working time than the duration | Splits live in timephased data the reader does not keep; the longer span gives them away (an in-progress split also as `Resume` after `Stop` with working time between) |
+| Recurring tasks | N recurring tasks: Project generates and constrains their occurrences itself | MPXJ: unsupported, though it reproduces the 3 corpus files refused only for this; revisited when a real file turns up |
+| Inserted or external projects, cross-project links | N tasks or relationships belong to inserted or external projects: their dates come from another file | Dates from another file |
+| Summary-task constraints | N summary tasks carry a constraint | MPXJ: unsupported; none in the corpus |
+| `MultipleCriticalPaths` on | the project calculates multiple critical paths, a rule the oracle has not validated | MPXJ does not implement it, Microsoft's page names the option only, no corpus file with logic uses it |
+| Resource-driven tasks | N tasks are scheduled by resource assignments on other working time than the task's, or with delayed or contoured assignments | A work resource (units > 0) whose calendar defines other working time than the task's effective calendar, an assignment levelling delay, or assignment dates off the task's. A resource on the same working time changes nothing: the stored `Duration` already embodies work and units. MPXJ reproduces none of the 7 corpus files refused only for this and all the files on the near side of the rule |
+| No project `StartDate`; a logic loop | the project has no start date; logic loop through N tasks | Nothing to schedule from |
+
+Not refusals: `HonorConstraints` (uninformative, above), a missing `StatusDate` (the passes
+do not use it; the checks that need it stay "not checkable"), inactive tasks (ignored, as
+Project ignores them).
+
+**Uncovered rules.** Deadlines, ALAP, SNLT, FNLT, FNET and MSO constraints, constraints
+on started tasks, elapsed durations, elapsed and percentage lags, and relationships across
+two calendars have a documented rule (above) but no example in the oracle corpus. A file
+that uses one is still recalculated and compared, since the comparison validates the rule
+on that file, and the report lists the rules under `uncovered`; the Critical Path Test,
+which applies the rules to a schedule the file never stored, is **withheld** until an
+oracle file for the rule reproduces. The Health Check names them.
+
+**What the oracle proved.** `scripts/msp_oracle_coverage.py` (stage 1 of phase 3) found
+the corpus a thin oracle: 54 of its 749 Project files carry any relationship, and after
+the refusals **33 files, 397 tasks and 237 links** are in scope (135 FS, 24 SS, 24 FF, 24
+SF; 126 lagged links in days and weeks, 6 of them leads; 129 SNET and 3 MFO constraints; 8
+milestones; 5 progressed files; Project 98 to 2019 in both formats). The engine reproduces
+**32 of the 33** with 0 differences and passes the Critical Path Test on 31 (the other,
+`slack9.mpp`, has no activity whose finish drives its Must-Finish-On milestone, so there
+is nothing to delay). The one exception, `bug1.mpp`, a Project 2003 file, stores late
+dates on two tasks three days later than any rule gives, which MPXJ misses too; it is
+reported as a difference, as the product would, and excluded from the acceptance
+criterion by name. The confidential real-world `.mpp` (51 tasks, 50 FS links, one
+relationship on a summary task) reproduces with 0 differences and passes the test
+exactly. Across the whole corpus the recalculation matches 549 files (32 with logic),
+differs on 10 (bug1, a Project 2002 file whose started task stores late dates equal to its
+early ones, the seven elapsed-duration fixtures whose working tasks store late finishes
+two days before the project finish, and a cost-resource timephased file whose task starts
+at a period's end), and refuses 190 with a reason. What the corpus **cannot** prove is the
+uncovered list above, progress beyond three tasks per file, and any file with both
+progress and a status date. `scripts/msp_corpus.py` prints the per-file result.
+
 ## Not done
 
 - Modelling of resource-dependent activities, resource levelling, cross-project
   relationships, multiple float paths and WBS summary activities in the recalculation
-  (see *Refused files*). No what-if rescheduling beyond the Critical Path Test.
+  (see *Refused files*), and on Project files the refusals of *Recalculation of Microsoft
+  Project files* (resource-driven tasks on other calendars, levelling, splits, manual and
+  recurring tasks, inserted projects, multiple critical paths, scheduling from the finish
+  date). No what-if rescheduling beyond the Critical Path Test.
 - BEI against a baseline.
 - Cost, earned value, resource levelling or loading analysis.
 - Schedule risk analysis, e.g. Monte Carlo (AACE 57R-09).
@@ -446,6 +542,12 @@ refused with MPXJ's message.
 - `scripts/cpm_oracle.py` runs the recalculation on any `.xer` files you hold and prints
   per-file match counts only (no activity content), for checking the engine against your
   own P6 exports.
+- `tests/test_cpm_msp.py` covers every Project scheduling rule above on a minimal network,
+  and `tests/test_recalc_msp.py` each refusal, the uncovered-rule policy, summary-task
+  logic and the resource rule on minimal MSPDI documents.
+- `scripts/msp_oracle_coverage.py` measures what the corpus can prove (features per file,
+  the in-scope set, and MPXJ's own scheduler as a second reference); `scripts/msp_corpus.py`
+  reports the recalculation's result per corpus file.
 - `tests/test_mspdi.py` covers every Microsoft Project rule above on minimal MSPDI
   documents, and the agreement of `examples/sample-schedule.xml` (the same demo project
   as Project would save it) with the `.xer` sample on the critical set; `tests/test_mpp.py`
