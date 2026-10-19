@@ -315,7 +315,7 @@
 import { defineComponent, type PropType } from 'vue'
 import { formatDate, formatFloat, formatHours, formatLag } from '../utils/format'
 import { REL_TYPE_LABELS, cstrLabel, displayStart, displayEnd } from '../utils/p6'
-import { actualDateChanges, constraintChanges, type ActualChange, type MatchedPair } from '../utils/compareChecks'
+import { actualDateChanges, constraintChanges, finishSlipDays, type ActualChange, type MatchedPair } from '../utils/compareChecks'
 import type { Activity, Schedule } from '../types/schedule'
 
 type SectionKey = 'milestones' | 'tornado' | 'dates' | 'durations' | 'actuals' | 'constraints' | 'float' | 'critical' | 'logic' | 'addrem'
@@ -371,9 +371,8 @@ export default defineComponent({
     },
     dateChanges(): Delta[] {
       return this.matched
-        .filter(d => displayEnd(d.cur) && displayEnd(d.base) && displayEnd(d.cur) !== displayEnd(d.base))
-        .map(d => ({ ...d, deltaDays: Math.round(days(displayEnd(d.cur)!, displayEnd(d.base)!) / 86400000) }))
-        .filter(d => d.deltaDays !== 0)
+        .map(d => ({ ...d, deltaDays: finishSlipDays(d.cur, d.base) }))
+        .filter((d): d is Delta => d.deltaDays !== null && d.deltaDays !== 0)
         .sort((a, b) => b.deltaDays - a.deltaDays)
     },
     finishDelta(): number | null {

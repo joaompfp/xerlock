@@ -170,6 +170,7 @@
           <span class="g-col-date g-corner-col">Start</span>
           <span class="g-col-date g-corner-col">Finish</span>
           <span class="g-col-float g-corner-col">Float</span>
+          <span v-if="showSlip" class="g-col-slip g-corner-col" title="Finish slippage against the compared schedule, in calendar days: + later, &minus; earlier">Slip</span>
         </div>
         <div class="g-cell g-timeline-header" :style="{ top: scrollTopPx + 'px', left: labelColWidth + 'px', width: totalWidth + 'px' }">
           <div class="g-header-band-row">
@@ -301,6 +302,7 @@
               <span class="g-col-date">{{ row.start ? formatDateShort(row.start) : '' }}</span>
               <span class="g-col-date">{{ row.finish ? formatDateShort(row.finish) : '' }}</span>
               <span class="g-col-float"></span>
+              <span v-if="showSlip" class="g-col-slip"></span>
             </template>
             <template v-else>
               <i v-if="annotations[row.activity.task_id]" class="annotation-flag" :class="'sev-' + annotations[row.activity.task_id].severity" :title="annotations[row.activity.task_id].note"></i>
@@ -310,6 +312,7 @@
               <span class="g-col-date">{{ formatDateShort(displayStart(row.activity)) }}</span>
               <span class="g-col-date">{{ formatDateShort(displayEnd(row.activity)) }}</span>
               <span class="g-col-float" :class="floatCellClass(row.activity)">{{ formatFloat(row.activity.total_float_hrs, row.activity.calendar_hrs_per_day) }}</span>
+              <span v-if="showSlip" class="g-col-slip" :class="slipCell(row.activity).cls" :title="slipCell(row.activity).title">{{ slipCell(row.activity).text }}</span>
             </template>
           </div>
           <div
@@ -455,6 +458,7 @@ const FLOAT_TAIL_MAX_DAYS = 26
 const STATUS_LABELS: Record<string, string> = { TK_NotStart: 'Not started', TK_Active: 'Active', TK_Complete: 'Complete' }
 import fullscreenMixin from '../mixins/fullscreen'
 import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
+import { finishSlipDays } from '../utils/compareChecks'
 import { PAPER_SIZES, paperOrDefault, usableWidthPx } from '../utils/paper'
 import {
   type Zoom,
@@ -847,6 +851,11 @@ export default defineComponent({
       }
       return ids
     },
+    // The slip column belongs to the two-schedule view: it shows whenever the compared
+    // schedule's bars are drawn beside the current ones.
+    showSlip(): boolean {
+      return !!this.baseline && this.showBaseline
+    },
     baselineByCode(): Map<string, Activity> | null {
       if (!this.baseline) return null
       const m = new Map<string, Activity>()
@@ -1068,6 +1077,18 @@ export default defineComponent({
       const xEnd = this.dateToX(row.finish.toISOString())
       // `?? 0` mirrors JS's null-to-0 coercion in subtraction.
       return { left: x + 'px', width: Math.max((xEnd ?? 0) - (x ?? 0), 3) + 'px' }
+    },
+    slipCell(a: Activity): { text: string; cls: string; title: string } {
+      const b = this.baselineByCode?.get(a.task_code)
+      if (!b) return { text: 'new', cls: 'slip-new', title: 'Not in the compared schedule' }
+      const d = finishSlipDays(a, b)
+      if (d === null) return { text: '', cls: '', title: '' }
+      const was = formatDateShort(displayEnd(b))
+      return {
+        text: (d > 0 ? '+' : '') + d + 'd',
+        cls: d > 0 ? 'slip-late' : d < 0 ? 'slip-early' : '',
+        title: d === 0 ? `Finish unchanged (${was})` : `Finish ${d > 0 ? 'later' : 'earlier'} by ${Math.abs(d)} calendar day${Math.abs(d) === 1 ? '' : 's'} (was ${was})`,
+      }
     },
     ghostFor(a: Activity): { x: number | null; w: number; label: string } | null {
       if (!this.showBaseline || !this.baselineByCode) return null
@@ -1619,6 +1640,10 @@ export default defineComponent({
 .g-col-float.fl-neg { color: var(--crit); font-weight: 700; }
 .g-col-float.fl-near { color: var(--near); font-weight: 600; }
 .g-col-dur { width: 34px; }
+.g-col-slip { flex-shrink: 0; width: 40px; margin-right: 8px; text-align: right; font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); }
+.g-col-slip.slip-late { color: var(--crit); font-weight: 700; }
+.g-col-slip.slip-early { color: var(--ok); font-weight: 600; }
+.g-col-slip.slip-new { color: var(--gray-500); font-style: italic; }
 .g-col-date { width: 48px; }
 
 

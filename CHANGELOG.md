@@ -4,6 +4,13 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [Unreleased]
+
+### Added
+- Gantt: a **Slip** column beside Float whenever the compared schedule's bars are drawn,
+  giving each activity's finish movement in calendar days (+ later, − earlier, "new" when
+  the compared file lacks it), the same measure as Compare's date changes.
+
 ## [1.3.1] - 2026-10-19
 
 ### Fixed

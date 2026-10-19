@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { actualDateChanges, constraintChanges } from './compareChecks'
+import { actualDateChanges, constraintChanges, finishSlipDays } from './compareChecks'
 
 import type { Activity } from '../types/schedule'
 import { makeActivity } from '../testing/factories'
@@ -33,5 +33,16 @@ describe('constraintChanges', () => {
       pair({ cstr_type: 'CS_MEOB', cstr_date: '2026-09-01' }, { cstr_type: 'CS_MEOB', cstr_date: '2026-09-01' }),
     ])
     expect(r).toHaveLength(3)
+  })
+})
+
+describe('finishSlipDays', () => {
+  it('measures the displayed finish in calendar days: later is positive, earlier negative', () => {
+    const a = (f: Partial<Activity>) => makeActivity({ act_end: null, early_end: null, ...f })
+    expect(finishSlipDays(a({ early_end: '2026-03-13 17:00' }), a({ early_end: '2026-03-10 17:00' }))).toBe(3)
+    expect(finishSlipDays(a({ early_end: '2026-03-09 17:00' }), a({ early_end: '2026-03-10 17:00' }))).toBe(-1)
+    // a completed activity is measured on its actual finish
+    expect(finishSlipDays(a({ act_end: '2026-03-12 12:00', early_end: '2026-03-20 17:00' }), a({ early_end: '2026-03-10 12:00' }))).toBe(2)
+    expect(finishSlipDays(a({}), a({ early_end: '2026-03-10 17:00' }))).toBeNull()
   })
 })

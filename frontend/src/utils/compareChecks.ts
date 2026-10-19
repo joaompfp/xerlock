@@ -2,6 +2,9 @@
 // matched by code. Pure, so each rule is testable on its own.
 
 import type { Activity } from '../types/schedule'
+import { displayEnd } from './p6'
+
+const DAY_MS = 86400000
 
 export interface MatchedPair {
   code: string
@@ -39,4 +42,15 @@ export function actualDateChanges(matched: MatchedPair[]): (MatchedPair & { chan
 export function constraintChanges(matched: MatchedPair[]): MatchedPair[] {
   const key = (a: Activity) => [a.cstr_type || '', a.cstr_date || '', a.cstr_type2 || '', a.cstr_date2 || ''].join('|')
   return matched.filter(d => key(d.cur) !== key(d.base))
+}
+
+// Slippage: how far an activity's finish moved from one submission to the other, in
+// calendar days, rounded (positive = later, a slip; negative = earlier, a gain). The
+// finish is the displayed one, so a completed activity is measured on its actual finish.
+// null when either side has no finish.
+export function finishSlipDays(cur: Activity, base: Activity): number | null {
+  const c = displayEnd(cur)
+  const b = displayEnd(base)
+  if (!c || !b) return null
+  return Math.round((new Date(c).getTime() - new Date(b).getTime()) / DAY_MS)
 }
