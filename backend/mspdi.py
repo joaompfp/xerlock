@@ -12,7 +12,8 @@ mapping decision.
 
 Everything here is Project's own stored value: Start/Finish, LateStart/LateFinish,
 TotalSlack/FreeSlack, Critical, actuals, Baseline 0, constraints and calendars are read
-from the file, never recomputed. The recalculation is reported as not available.
+from the file; the recalculation (backend/recalc_msp.py, backend/cpm_msp.py) recomputes
+them from the file's own logic and reports where the two differ.
 """
 
 import re
@@ -21,12 +22,10 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from backend import analysis, recalc
+from backend import analysis
 
 NS = "http://schemas.microsoft.com/project"
 _T = "{%s}" % NS
-
-RECALC_UNAVAILABLE = "not yet available for Microsoft Project files"
 
 # MSPDI PredecessorLink/Type (MPXJ RelationType): 0 FF, 1 FS, 2 SF, 3 SS.
 LINK_TYPES = {"0": "PR_FF", "1": "PR_FS", "2": "PR_SF", "3": "PR_SS"}
@@ -694,7 +693,18 @@ def read_mspdi(source, source_format: str = "mspdi") -> dict:
     }
 
     def recalculate(work_cals, default_cal_obj, longest_path_ids, hrs_per_day_map):
-        return recalc.unsupported(RECALC_UNAVAILABLE), None
+        # recalc_msp imports this module for its decoders, so it is imported here,
+        # when the closure runs, rather than at the top.
+        from backend import recalc_msp
+        return recalc_msp.run({
+            "root": root, "tasks": tasks, "is_summary": is_summary, "inactive": inactive,
+            "cal_names": cal_names, "default_cal": default_cal, "calendars": calendars,
+            "work_cals": work_cals, "default_cal_obj": default_cal_obj, "source_format": source_format,
+            "project_start": parse_date(g("StartDate")),
+            "schedule_from_start": msp_options["schedule_from_start"],
+            "multiple_critical_paths": msp_options["multiple_critical_paths"],
+            "critical_slack_limit_days": critical_limit_days,
+        }, longest_path_ids, hrs_per_day_map)
 
     return {
         "project": {

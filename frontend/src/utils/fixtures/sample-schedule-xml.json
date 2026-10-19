@@ -38,17 +38,18 @@
   },
   "recalculation": {
    "supported": false,
-   "reason": "not yet available for Microsoft Project files",
+   "reason": "1 manually scheduled task is incomplete: their dates are typed, not computed, so the schedule cannot be recalculated",
    "options": {
-    "progress_mode": "",
-    "float_type": "",
-    "lag_calendar": "",
+    "schedule_from": "start",
+    "lag_calendar": "rcal_Successor",
+    "critical_slack_limit_days": 0,
+    "multiple_critical_paths": false,
     "delay_days": 600
    },
    "compared": 0,
    "excluded": {
     "complete": 0,
-    "wbs_summary": 0
+    "wbs_summary": 7
    },
    "differing": 0,
    "by_field": {
@@ -60,7 +61,11 @@
     "ff": 0
    },
    "differences": [],
-   "truncated": false
+   "truncated": false,
+   "uncovered": [
+    "deadlines",
+    "Finish No Later Than constraints"
+   ]
   },
   "critical_path_test": null,
   "source_format": "mspdi",
