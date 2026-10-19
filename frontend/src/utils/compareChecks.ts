@@ -52,5 +52,11 @@ export function finishSlipDays(cur: Activity, base: Activity): number | null {
   const c = displayEnd(cur)
   const b = displayEnd(base)
   if (!c || !b) return null
-  return Math.round((new Date(c).getTime() - new Date(b).getTime()) / DAY_MS)
+  return dateSlipDays(c, b)
+}
+
+// The movement from one date to another in whole calendar days, rounded: the unit every
+// slip in Compare and on the Gantt is given in.
+export function dateSlipDays(cur: string | Date, base: string | Date): number {
+  return Math.round((new Date(cur).getTime() - new Date(base).getTime()) / DAY_MS)
 }
