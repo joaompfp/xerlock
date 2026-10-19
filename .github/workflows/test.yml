@@ -20,7 +20,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       # A JRE for MPXJ (backend/mpp.py); the tests that need it are skipped without one.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
