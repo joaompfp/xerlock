@@ -131,9 +131,23 @@ def test_material_resource_or_zero_units_do_not_drive_the_task():
 def test_task_levelling_delay_is_honoured_as_elapsed_time():
     # 480 clock hours (288000 tenths of a minute) from Monday 2 March 08:00 is Sunday
     # 22 March 08:00, so the task starts Monday 23 March.
-    r, _ = recalc(one(LevelingDelay=288000, LevelingDelayFormat=8, start="2026-03-23T08:00:00", finish="2026-03-23T16:00:00",
-                      LateStart="2026-03-23T08:00:00", LateFinish="2026-03-23T16:00:00"))
+    r, cpt = recalc(one(LevelingDelay=288000, LevelingDelayFormat=8, start="2026-03-23T08:00:00", finish="2026-03-23T16:00:00",
+                        LateStart="2026-03-23T08:00:00", LateFinish="2026-03-23T16:00:00"))
     assert r["supported"] and r["differing"] == 0, r["differences"]
+    # Inside the validated case (unstarted, unconstrained, no non-FS or lagged
+    # predecessor, delayed onto a working start): nothing uncovered, the CPT runs.
+    assert r["uncovered"] == [] and cpt["passed"]
+
+
+def test_levelling_delay_outside_the_validated_case_is_uncovered_and_withholds_the_cpt():
+    # An SS predecessor is outside the evidence: compared, listed, test withheld.
+    tasks = one() + task(2, start="2026-03-23T08:00:00", finish="2026-03-23T16:00:00", links=[(1, 3, 0, 7)],
+                         LevelingDelay=288000, LevelingDelayFormat=8,
+                         LateStart="2026-03-23T08:00:00", LateFinish="2026-03-23T16:00:00")
+    r, cpt = recalc(tasks)
+    assert r["supported"]
+    assert r["uncovered"] == ["levelling delay outside the validated case (a started or constrained task, non-FS or lagged predecessors, or a delayed start off a working start)"]
+    assert cpt is None
 
 
 def test_assignment_levelling_delay_is_refused():

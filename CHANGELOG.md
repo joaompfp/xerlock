@@ -17,8 +17,10 @@ snapshots rely on, is a major version.
 - A task's levelling delay is honoured: elapsed time added to the early start its logic
   gives, and taken off its late start for its predecessors (Microsoft's Leveling Delay,
   Early Start and Late Finish field pages). A coursework schedule with progress, a status
-  date and a levelled task reproduces exactly; only an assignment's levelling delay, in
-  regular duration units, is still refused.
+  date and a levelled task reproduces exactly. The rule is validated for an unstarted,
+  unconstrained task with FS predecessors without lag, delayed onto a working start; any
+  other levelled task is listed in `uncovered` and keeps the Critical Path Test withheld.
+  An assignment's levelling delay, in regular duration units, is still refused.
 - `tests/test_msp_examples.py`: local oracle `.mpp` files under `examples/` (gitignored,
   never committed) must reproduce and pass the Critical Path Test; skipped when absent.
 

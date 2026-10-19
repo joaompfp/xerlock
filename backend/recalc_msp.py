@@ -31,6 +31,7 @@ UNCOVERED_LABELS = {
     "elapsed_lag": "elapsed lags",
     "pct_lag": "percentage lags",
     "two_calendars": "relationships across two calendars",
+    "leveling_delay_other": "levelling delay outside the validated case (a started or constrained task, non-FS or lagged predecessors, or a delayed start off a working start)",
 }
 
 
@@ -105,6 +106,7 @@ def build(ctx: dict):
     uncovered = set()
     tasks, stored = [], {}
     start_of = {}
+    delayed = {}  # uid -> already outside the validated levelling-delay case
 
     for task in tasks_meta:
         uid = task["uid"]
@@ -128,8 +130,16 @@ def build(ctx: dict):
         if r.flag("IsSubproject") or r.flag("ExternalTask"):
             counts["external"] += 1
         # A task's levelling delay is honoured (cpm_msp.Task.leveling_delay_hrs); only an
-        # assignment's, in regular duration units, is refused below.
+        # assignment's, in regular duration units, is refused below. The oracle files
+        # show the rule on unstarted, unconstrained tasks with FS predecessors without
+        # lag (or none), delayed onto a working start; anything else is uncovered
+        # (checked once the links are known).
         leveling_delay = mspdi.tenths_of_minutes_hours(r.t("LevelingDelay")) or 0.0
+        if leveling_delay > 0:
+            cal_w = work_cals.get(cid) or ctx["default_cal_obj"] or ALL_HOURS
+            start = r.date("Start")
+            delayed[uid] = (started or constraint != ASAP
+                            or start is None or cal_w.next_work_start(start) != start)
         # A split or contoured task: its stored dates span more working time than
         # its duration (an in-progress split shows it as Resume after Stop with
         # working time between; an unstarted split only as the longer span, since
@@ -225,6 +235,12 @@ def build(ctx: dict):
                     if not _same_working_time(decoded[cal_of(p)], decoded[cal_of(s)]):
                         uncovered.add("two_calendars")
                     links.append(cpm_core.Link(p, s, ltype, round(lag_hrs, 4), elapsed, inherited))
+
+    for l in links:
+        if l.succ in delayed and (l.type != "PR_FS" or l.lag_hrs):
+            delayed[l.succ] = True
+    if any(delayed.values()):
+        uncovered.add("leveling_delay_other")
 
     # Resource-driven tasks (the narrow rule, SPEC-MSPROJECT §7.5): a work resource
     # assigned with units above zero drives the task when its calendar defines other
