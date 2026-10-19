@@ -65,7 +65,7 @@ meaning. Works down to a phone, where the sidebar slides over from a hamburger.
   the driving predecessor, this activity, and the driving successor with the link type and lag
   per hop - click a node to walk the chain. What is not driving sits in collapsed lists, each
   link with its relationship free float, so every "driving" label can be checked by hand
-- Print-friendly export
+- Printout that matches the screen: the Gantt as shown, fitted to the paper width, one sheet at a time with its own header
 
 **Critical Path** - activity-on-node network diagram
 ![Critical path network](docs/screenshots/critical-path.png)

@@ -157,14 +157,26 @@
         <p class="g-empty-sub">{{ emptyFilterHint }}</p>
         <button class="btn-tiny-light" @click="clearFilters">Clear filters</button>
       </div>
+      <!-- One grid per page: on screen a single page holds every row; a printout gets one
+           grid per sheet, each with its own header and a slice of the rows (gridPages). -->
+      <template v-for="(pg, pi) in gridPages" :key="pg.start">
+      <div v-if="!pg.screen" class="print-title">
+        <strong>{{ data.project.proj_short_name }}</strong>
+        <span v-if="data.project.data_date">Data date {{ formatDate(data.project.data_date) }}</span>
+        <span v-if="activeFilterChips.length">Filtered: {{ activeFilterChips.map(c => c.label).join(', ') }}</span>
+        <span v-if="isolatedIds">Chain trace: {{ isolatedIds.size }} {{ isolatedIds.size === 1 ? 'activity' : 'activities' }}</span>
+        <span v-if="showSlip">Compared with {{ baselineFilename || 'the loaded baseline' }}: outlined bars, Slip in calendar days</span>
+        <span class="print-pageno">Page {{ pi + 1 }} of {{ gridPages.length }}</span>
+      </div>
       <div
         class="gantt-grid"
-        :style="{ gridTemplateColumns: labelColWidth + 'px ' + totalWidth + 'px', width: (labelColWidth + totalWidth) + 'px', height: (HEADER_HEIGHT + bodyHeight) + 'px' }"
+        :class="{ 'gantt-print-page': !pg.screen, 'gantt-print-last': !pg.screen && pi === gridPages.length - 1 }"
+        :style="{ gridTemplateColumns: labelColWidth + 'px ' + totalWidth + 'px', width: (labelColWidth + totalWidth) + 'px', height: (HEADER_HEIGHT + pg.bodyHeight) + 'px' }"
       >
         <!-- Header + label column are positioned manually (top/left tracked from the @scroll
              handler) instead of using position:sticky — Chromium mis-renders sticky grid items
              whose own box exactly fills a narrow track once you scroll near the content's end. -->
-        <div class="g-cell g-corner" :style="{ top: scrollTopPx + 'px', left: scrollLeftPx + 'px', width: labelColWidth + 'px' }">
+        <div class="g-cell g-corner" :style="{ top: pg.top + 'px', left: pg.left + 'px', width: labelColWidth + 'px' }">
           <span class="g-corner-name">Activity</span>
           <span class="g-col-dur g-corner-col">Dur</span>
           <span class="g-col-date g-corner-col">Start</span>
@@ -172,7 +184,7 @@
           <span class="g-col-float g-corner-col">Float</span>
           <span v-if="showSlip" class="g-col-slip g-corner-col" title="Finish slippage against the compared schedule, in calendar days: + later, &minus; earlier">Slip</span>
         </div>
-        <div class="g-cell g-timeline-header" :style="{ top: scrollTopPx + 'px', left: labelColWidth + 'px', width: totalWidth + 'px' }">
+        <div class="g-cell g-timeline-header" :style="{ top: pg.top + 'px', left: labelColWidth + 'px', width: totalWidth + 'px' }">
           <div class="g-header-band-row">
             <div
               v-for="t in bandTicks"
@@ -182,9 +194,9 @@
             >{{ t.label }}</div>
             <!-- The data date labelled where the eye starts reading the timeline -->
             <span
-              v-if="dataDateX !== null"
+              v-if="ddX(pg) !== null"
               class="g-dd-chip"
-              :style="{ left: dataDateX + 'px' }"
+              :style="{ left: ddX(pg) + 'px' }"
               :title="'Data date: ' + formatDate(data.project.data_date)"
             >{{ formatDateShort(data.project.data_date) }} &middot; data date</span>
           </div>
@@ -202,26 +214,26 @@
         <!-- Background layer: weekend shading + gridlines — sits BELOW bars -->
         <svg
           class="g-overlay g-overlay-bg"
-          :style="{ left: labelColWidth + 'px', top: HEADER_HEIGHT + 'px', width: totalWidth + 'px', height: bodyHeight + 'px' }"
+          :style="{ left: labelColWidth + 'px', top: HEADER_HEIGHT + 'px', width: totalWidth + 'px', height: pg.bodyHeight + 'px' }"
           :width="totalWidth"
-          :height="bodyHeight"
+          :height="pg.bodyHeight"
         >
           <rect
             v-for="r in weekendRects"
             :key="'we' + r.x"
-            :x="r.x" y="0" :width="r.w" :height="bodyHeight"
+            :x="r.x" y="0" :width="r.w" :height="pg.bodyHeight"
             class="g-weekend"
           />
           <line
             v-for="t in detailTicks"
             :key="'gl' + t.x"
-            :x1="t.x" :x2="t.x" y1="0" :y2="bodyHeight"
+            :x1="t.x" :x2="t.x" y1="0" :y2="pg.bodyHeight"
             class="g-gridline"
           />
           <line
             v-for="t in secondaryMonthGridlines"
             :key="'glm' + t.x"
-            :x1="t.x" :x2="t.x" y1="0" :y2="bodyHeight"
+            :x1="t.x" :x2="t.x" y1="0" :y2="pg.bodyHeight"
             class="g-gridline-month"
           />
         </svg>
@@ -230,9 +242,9 @@
              visually disappears behind an unrelated activity's bar. -->
         <svg
           class="g-overlay g-overlay-fg"
-          :style="{ left: labelColWidth + 'px', top: HEADER_HEIGHT + 'px', width: totalWidth + 'px', height: bodyHeight + 'px' }"
+          :style="{ left: labelColWidth + 'px', top: HEADER_HEIGHT + 'px', width: totalWidth + 'px', height: pg.bodyHeight + 'px' }"
           :width="totalWidth"
-          :height="bodyHeight"
+          :height="pg.bodyHeight"
         >
           <defs>
             <marker id="gantt-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -242,6 +254,7 @@
               <path d="M0 0L8 4L0 8z" class="g-link-arrow-chain" />
             </marker>
           </defs>
+          <g :transform="'translate(0,' + (-pg.start * ROW_HEIGHT) + ')'">
           <path
             v-for="l in links"
             :key="l.id"
@@ -257,41 +270,43 @@
             :cx="p.x" :cy="p.y" r="2.5"
             class="g-progress-dot"
           />
+          </g>
         </svg>
 
         <!-- Today line (above everything but the frozen header/label) -->
         <div
-          v-if="todayX !== null"
+          v-if="pg.screen && todayX !== null"
           class="g-today-line"
-          :style="{ left: (labelColWidth + todayX) + 'px', top: HEADER_HEIGHT + 'px', height: bodyHeight + 'px' }"
+          :style="{ left: (labelColWidth + todayX) + 'px', top: HEADER_HEIGHT + 'px', height: pg.bodyHeight + 'px' }"
         ><span class="g-today-flag">Today</span></div>
 
         <!-- Data date line: the schedule's own status date — the anchor every
              progress/forecast judgement should be made against, not "today". -->
         <div
-          v-if="dataDateX !== null"
+          v-if="ddX(pg) !== null"
           class="g-dd-line"
-          :style="{ left: (labelColWidth + dataDateX) + 'px', top: HEADER_HEIGHT + 'px', height: bodyHeight + 'px' }"
+          :style="{ left: (labelColWidth + ddX(pg)!) + 'px', top: HEADER_HEIGHT + 'px', height: pg.bodyHeight + 'px' }"
           :title="'Data date: ' + formatDate(data.project.data_date)"
         ></div>
 
         <!-- Resize handle for the label column, tracked against horizontal scroll manually
              (position:sticky inside a CSS-grid item gets unreliable with explicit track spans,
-             so we just follow scrollLeftPx from the @scroll handler instead). -->
+             so we just follow pg.left from the @scroll handler instead). -->
         <div
+          v-if="pg.screen"
           class="g-resize-handle"
           :class="{ resizing }"
-          :style="{ left: (scrollLeftPx + labelColWidth - 3) + 'px', height: (HEADER_HEIGHT + bodyHeight) + 'px' }"
+          :style="{ left: (pg.left + labelColWidth - 3) + 'px', height: (HEADER_HEIGHT + pg.bodyHeight) + 'px' }"
           @mousedown.stop="onResizeStart"
           title="Drag to resize"
         ></div>
 
         <!-- Rows -->
-        <template v-for="row in rows" :key="row.key">
+        <template v-for="row in pg.rows" :key="row.key">
           <div
             class="g-cell g-label"
             :class="{ 'g-label-wbs': row.type === 'wbs', selected: row.type === 'activity' && row.activity.task_id === selectedTaskId }"
-            :style="{ top: (HEADER_HEIGHT + row.index * ROW_HEIGHT) + 'px', left: scrollLeftPx + 'px', width: labelColWidth + 'px', paddingLeft: (8 + row.level * 11) + 'px' }"
+            :style="{ top: (HEADER_HEIGHT + (row.index - pg.start) * ROW_HEIGHT) + 'px', left: pg.left + 'px', width: labelColWidth + 'px', paddingLeft: (8 + row.level * 11) + 'px' }"
             @click="row.type === 'wbs' ? toggleWbs(row.wbsId) : selectActivity(row.activity)"
           >
             <template v-if="row.type === 'wbs'">
@@ -302,7 +317,7 @@
               <span class="g-col-date">{{ row.start ? formatDateShort(row.start) : '' }}</span>
               <span class="g-col-date">{{ row.finish ? formatDateShort(row.finish) : '' }}</span>
               <span class="g-col-float"></span>
-              <span v-if="showSlip" class="g-col-slip"></span>
+              <span v-if="showSlip" class="g-col-slip" :class="wbsSlipCell(row).cls" :title="wbsSlipCell(row).title">{{ wbsSlipCell(row).text }}</span>
             </template>
             <template v-else>
               <i v-if="annotations[row.activity.task_id]" class="annotation-flag" :class="'sev-' + annotations[row.activity.task_id].severity" :title="annotations[row.activity.task_id].note"></i>
@@ -317,7 +332,7 @@
           </div>
           <div
             class="g-cell g-timeline-row"
-            :style="{ gridRow: (row.index + 2), gridColumn: 2, width: totalWidth + 'px' }"
+            :style="{ gridRow: (row.index - pg.start + 2), gridColumn: 2, width: totalWidth + 'px' }"
           >
             <div
               v-if="row.type === 'wbs'"
@@ -366,63 +381,9 @@
           </div>
         </template>
       </div>
+      </template>
     </div>
 
-    <!-- Print-only table: a real <table><thead> so the column/date header repeats on
-         every printed page and rows can never be silently dropped by pagination. The
-         interactive view above (position:absolute rows, an SVG links overlay spanning
-         the whole multi-page canvas) proved unsafe for print in Chromium — confirmed
-         by extracting text from a real multi-page printout and diffing activity codes
-         against the source data: a fixed/repeating header there hid whole rows, and a
-         CSS transform scale-to-fit corrupted the links overlay. Real table rows don't
-         get split or dropped across page breaks, and <thead> repetition is native
-         browser behavior, not a CSS trick. Cross-row relationship links are left out
-         of the printout by design — the Critical Path tab is the tool for tracing
-         those; a shared canvas is exactly the mechanism that made printing unsafe. -->
-    <table class="print-table">
-      <colgroup>
-        <col :style="{ width: labelColWidth + 'px' }" />
-        <col class="pt-col-num" />
-        <col class="pt-col-date" />
-        <col class="pt-col-date" />
-        <col :style="{ width: totalWidth + 'px' }" />
-      </colgroup>
-      <thead>
-        <tr>
-          <th class="pt-label">Activity</th>
-          <th class="pt-num">Dur</th>
-          <th class="pt-num">Start</th>
-          <th class="pt-num">Finish</th>
-          <th class="pt-timeline">
-            <span v-for="t in monthTicks" :key="t.x" class="pt-tick" :style="{ left: t.x + 'px' }">{{ t.label }}</span>
-            <span v-if="printDataDateX !== null" class="pt-dd-tick" :style="{ left: printDataDateX + 'px' }">Data date</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="row in rows" :key="row.key" :class="{ 'pt-wbs-row': row.type === 'wbs', 'pt-stripe': row.index % 2 === 1 }">
-          <template v-if="row.type === 'wbs'">
-            <td class="pt-label" :style="{ paddingLeft: (8 + row.level * 11) + 'px' }">{{ row.name }}</td>
-            <td class="pt-num">{{ row.count }}</td>
-            <td class="pt-num"></td>
-            <td class="pt-num"></td>
-            <td class="pt-timeline">
-              <div v-if="row.start && row.finish" class="g-bar-wbs" :style="wbsBarStyle(row)"></div>
-            </td>
-          </template>
-          <template v-else>
-            <td class="pt-label" :style="{ paddingLeft: (8 + row.level * 11) + 'px' }">{{ row.activity.task_code }} &nbsp;{{ row.activity.task_name }}</td>
-            <td class="pt-num">{{ formatHours(row.activity.duration_hrs, row.activity.calendar_hrs_per_day) }}</td>
-            <td class="pt-num">{{ formatDateShort(displayStart(row.activity)) }}</td>
-            <td class="pt-num">{{ formatDateShort(displayEnd(row.activity)) }}</td>
-            <td class="pt-timeline">
-              <div v-if="row.milestone" class="g-milestone" :class="row.cls" :style="{ left: row.x + 'px' }"></div>
-              <div v-else class="g-bar" :class="row.cls" :style="{ left: row.x + 'px', width: row.w + 'px' }"></div>
-            </td>
-          </template>
-        </tr>
-      </tbody>
-    </table>
 
     <ActivityDetailDrawer
       :activity="selectedActivity"
@@ -458,12 +419,13 @@ const FLOAT_TAIL_MAX_DAYS = 26
 const STATUS_LABELS: Record<string, string> = { TK_NotStart: 'Not started', TK_Active: 'Active', TK_Complete: 'Complete' }
 import fullscreenMixin from '../mixins/fullscreen'
 import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
-import { finishSlipDays } from '../utils/compareChecks'
-import { PAPER_SIZES, paperOrDefault, usableWidthPx } from '../utils/paper'
+import { dateSlipDays, finishSlipDays } from '../utils/compareChecks'
+import { PAPER_SIZES, paperOrDefault, usableWidthPx, usableHeightPx } from '../utils/paper'
 import {
   type Zoom,
   timelineRange, unionRange, dayWidthFor, clampDayWidth, totalWidth,
   dateToX, yearTicks, monthTicks, monthBandTicks, weekTicks, dayTicks, weekendRects,
+  rowsPerPrintPage, printPageRanges, zoomForDayWidth,
   type Tick,
 } from '../utils/ganttGeometry'
 import IconChevron from './IconChevron.vue'
@@ -476,6 +438,8 @@ const HEADER_HEIGHT = 56
 const ROW_HEIGHT = 26
 // 15px safety buffer: tuned against this chart's printed output (see utils/paper.ts).
 const PRINT_BUFFER_PX = 15
+// The title line above each printed sheet's grid: its height plus margin (see .print-title).
+const PRINT_TITLE_HEIGHT = 24
 function paperUsableWidthPx(key: string): number {
   return usableWidthPx(key, PRINT_BUFFER_PX)
 }
@@ -499,7 +463,30 @@ interface SavedView {
 /** WBS ids, plus the synthetic group holding activities with no known WBS. */
 type WbsKey = number | '__unassigned'
 
-interface Rollup { start: Date | null; finish: Date | null; count: number }
+interface GridPage {
+  screen: boolean
+  /** Index of the page's first row in `rows`. */
+  start: number
+  rows: Row[]
+  bodyHeight: number
+  /** Where the frozen header and label column sit (the scroll offsets on screen). */
+  top: number
+  left: number
+}
+
+interface SlipCell { text: string; cls: string; title: string }
+const NO_SLIP: SlipCell = { text: '', cls: '', title: '' }
+function slipCellOf(d: number, was: string, what: string): SlipCell {
+  return {
+    text: (d > 0 ? '+' : '') + d + 'd',
+    cls: d > 0 ? 'slip-late' : d < 0 ? 'slip-early' : '',
+    title: d === 0 ? `${what} unchanged (${was})` : `${what} ${d > 0 ? 'later' : 'earlier'} by ${Math.abs(d)} calendar day${Math.abs(d) === 1 ? '' : 's'} (was ${was})`,
+  }
+}
+
+// baseFinish: the latest compared finish of the activities under the node that the
+// compared schedule also has (null without a compared schedule or with none in common).
+interface Rollup { start: Date | null; finish: Date | null; baseFinish: Date | null; count: number }
 
 interface WbsRow {
   type: 'wbs'
@@ -510,6 +497,7 @@ interface WbsRow {
   count: number
   start?: Date | null
   finish?: Date | null
+  baseFinish?: Date | null
   index: number
 }
 
@@ -574,6 +562,8 @@ export default defineComponent({
     // Parsed baseline schedule (from the Compare tab's snapshot/upload). When present,
     // activities matched by code can draw a ghost bar at their baseline position.
     baseline: { type: Object as PropType<Schedule | null>, default: null },
+    // Its file name, for the printout's title line.
+    baselineFilename: { type: String, default: '' },
   },
   emits: ['jumped', 'annotate', 'unannotate', 'return-to-origin'],
   data() {
@@ -607,6 +597,8 @@ export default defineComponent({
       // this set records those, and clears when filters clear.
       filterCollapsed: new Set<WbsKey>(),
       showBaseline: true,
+      // True between Print and the end of printing: the grid is drawn as sheets (gridPages).
+      printing: false,
       showLinks: saved.showLinks ?? true,
       linksScope: (saved.linksScope || 'critical') as LinksScope,
       showProgressLine: saved.showProgressLine ?? false,
@@ -745,13 +737,31 @@ export default defineComponent({
     bodyHeight(): number {
       return this.rows.length * ROW_HEIGHT
     },
+    // The pages the grid is drawn as. On screen: one page with every row, its header and
+    // label column following the scroll position.
+    // While printing: one page per sheet, each with as many rows as fit below the
+    // sheet's title line and the repeated column header.
+    gridPages(): GridPage[] {
+      if (!this.printing) {
+        return [{ screen: true, start: 0, rows: this.rows, bodyHeight: this.bodyHeight, top: this.scrollTopPx, left: this.scrollLeftPx }]
+      }
+      const perPage = rowsPerPrintPage(usableHeightPx(this.printPaperSize, PRINT_BUFFER_PX), PRINT_TITLE_HEIGHT + HEADER_HEIGHT, ROW_HEIGHT)
+      return printPageRanges(this.rows.length, perPage).map(({ start, end }) => ({
+        screen: false, start, rows: this.rows.slice(start, end), bodyHeight: (end - start) * ROW_HEIGHT, top: 0, left: 0,
+      }))
+    },
     yearTicks(): Tick[] {
       return yearTicks(this.rangeStart, this.rangeEnd, this.dayWidth)
     },
     // Months read as the band at day/week zoom; at month/quarter zoom the months are
     // already the ticks, so the band steps up to years.
+    // The zoom the header ticks follow: the chosen one on screen; on a printed sheet,
+    // whose day width is fitted to the paper, the one that suits that width.
+    tickZoom(): Zoom {
+      return this.printing ? zoomForDayWidth(this.dayWidth) : this.zoom
+    },
     bandTicks(): Tick[] {
-      return this.zoom === 'day' || this.zoom === 'week'
+      return this.tickZoom === 'day' || this.tickZoom === 'week'
         ? monthBandTicks(this.rangeStart, this.rangeEnd, this.dayWidth)
         : yearTicks(this.rangeStart, this.rangeEnd, this.dayWidth)
     },
@@ -765,15 +775,15 @@ export default defineComponent({
       return dayTicks(this.rangeStart, this.rangeEnd, this.dayWidth)
     },
     detailTicks(): Tick[] {
-      if (this.zoom === 'month' || this.zoom === 'quarter') return this.monthTicks
-      if (this.zoom === 'week') return this.weekTicks
+      if (this.tickZoom === 'month' || this.tickZoom === 'quarter') return this.monthTicks
+      if (this.tickZoom === 'week') return this.weekTicks
       return this.dayTicks
     },
     secondaryMonthGridlines(): Tick[] {
-      return this.zoom === 'day' || this.zoom === 'week' ? this.monthTicks : []
+      return this.tickZoom === 'day' || this.tickZoom === 'week' ? this.monthTicks : []
     },
     weekendRects(): { x: number; w: number }[] {
-      if (this.zoom !== 'day') return []
+      if (this.tickZoom !== 'day') return []
       return weekendRects(this.dayTicks, this.dayWidth)
     },
     todayX(): number | null {
@@ -902,7 +912,7 @@ export default defineComponent({
       const walk = (nodes: WbsNode[], level: number) => {
         const sorted = [...nodes].sort((a, b) => a.seq_num - b.seq_num)
         for (const node of sorted) {
-          const roll = rollups.get(node.wbs_id) || { start: null, finish: null, count: 0 }
+          const roll = rollups.get(node.wbs_id) || { start: null, finish: null, baseFinish: null, count: 0 }
           if (filtering && roll.count === 0) continue
           rows.push({
             type: 'wbs',
@@ -913,6 +923,7 @@ export default defineComponent({
             count: roll.count,
             start: roll.start,
             finish: roll.finish,
+            baseFinish: roll.baseFinish,
           })
           const expanded = filtering ? !this.filterCollapsed.has(node.wbs_id) : this.expandedWbs.has(node.wbs_id)
           if (expanded) {
@@ -1005,11 +1016,18 @@ export default defineComponent({
     computeRollups(matchFn: ((a: Activity) => boolean) | null): Map<number, Rollup> {
       const map = new Map<number, Rollup>()
       const activitiesByWbs = this.activitiesByWbs
+      const baselineByCode = this.baselineByCode
       const visit = (node: WbsNode): Rollup => {
-        let start: Date | null = null, finish: Date | null = null, count = 0
+        let start: Date | null = null, finish: Date | null = null, baseFinish: Date | null = null, count = 0
         for (const a of activitiesByWbs.get(node.wbs_id) || []) {
           if (matchFn && !matchFn(a)) continue
           count++
+          const b = baselineByCode?.get(a.task_code)
+          const be = b ? displayEnd(b) : null
+          if (be) {
+            const d = new Date(be)
+            if (!baseFinish || d > baseFinish) baseFinish = d
+          }
           const ds = displayStart(a)
           const de = displayEnd(a)
           if (ds) {
@@ -1026,8 +1044,9 @@ export default defineComponent({
           count += r.count
           if (r.start && (!start || r.start < start)) start = r.start
           if (r.finish && (!finish || r.finish > finish)) finish = r.finish
+          if (r.baseFinish && (!baseFinish || r.baseFinish > baseFinish)) baseFinish = r.baseFinish
         }
-        const roll = { start, finish, count }
+        const roll = { start, finish, baseFinish, count }
         map.set(node.wbs_id, roll)
         return roll
       }
@@ -1078,17 +1097,23 @@ export default defineComponent({
       // `?? 0` mirrors JS's null-to-0 coercion in subtraction.
       return { left: x + 'px', width: Math.max((xEnd ?? 0) - (x ?? 0), 3) + 'px' }
     },
-    slipCell(a: Activity): { text: string; cls: string; title: string } {
+    // The data-date line's position: on screen it yields to a nearby Today line; a printed
+    // sheet has no Today line, so it always shows.
+    ddX(pg: GridPage): number | null {
+      return pg.screen ? this.dataDateX : this.printDataDateX
+    },
+    slipCell(a: Activity): SlipCell {
       const b = this.baselineByCode?.get(a.task_code)
       if (!b) return { text: 'new', cls: 'slip-new', title: 'Not in the compared schedule' }
       const d = finishSlipDays(a, b)
-      if (d === null) return { text: '', cls: '', title: '' }
-      const was = formatDateShort(displayEnd(b))
-      return {
-        text: (d > 0 ? '+' : '') + d + 'd',
-        cls: d > 0 ? 'slip-late' : d < 0 ? 'slip-early' : '',
-        title: d === 0 ? `Finish unchanged (${was})` : `Finish ${d > 0 ? 'later' : 'earlier'} by ${Math.abs(d)} calendar day${Math.abs(d) === 1 ? '' : 's'} (was ${was})`,
-      }
+      return d === null ? NO_SLIP : slipCellOf(d, formatDateShort(displayEnd(b)), 'Finish')
+    },
+    // A WBS row's finish is the latest finish under it, as shown in its Finish cell; it is
+    // measured against the latest compared finish of the same activities.
+    wbsSlipCell(row: WbsRow): SlipCell {
+      if (!row.finish) return NO_SLIP
+      if (!row.baseFinish) return { text: 'new', cls: 'slip-new', title: 'None of these activities is in the compared schedule' }
+      return slipCellOf(dateSlipDays(row.finish, row.baseFinish), formatDateShort(row.baseFinish.toISOString()), 'Latest finish')
     },
     ghostFor(a: Activity): { x: number | null; w: number; label: string } | null {
       if (!this.showBaseline || !this.baselineByCode) return null
@@ -1306,11 +1331,13 @@ export default defineComponent({
       const fitDayWidth = clampDayWidth(target / days)
       const prevOverride = this.dayWidthOverride
       this.dayWidthOverride = fitDayWidth
+      this.printing = true
       const pageCss = paperOrDefault(this.printPaperSize).pageCss
       const styleTag = document.createElement('style')
       styleTag.textContent = `@page { size: ${pageCss} landscape; margin: 10mm; }`
       document.head.appendChild(styleTag)
       const restore = () => {
+        this.printing = false
         this.dayWidthOverride = prevOverride
         styleTag.remove()
       }
@@ -1685,29 +1712,25 @@ export default defineComponent({
    at a glance instead of buried in an inline sentence. */
 
 
-.print-table { display: none; }
+.print-title { display: none; }
 
 @media print {
   @page { size: landscape; margin: 10mm; }
-  .gantt-strip, .gantt-controls, .filter-bar { display: none; }
+  .view-bar, .gantt-toolbar, .filter-strip, .g-empty, .g-resize-handle { display: none !important; }
   .gantt-wrap, .gantt-wrap.is-fullscreen { border: none; box-shadow: none; height: auto; overflow: visible; display: block; }
-  /* The interactive canvas (position:absolute rows, an SVG links overlay spanning the
-     whole multi-page height) doesn't survive Chromium's print pagination reliably —
-     see the print-table's own template comment for what was tried and why it's a real
-     <table> instead. */
-  .gantt-scroll, .gantt-grid { display: none !important; }
-  .print-table { display: table; width: 100%; border-collapse: collapse; table-layout: fixed; font: 11px/1.4 var(--font-ui); }
-  .print-table thead { display: table-header-group; }
-  .print-table th, .print-table td { border-bottom: 1px solid var(--gray-300); padding: 0 6px; height: 20px; box-sizing: border-box; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .print-table th { text-align: left; font-weight: 700; color: var(--gray-700); background: var(--gray-100); border-bottom: 2px solid var(--gray-300); height: 28px; }
-  .pt-num, .pt-col-num { font-family: var(--font-mono); text-align: right; width: 42px; }
-  .pt-col-date { width: 52px; }
-  .pt-timeline { position: relative; padding: 0; }
-  .pt-stripe { background: var(--gray-100); }
-  .pt-wbs-row { font-weight: 700; background: var(--gray-150); }
-  .pt-tick { position: absolute; top: 6px; font: 700 10px var(--font-ui); color: var(--ink); white-space: nowrap; }
-  .pt-dd-tick { position: absolute; top: 6px; font: 700 9px var(--font-mono); color: var(--on-solid); background: var(--milestone); padding: 1px 4px; border-radius: 2px; transform: translateX(-4px); white-space: nowrap; }
-  .print-table .g-bar, .print-table .g-milestone, .print-table .g-bar-wbs { position: absolute; }
+  .gantt-body { display: block !important; }
+  /* The printout is the screen's grid, drawn once per sheet (gridPages): each sheet is a
+     self-contained block of fixed height with its own header and its own links overlay,
+     clipped to its rows. Never one grid paginated by the browser: a single canvas whose
+     absolutely placed rows and overlay span several sheets is what Chromium printed
+     wrongly (a repeated fixed header hid rows; a scale-to-fit transform corrupted the
+     links). */
+  .gantt-scroll { height: auto !important; min-height: 0 !important; overflow: visible !important; }
+  .gantt-print-page { break-after: page; break-inside: avoid; }
+  .gantt-print-page.gantt-print-last { break-after: auto; }
+  .print-title { display: flex; flex-wrap: wrap; gap: 0 16px; align-items: baseline; height: 18px; margin-bottom: 6px; overflow: hidden; white-space: nowrap; font: 11px/18px var(--font-ui); color: var(--ink-soft); }
+  .print-title strong { font-size: 13px; color: var(--ink); }
+  .print-pageno { margin-left: auto; font-family: var(--font-mono); }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 }
 </style>
