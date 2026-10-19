@@ -47,6 +47,10 @@ class Task:
     constraint: int = ASAP
     cstr_date: Optional[datetime] = None
     deadline: Optional[datetime] = None
+    # Task/LevelingDelay in clock hours: "expressed in elapsed duration units" and
+    # "figured into the early start date" (Microsoft, Leveling Delay fields; Early
+    # Start field).
+    leveling_delay_hrs: float = 0.0
 
     @property
     def started(self):
@@ -61,6 +65,10 @@ class Task:
 class Options:
     # Project/StartDate: where tasks without predecessors start (MS L251).
     project_start: datetime
+    # Links written from a task to a summary task, as (pred id, type, lag_hrs,
+    # lag_elapsed, member ids): the summary's leaves schedule through expanded links,
+    # but the task's free slack is measured against the summary's rolled-up date.
+    summary_links: tuple = ()
 
 
 class _Engine:
@@ -182,6 +190,13 @@ class _Engine:
                     ef = max(fixed)
             if ef is None:
                 es = self.next_work_start(t, es)
+            if t.leveling_delay_hrs:
+                # Levelling delay: elapsed time from the early start the logic gives
+                # (Microsoft, Leveling Delay fields: "the amount of time that a task
+                # ... is to be delayed from its early start date", "expressed in
+                # elapsed duration units"; one oracle file reproduces exactly).
+                es = self.next_work_start(t, ALL_HOURS.add_working_hours(es, t.leveling_delay_hrs))
+                ef = None
             logic_es = es
             # Constraints are honoured over logic, in both directions (Microsoft: the
             # "honor their constraint dates" setting "overrides the task relationship
@@ -227,8 +242,12 @@ class _Engine:
         at the project finish."""
         p, s = self.tasks[l.pred], self.tasks[l.succ]
         sd = self.dates[s.id]
+        # "If there is a leveling delay on the successor task, this delay is also
+        # figured into the date in the Late Finish field" (Microsoft, Late Finish).
+        delay = s.leveling_delay_hrs if not s.started else 0.0
+        succ_ls = ALL_HOURS.add_working_hours(self.calc_ls[s.id], -delay) if delay else self.calc_ls[s.id]
         if l.type == "PR_FS":
-            lf = self.remove_lag(l, self.calc_ls[s.id])
+            lf = self.remove_lag(l, succ_ls)
         elif l.type == "PR_FF":
             lf = self.remove_lag(l, sd.lf)
         elif l.type == "PR_SF":
@@ -237,7 +256,7 @@ class _Engine:
             # SS from a started predecessor: no constraint on its late finish.
             lf = self.project_finish
         elif not s.started:
-            ls = self.remove_lag(l, self.cal(p).next_work_start(sd.ls))
+            ls = self.remove_lag(l, self.cal(p).next_work_start(succ_ls))
             lf = self.add_dur(p, ls, p.duration_hrs)
         elif not self.succs[s.id]:
             lf = self.project_finish
@@ -321,18 +340,37 @@ class _Engine:
         successor would move, lag taken off (SC L92-133, L224-312); the total slack
         when no successor is left (Microsoft, Free Slack field); never negative, and
         never more than the total slack (Project caps it: slack9.mpp in the MPXJ
-        corpus, where MPXJ's uncapped value differs from Project's)."""
+        corpus, where MPXJ's uncapped value differs from Project's).
+
+        Only the task's own links count: a link inherited through a summary task's
+        logic schedules the task but leaves its free slack at its total slack, and a
+        link the task itself has to a summary task is measured against the summary's
+        rolled-up start or finish (Microsoft's "Project 2003 deployment" template:
+        78 tasks whose only successors come through their parent summary store free
+        slack equal to total slack, and 5 tasks linked to a summary store the gap to
+        its earliest leaf)."""
         if t.finished:
             return 0.0
         cal = self.var_cal(t)
         best = None
         for l in self.succs[t.id]:
             s = self.tasks[l.succ]
-            if s.finished:
+            if s.finished or getattr(l, "inherited", False):
                 continue
             own = self.shown(t, l.type in ("PR_FS", "PR_FF"))
             target = self.shown(s, l.type in ("PR_FF", "PR_SF"))
             gap = cal.working_hours_between(own, target) - l.lag_hrs
+            best = gap if best is None else min(best, gap)
+        for pred, ltype, lag_hrs, _elapsed, members in self.opts.summary_links:
+            if pred != t.id:
+                continue
+            leaves = [self.tasks[m] for m in members if m in self.tasks]
+            if not leaves or all(s.finished for s in leaves):
+                continue
+            finish_side = ltype in ("PR_FF", "PR_SF")
+            dates = [self.shown(s, finish_side) for s in leaves]
+            target = max(dates) if finish_side else min(dates)
+            gap = cal.working_hours_between(self.shown(t, ltype in ("PR_FS", "PR_FF")), target) - lag_hrs
             best = gap if best is None else min(best, gap)
         if best is None:
             best = total

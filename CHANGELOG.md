@@ -4,6 +4,26 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.3.1] - Unreleased
+
+### Fixed
+- Project free slack counts only the links written on the task: a link inherited through
+  its parent summary's logic schedules the task but leaves its free slack at its total
+  slack, and a link to a summary task is measured against the summary's rolled-up date.
+  Evidence: Microsoft's "Project 2003 deployment" template (250 tasks) now reproduces with 0
+  differences; it stored 78 free-slack values the old rule got wrong.
+
+### Added
+- A task's levelling delay is honoured: elapsed time added to the early start its logic
+  gives, and taken off its late start for its predecessors (Microsoft's Leveling Delay,
+  Early Start and Late Finish field pages). A coursework schedule with progress, a status
+  date and a levelled task reproduces exactly. The rule is validated for an unstarted,
+  unconstrained task with FS predecessors without lag, delayed onto a working start; any
+  other levelled task is listed in `uncovered` and keeps the Critical Path Test withheld.
+  An assignment's levelling delay, in regular duration units, is still refused.
+- `tests/test_msp_examples.py`: local oracle `.mpp` files under `examples/` (gitignored,
+  never committed) must reproduce and pass the Critical Path Test; skipped when absent.
+
 ## [1.3.0] - 2026-10-19
 
 ### Added
