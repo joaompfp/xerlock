@@ -299,8 +299,9 @@ export function runChecks(data: ScheduleCore, cfg: HealthConfig) {
     ? scope.filter(a => TASK_TYPES.has(a.task_type) && a.resource_names.length === 0)
     : []
 
-  // The CPM engine's reproduction of P6's dates and float. Absent from snapshots that
-  // predate it; `supported` false when the engine refuses the file (reason given).
+  // The CPM engine's reproduction of the file's dates and float (P6's rules or
+  // Project's). Absent from snapshots that predate it; `supported` false when the
+  // engine refuses the file (reason given).
   const recalculation = data.project.recalculation ?? null
   const criticalPathTest = data.project.critical_path_test ?? null
   const recalcDifferences: RecalcFinding[] = (recalculation?.differences ?? []).flatMap(d => {
@@ -322,6 +323,10 @@ export function runChecks(data: ScheduleCore, cfg: HealthConfig) {
     naReasons.cpt = `withheld: ${recalculation.reason}`
   } else if (recalculation.differing) {
     naReasons.cpt = `withheld: the recalculation differs from ${tool} on ${recalculation.differing} activit${recalculation.differing === 1 ? 'y' : 'ies'}`
+  } else if (recalculation.uncovered?.length) {
+    // The comparison validates these rules on this file; the test, which extrapolates
+    // them to a schedule the file never stored, waits for oracle evidence.
+    naReasons.cpt = `withheld: the file uses features whose scheduling rules the oracle corpus has not validated (${recalculation.uncovered.join(', ')})`
   } else if (!criticalPathTest) {
     naReasons.cpt = 'not performed: no incomplete activity on the Longest Path has a duration whose finish drives the path'
   }

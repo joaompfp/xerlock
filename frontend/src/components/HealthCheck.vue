@@ -475,7 +475,7 @@
       </div>
     </section>
 
-    <!-- Recalculation: the CPM engine's reproduction of P6's dates and float -->
+    <!-- Recalculation: the CPM engine's reproduction of the file's dates and float -->
     <section class="health-section" v-if="recalculation" ref="sec-recalc">
       <button class="section-head" @click="toggle('recalc')">
         <span class="section-title">Recalculation <em v-if="recalculation.supported" :class="{ pass: recalcDifferences.length === 0 }">({{ recalculation.differing }})</em><em v-else>(—)</em></span>
@@ -485,10 +485,18 @@
       <div v-if="expanded.recalc" class="section-body">
         <p v-if="!recalculation.supported" class="section-note">Not recalculated: {{ recalculation.reason }}. The Critical Path Test is withheld.</p>
         <template v-else>
-          <p class="section-note">
+          <p v-if="isProjectFile" class="section-note">
+            {{ recalculation.compared }} tasks compared on Start and Finish, late dates, total and free slack{{ recalculation.excluded.wbs_summary ? ' (' + recalculation.excluded.wbs_summary + ' summary tasks roll up and are not compared)' : '' }}.
+            Engine settings from the file: scheduled from the {{ recalculation.options.schedule_from || 'start' }} date, lag on the successor's calendar, constraint dates honoured over links{{ recalculation.options.critical_slack_limit_days ? ', critical at slack ≤ ' + recalculation.options.critical_slack_limit_days + ' days' : '' }}.
+          </p>
+          <p v-else class="section-note">
             {{ recalculation.compared }} activities compared on early and late dates, total and free float
             ({{ recalculation.excluded.complete }} completed{{ recalculation.excluded.wbs_summary ? ', ' + recalculation.excluded.wbs_summary + ' WBS summaries' : '' }} excluded: {{ toolName }} computes no remaining dates or float for them).
             Engine settings from the file: {{ progressModeLabel }}, {{ floatTypeLabel }}, lag on the {{ lagCalendarLabel }} calendar.
+          </p>
+          <p v-if="recalculation.uncovered?.length" class="section-note">
+            This file rests on rules the oracle corpus has not validated: {{ recalculation.uncovered.join(', ') }}.
+            The comparison below still holds for this file; the Critical Path Test, which applies those rules to a schedule the file never stored, is withheld.
           </p>
           <div v-if="recalcDifferences.length === 0" class="empty-state">✓ Every recalculated date and float matches {{ toolName }}'s stored value to the minute.</div>
           <template v-else>

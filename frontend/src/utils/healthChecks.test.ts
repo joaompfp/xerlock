@@ -93,9 +93,12 @@ describe('runChecks on the Project XML sample', () => {
     expect(out.availability.driving).toBe(false)
     expect(out.naReasons.driving).toMatch(/stores no Longest Path flag/)
     expect(out.availability.loe).toBe(false)
+    // The sample keeps a manually scheduled task to demonstrate the check, so the
+    // engine refuses it; its deadline and Finish No Later Than constraint are listed.
     expect(out.availability.recalc).toBe(false)
-    expect(out.naReasons.recalc).toMatch(/not yet available for Microsoft Project files/)
-    expect(out.naReasons.cpt).toMatch(/withheld: not yet available/)
+    expect(out.naReasons.recalc).toMatch(/not checkable: 1 manually scheduled task is incomplete/)
+    expect(out.naReasons.cpt).toMatch(/withheld: 1 manually scheduled task/)
+    expect(out.recalculation?.uncovered).toEqual(['deadlines', 'Finish No Later Than constraints'])
     expect(out.availability.manual).toBe(true)
     expect(out.availability.missed).toBe(true)   // the sample has a Baseline 0
   })
@@ -209,6 +212,24 @@ describe('recalculation and the Critical Path Test', () => {
     expect(r.availability.recalc).toBe(false)
     expect(r.naReasons.recalc).toMatch(/resource-dependent/)
     expect(r.naReasons.cpt).toMatch(/withheld/)
+  })
+
+  it('withholds the CPT, naming the rules, when a Project file rests on uncovered rules', () => {
+    const r = run([act()], { source_format: 'mpp', recalculation: recalc({
+      options: { schedule_from: 'start', lag_calendar: 'rcal_Successor', critical_slack_limit_days: 0, multiple_critical_paths: false, delay_days: 600 },
+      uncovered: ['deadlines', 'As Late As Possible constraints'],
+    }) })
+    expect(r.results.recalc).toMatchObject({ count: 0, pass: true, included: true })
+    expect(r.availability.cpt).toBe(false)
+    expect(r.naReasons.cpt).toMatch(/withheld: .*not validated \(deadlines, As Late As Possible constraints\)/)
+  })
+
+  it('scores a Project recalculation mismatch like a P6 one', () => {
+    const a = act()
+    const diff = { task_id: a.task_id, field: 'lf', computed: '2026-03-16 16:00', stored: '2026-03-13 16:00', delta_hrs: 72 }
+    const r = run([a], { source_format: 'mspdi', recalculation: recalc({ differing: 1, by_field: { lf: 1 }, differences: [diff] }) })
+    expect(r.results.recalc).toMatchObject({ count: 1, pass: false, included: true })
+    expect(r.naReasons.cpt).toMatch(/differs from Microsoft Project on 1 activity/)
   })
 
   it('scores the CPT from the backend result: pass counts 0, fail counts 1', () => {
