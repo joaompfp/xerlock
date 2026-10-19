@@ -303,6 +303,34 @@ def test_free_slack_never_exceeds_total_slack():
     assert d[1].ff == 0.0
 
 
+def test_free_slack_ignores_links_inherited_from_a_summary():
+    # Task 2 follows task 1 only through its parent summary's logic: the link
+    # schedules it, but task 1's free slack stays at its total slack (the deployment
+    # template: 78 such tasks store free slack equal to total slack).
+    d = run([task(1, 8), task(2, 8), task(3, 40)], [Link(1, 2, inherited=True)])
+    assert d[2].es == dt(2026, 3, 3, 8)
+    assert (d[1].tf, d[1].ff) == (24.0, 24.0)
+
+
+def test_free_slack_to_a_summary_successor_is_measured_against_its_earliest_leaf():
+    # Task 1's own link goes to a summary whose leaves are 2 and 3; the summary's
+    # start is the earlier leaf's, so task 1 has no free slack though its total is a day.
+    links = [Link(1, 2, inherited=True), Link(1, 3, inherited=True)]
+    o = Options(project_start=START, summary_links=((1, "PR_FS", 0.0, False, (2, 3)),))
+    d = run([task(1, 8), task(2, 8), task(3, 8, constraint=SNET, cstr_date=dt(2026, 3, 4, 8)), task(4, 40)], links, o)
+    assert (d[2].es, d[3].es) == (dt(2026, 3, 3, 8), dt(2026, 3, 4, 8))
+    assert (d[1].tf, d[1].ff) == (24.0, 0.0)
+
+
+def test_leveling_delay_is_elapsed_time_from_the_logic_start_and_shortens_the_predecessor_late_finish():
+    # 48 clock hours from Tuesday 08:00 is Thursday 08:00; the predecessor's late
+    # finish comes from the successor's late start less the delay.
+    d = run([task(1, 8), task(2, 8, leveling_delay_hrs=48)], [Link(1, 2)])
+    assert (d[2].es, d[2].ef) == (dt(2026, 3, 5, 8), dt(2026, 3, 5, 16))
+    assert (d[1].ls, d[1].lf, d[1].tf) == (dt(2026, 3, 2, 8), dt(2026, 3, 2, 16), 0.0)
+    assert (d[2].tf, d[2].ff) == (0.0, 0.0)
+
+
 def test_loop_is_refused():
     with pytest.raises(LogicLoop):
         run([task(1), task(2)], [Link(1, 2), Link(2, 1)])

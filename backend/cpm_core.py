@@ -26,6 +26,9 @@ class Link:
     lag_hrs: float = 0.0
     # A Project lag in elapsed units counts on the clock, not on a calendar.
     lag_elapsed: bool = False
+    # A Project link inherited through a summary task's logic: it schedules the task
+    # but is not the task's own, so its free slack is not measured against it.
+    inherited: bool = False
 
 
 @dataclass

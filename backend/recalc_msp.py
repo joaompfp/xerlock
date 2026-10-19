@@ -127,8 +127,9 @@ def build(ctx: dict):
             counts["recurring"] += 1
         if r.flag("IsSubproject") or r.flag("ExternalTask"):
             counts["external"] += 1
-        if (mspdi.tenths_of_minutes_hours(r.t("LevelingDelay")) or 0.0) > 0:
-            counts["levelling"] += 1
+        # A task's levelling delay is honoured (cpm_msp.Task.leveling_delay_hrs); only an
+        # assignment's, in regular duration units, is refused below.
+        leveling_delay = mspdi.tenths_of_minutes_hours(r.t("LevelingDelay")) or 0.0
         # A split or contoured task: its stored dates span more working time than
         # its duration (an in-progress split shows it as Resume after Stop with
         # working time between; an unstarted split only as the longer span, since
@@ -168,6 +169,7 @@ def build(ctx: dict):
             constraint=constraint,
             cstr_date=cstr_date,
             deadline=deadline,
+            leveling_delay_hrs=max(0.0, leveling_delay),
         ))
         tf = mspdi.tenths_of_minutes_hours(r.t("TotalSlack"))
         ff = mspdi.tenths_of_minutes_hours(r.t("FreeSlack"))
@@ -181,6 +183,7 @@ def build(ctx: dict):
     # for its earliest-starting leaf, of an FS or FF link for every leaf; a summary
     # successor stands for every leaf.
     links = []
+    summary_links = []
     for task in tasks_meta:
         uid = task["uid"]
         if uid in inactive:
@@ -206,17 +209,22 @@ def build(ctx: dict):
                 uncovered.add("elapsed_lag")
             preds = [pred_uid] if scheduled(pred_uid) else (leaves(pred_uid) if is_summary[pred_uid] else [])
             succs = [uid] if scheduled(uid) else (leaves(uid) if is_summary[uid] else [])
-            if is_summary[pred_uid] or is_summary[uid]:
+            inherited = is_summary[pred_uid] or is_summary[uid]
+            if inherited:
                 counts["summary_logic"] += 1
                 if is_summary[pred_uid] and ltype in ("PR_SS", "PR_SF") and preds:
                     preds = [min(preds, key=lambda u: (start_of.get(u) is None, start_of.get(u) or datetime.min))]
+                if scheduled(pred_uid) and succs:
+                    # The task's own link to a summary: its free slack is measured
+                    # against the summary's rolled-up date (cpm_msp.Options.summary_links).
+                    summary_links.append((pred_uid, ltype, round(lag_hrs, 4), elapsed, tuple(succs)))
             for p in preds:
                 for s in succs:
                     if p == s:
                         continue
                     if not _same_working_time(decoded[cal_of(p)], decoded[cal_of(s)]):
                         uncovered.add("two_calendars")
-                    links.append(cpm_core.Link(p, s, ltype, round(lag_hrs, 4), elapsed))
+                    links.append(cpm_core.Link(p, s, ltype, round(lag_hrs, 4), elapsed, inherited))
 
     # Resource-driven tasks (the narrow rule, SPEC-MSPROJECT §7.5): a work resource
     # assigned with units above zero drives the task when its calendar defines other
@@ -247,6 +255,7 @@ def build(ctx: dict):
             driven.add(tuid)
         if (mspdi.tenths_of_minutes_hours(g("LevelingDelay")) or 0.0) > 0:
             driven.add(tuid)
+            counts["levelling"] += 1
         a_start, a_finish = mspdi.parse_date(g("Start")), mspdi.parse_date(g("Finish"))
         if (a_start and stored[tuid].es and a_start != stored[tuid].es) or (a_finish and stored[tuid].ef and a_finish != stored[tuid].ef):
             driven.add(tuid)
@@ -259,7 +268,7 @@ def build(ctx: dict):
     if counts["manual"]:
         refusals.append(_n(counts["manual"], "manually scheduled task is", "manually scheduled tasks are") + " incomplete: their dates are typed, not computed, so the schedule cannot be recalculated")
     if counts["levelling"]:
-        refusals.append(_n(counts["levelling"], "task carries", "tasks carry") + " a levelling delay: resource levelling is not reproducible")
+        refusals.append(_n(counts["levelling"], "assignment carries", "assignments carry") + " a levelling delay in regular duration units, which the oracle has not validated")
     if counts["split"]:
         refusals.append(_n(counts["split"], "task is split or contoured", "tasks are split or contoured") + ": the stored dates span more working time than the duration")
     if counts["recurring"]:
@@ -272,7 +281,7 @@ def build(ctx: dict):
         refusals.append("the project calculates multiple critical paths, a rule the oracle has not validated")
     if counts["resource"]:
         refusals.append(_n(counts["resource"], "task is", "tasks are") + " scheduled by resource assignments on other working time than the task's, or with delayed or contoured assignments")
-    return tasks, links, refusals, sorted(uncovered), stored, counts
+    return tasks, links, refusals, sorted(uncovered), stored, counts, tuple(summary_links)
 
 
 def _n(n: int, singular: str, plural: str) -> str:
@@ -286,7 +295,7 @@ def _iso(v):
 def run(ctx: dict, longest_path_ids, hrs_per_day: dict, delay_days: int = recalc.CPT_DELAY_DAYS):
     """The recalculation report and, when it reproduces Project and rests on validated
     rules only, the Critical Path Test. Returns (recalculation, critical_path_test | None)."""
-    tasks, links, refusals, uncovered, stored, counts = build(ctx)
+    tasks, links, refusals, uncovered, stored, counts, summary_links = build(ctx)
     options = {
         "schedule_from": "finish" if ctx["schedule_from_start"] is False else "start",
         "lag_calendar": LAG_CALENDAR,
@@ -303,7 +312,7 @@ def run(ctx: dict, longest_path_ids, hrs_per_day: dict, delay_days: int = recalc
     if refusals:
         report["reason"] = refusals[0]
         return report, None
-    opts = cpm_msp.Options(project_start=ctx["project_start"])
+    opts = cpm_msp.Options(project_start=ctx["project_start"], summary_links=summary_links)
     work_cals, default_cal = ctx["work_cals"], ctx["default_cal_obj"]
     try:
         computed = cpm_msp.schedule(tasks, links, work_cals, default_cal, opts)

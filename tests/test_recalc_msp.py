@@ -67,11 +67,6 @@ def test_incomplete_manual_task_is_refused_but_a_complete_one_is_not():
     assert r["supported"]
 
 
-def test_levelling_delay_is_refused():
-    r, _ = recalc(one(LevelingDelay=4800, LevelingDelayFormat=7))
-    assert "levelling delay" in r["reason"]
-
-
 def test_split_task_is_refused_when_its_dates_span_more_working_time_than_its_duration():
     r, _ = recalc(one(finish="2026-03-03T16:00:00", LateFinish="2026-03-03T16:00:00"))
     assert r["reason"].startswith("1 task is split or contoured")
@@ -133,6 +128,23 @@ def test_material_resource_or_zero_units_do_not_drive_the_task():
     assert r["supported"]
 
 
+def test_task_levelling_delay_is_honoured_as_elapsed_time():
+    # 480 clock hours (288000 tenths of a minute) from Monday 2 March 08:00 is Sunday
+    # 22 March 08:00, so the task starts Monday 23 March.
+    r, _ = recalc(one(LevelingDelay=288000, LevelingDelayFormat=8, start="2026-03-23T08:00:00", finish="2026-03-23T16:00:00",
+                      LateStart="2026-03-23T08:00:00", LateFinish="2026-03-23T16:00:00"))
+    assert r["supported"] and r["differing"] == 0, r["differences"]
+
+
+def test_assignment_levelling_delay_is_refused():
+    from tests.test_mspdi import WEEK_5DAY
+    kw = resource_doc(WEEK_5DAY)
+    kw["assignments"] = kw["assignments"].replace("<Units>", "<LevelingDelay>4800</LevelingDelay><Units>")
+    r, _ = recalc(**kw)
+    assert r["reason"].startswith("1 assignment carries a levelling delay")
+
+
+
 # ── Uncovered rules ──────────────────────────────────────────────────────────
 
 def test_uncovered_rules_are_listed_and_withhold_the_cpt():
@@ -161,7 +173,7 @@ def test_logic_on_a_summary_task_is_expanded_to_its_leaves():
              + task(5, level=2, start="2026-03-04T08:00:00", finish="2026-03-04T16:00:00",
                     LateStart="2026-03-04T08:00:00", LateFinish="2026-03-04T16:00:00"))
     r, _ = recalc(tasks)
-    assert r["supported"] and r["differing"] == 0 and r["compared"] == 3
+    assert r["supported"] and r["differing"] == 0 and r["compared"] == 3, r["differences"]
 
 
 def test_ss_from_a_summary_task_stands_for_its_earliest_leaf():
@@ -169,7 +181,7 @@ def test_ss_from_a_summary_task_stands_for_its_earliest_leaf():
              + task(2, level=2, start="2026-03-03T08:00:00", finish="2026-03-03T16:00:00",
                     ConstraintType=4, ConstraintDate="2026-03-03T08:00:00",
                     LateStart="2026-03-03T08:00:00", LateFinish="2026-03-03T16:00:00")
-             + task(3, level=2, LateStart="2026-03-03T08:00:00", LateFinish="2026-03-03T16:00:00", TotalSlack=4800, FreeSlack=0)
+             + task(3, level=2, LateStart="2026-03-03T08:00:00", LateFinish="2026-03-03T16:00:00", TotalSlack=4800, FreeSlack=4800)
              + task(4, start="2026-03-02T08:00:00", finish="2026-03-02T16:00:00", links=[(1, 3, 0, 7)],
                     LateStart="2026-03-03T08:00:00", LateFinish="2026-03-03T16:00:00", TotalSlack=4800, FreeSlack=4800))
     r, _ = recalc(tasks)
