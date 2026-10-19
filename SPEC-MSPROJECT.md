@@ -1,7 +1,8 @@
 # SPEC: Microsoft Project files
 
-Status: **phases 0-2 shipped in 1.2.0** (PR #17, 2026-10-19). **Phase 3 specified in §7**
-(2026-10-19, target release 1.3.0); stage 2 (the engine) in progress on `msproject-engine`. Written 2026-10-18. Read `docs/METHODOLOGY.md`
+Status: **phases 0-2 shipped in 1.2.0** (PR #17, 2026-10-19). **Phase 3 built** on
+`msproject-engine` for 1.3.0 (2026-10-19); §7 is its design record, and
+`docs/METHODOLOGY.md` ("Recalculation of Microsoft Project files") the rules as built. Written 2026-10-18. Read `docs/METHODOLOGY.md`
 and `SPEC.md` first: this builds on the same principles.
 
 ## 1. Objective
@@ -155,9 +156,11 @@ lag counts on is Project's rule, not P6's. Find it from the corpus and document 
 
 ## 7. Phase 3: a scheduling engine for Project files (target 1.3.0)
 
-Status: **specified, not built.** Stage 1 (this section) measured what the oracle can
-prove and fixed the rules and their sources; the engine, its tests and the docs are
-stage 2. Read `SPEC.md` first: the principle, the comparison method and the Critical
+Status: **built** (1.3.0). Stage 1 (this section) measured what the oracle can prove and
+fixed the rules and their sources; stage 2 built the engine, its tests and the docs. Three
+rules were settled on the oracle files beyond MPXJ's (SF finish, zero-duration and elapsed
+late finish, MSO/MFO slack) and the split refusal detects by stored span; METHODOLOGY has
+the rules as built. Read `SPEC.md` first: the principle, the comparison method and the Critical
 Path Test are the same, with Microsoft Project as the oracle instead of P6.
 
 ### 7.1 Objective

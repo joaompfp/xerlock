@@ -84,11 +84,13 @@ meaning. Works down to a phone, where the sidebar slides over from a hamburger.
 - **DCMA 12 (Critical Path Test)**: 600 working days added to the first Longest Path activity
   with work left, the programme rescheduled in memory, and the project finish expected to move
   by the same amount; on failure, the activity where the delay was absorbed. Reported only when
-  the **recalculation** reproduces P6's stored dates and float exactly
-- **Recalculation matches P6**: the CPM engine's early/late dates and float against the file's
-  stored values, activity by activity and field by field - a difference means an edit without a
-  reschedule, or a scheduling feature the engine declines to model (resource-dependent
-  activities, cross-project links, multiple float paths; each refusal says why)
+  the **recalculation** reproduces the file's stored dates and float exactly
+- **Recalculation matches the file**: a CPM engine with the file's own tool's rules (P6's, or
+  Microsoft Project's since 1.3.0) recomputes early/late dates and float and compares them with
+  the stored values, activity by activity and field by field - a difference means an edit
+  without a reschedule, or a scheduling feature the engine declines to model (resource-dependent
+  activities, cross-project links, multiple float paths on P6; manual, split, levelled or
+  resource-driven tasks on Project; each refusal says why)
 - Plus: out-of-sequence progress on FS, SS and FF links, ALAP constraints on the critical
   path, LOE on the critical path, and a **driving path cross-check** - P6's stored Longest
   Path against the one recomputed from the file's dates, which exposes a schedule that was
@@ -165,9 +167,12 @@ Java, so it asks for the XML. Every view and check works on them; the file's own
 dates, slack, critical flags, actuals, Baseline 0, constraints and calendars are read, never
 recomputed, and the checks that need a P6-only concept say "not checkable" and why. Project
 adds its own checks: manually scheduled tasks, logic on summary tasks, elapsed and percentage
-lags, inactive tasks. The recalculation and the Critical Path Test are not yet available for
-Project files. [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) ("Microsoft Project files") maps
-every field and check, with the evidence for each decision.
+lags, inactive tasks. The recalculation and the Critical Path Test run with Project's own
+scheduling rules, validated against Project's stored values on MPXJ's test corpus; a file that
+rests on a rule the corpus has not validated is compared but keeps the test withheld, and the
+Health Check names the rule. [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) ("Microsoft Project
+files", "Recalculation of Microsoft Project files") maps every field, check and rule, with the
+evidence for each decision.
 
 ## Architecture
 
