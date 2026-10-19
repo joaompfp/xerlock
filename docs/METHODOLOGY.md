@@ -470,7 +470,8 @@ leaf). There is no data date: Project's passes never read the status date, and t
 | Late start | Late finish minus the **remaining** duration. A finished task has its actual dates as late dates; a started task shows its actual start as late start, while its FS predecessors read the calculated one | MPXJ MS L464-491, L847 |
 | ALAP | After the backward pass a second forward pass runs in which an ALAP predecessor feeds a non-ALAP successor from its late dates; an ALAP task shows its late dates as Start/Finish and has slack 0 | MPXJ MS L106-119, L1431-1434; SC L51-54 |
 | Total slack | The smaller of start slack (late minus early start) and finish slack (late minus early finish), in working time on the task's calendar (on the clock for an elapsed duration); the finish slack once the task has started. A Must Start/Finish On task shows its constraint date but measures its slack from where logic puts it when that is later: `slack9.mpp` shows a Must Finish On milestone with all four dates on its constraint date and a total slack of -1 day, its predecessor finishing a day after the date | Microsoft, "the smaller value of the Late Finish minus the Early Finish field, and the Late Start minus the Early Start field"; Start Slack page, "If a task has an actual start date and a deadline, the start slack is 0"; MPXJ SC L135-199; the MSO/MFO reading from slack9.mpp |
-| Free slack | 0 once finished; else the smallest, over unfinished successors, of the working time from this task's date to the successor's (FS finish to start, SS start to start, FF finish to finish, SF start to finish) on **this** task's calendar, minus the lag; the total slack when no successor is left; never negative, and **never more than the total slack** (slack9.mpp, where MPXJ's uncapped value differs from Project's) | Microsoft, Free Slack page, "If the task has no successor tasks, free slack is the same as total slack"; Start Slack page, "The smaller of the start slack and finish slack amounts determines the amount of free slack available"; MPXJ SC L92-133 |
+| Free slack | 0 once finished; else the smallest, over the task's **own** unfinished successors, of the working time from this task's date to the successor's (FS finish to start, SS start to start, FF finish to finish, SF start to finish) on **this** task's calendar, minus the lag; the total slack when no successor is left; never negative, and **never more than the total slack** (slack9.mpp, where MPXJ's uncapped value differs from Project's). Only links written on the task count: a link inherited through its parent summary's logic schedules the task but leaves its free slack at its total slack, and a link the task itself has to a summary task is measured against the summary's rolled-up start (its earliest leaf) or finish | Microsoft, Free Slack page, "If the task has no successor tasks, free slack is the same as total slack"; Start Slack page, "The smaller of the start slack and finish slack amounts determines the amount of free slack available"; MPXJ SC L92-133; the own-link reading from Microsoft's "Project 2003 deployment" template (250 tasks, 75 summary links): 78 tasks whose only successors come through their parent summary store free slack equal to total slack, and 5 tasks linked to a summary store the gap to its earliest leaf, while every date and total slack matches |
+| Levelling delay | A task's `LevelingDelay` is elapsed time added to the early start its logic gives (then the next working start); its predecessors' late finish comes from its late start less the delay. An assignment's levelling delay, in regular duration units, is refused | Microsoft, Leveling Delay fields: "the amount of time that a task or assignment is to be delayed from its early start date", "Task leveling delay is expressed in elapsed duration units, while assignment leveling delay is expressed in regular duration units"; Early Start page, "a task's leveling delay is also figured into the early start date"; Late Finish page, "If there is a leveling delay on the successor task, this delay is also figured into the date in the Late Finish field"; MPXJ MS L913-935 (elapsed conversion). Validated by one oracle file: a coursework schedule with 22 tasks, 4 in progress, a status date and one task delayed 18.7 elapsed days, which reproduces exactly |
 | Critical | Shown as stored (`Critical`); Project's own rule is total slack at or below `CriticalSlackLimit`, not complete, auto-scheduled | MPXJ Task.calculateCritical L6820-6839 |
 
 **Refused files** (reported with the reason; nothing is approximated):
@@ -479,7 +480,7 @@ leaf). There is no data date: Project's passes never read the status date, and t
 |---|---|---|
 | Scheduled from finish (`ScheduleFromStart` 0) | the project is scheduled from its finish date; only start-date scheduling is modelled | No rule (MPXJ: unsupported); 6 corpus files, none with logic |
 | Incomplete manually scheduled tasks | N manually scheduled tasks are incomplete: their dates are typed, not computed, so the schedule cannot be recalculated | MPXJ's pass-through rule reproduces 0 of the 6 corpus files refused only for this |
-| Levelling delay (task or assignment) | N tasks carry a levelling delay: resource levelling is not reproducible | Levelling heuristics |
+| Levelling delay on an assignment | N assignments carry a levelling delay in regular duration units, which the oracle has not validated | A task's delay is honoured (above); an assignment's is in working units on the assignment's calendar, with no oracle file |
 | Split or contoured tasks | N tasks are split or contoured: the stored dates span more working time than the duration | Splits live in timephased data the reader does not keep; the longer span gives them away (an in-progress split also as `Resume` after `Stop` with working time between) |
 | Recurring tasks | N recurring tasks: Project generates and constrains their occurrences itself | MPXJ: unsupported, though it reproduces the 3 corpus files refused only for this; revisited when a real file turns up |
 | Inserted or external projects, cross-project links | N tasks or relationships belong to inserted or external projects: their dates come from another file | Dates from another file |
@@ -500,6 +501,17 @@ on that file, and the report lists the rules under `uncovered`; the Critical Pat
 which applies the rules to a schedule the file never stored, is **withheld** until an
 oracle file for the rule reproduces. The Health Check names them.
 
+**Local oracle files** (`examples/*.mpp`, gitignored and never committed: two of
+Microsoft's own Project templates and a third party's coursework schedule;
+`tests/test_msp_examples.py` checks them when present and skips otherwise;
+`scripts/msp_corpus.py examples` reports them): *Commercial construction project plan*
+(126 tasks, 176 links with lags), *Microsoft Office Project 2003 deployment* (250 tasks,
+75 summary links) and the coursework file (22 tasks, 4 in progress, a status date, a
+levelling delay) all reproduce with 0 differences and pass the Critical Path Test
+exactly. The coursework file is the first oracle with both progress and a status date:
+its started tasks keep their actual start and full duration, with `Stop`/`Resume` at
+the status date and no working time between, exactly as the progress rule above says.
+
 **What the oracle proved.** `scripts/msp_oracle_coverage.py` (stage 1 of phase 3) found
 the corpus a thin oracle: 54 of its 749 Project files carry any relationship, and after
 the refusals **33 files, 397 tasks and 237 links** are in scope (135 FS, 24 SS, 24 FF, 24
@@ -512,11 +524,12 @@ dates on two tasks three days later than any rule gives, which MPXJ misses too; 
 reported as a difference, as the product would, and excluded from the acceptance
 criterion by name. The confidential real-world `.mpp` (51 tasks, 50 FS links, one
 relationship on a summary task) reproduces with 0 differences and passes the test
-exactly. Across the whole corpus the recalculation matches 549 files (32 with logic),
+exactly. Across the whole corpus the recalculation matches 554 files (32 with logic),
 differs on 10 (bug1, a Project 2002 file whose started task stores late dates equal to its
 early ones, the seven elapsed-duration fixtures whose working tasks store late finishes
 two days before the project finish, and a cost-resource timephased file whose task starts
-at a period's end), and refuses 190 with a reason. What the corpus **cannot** prove is the
+at a period's end), and refuses 185 with a reason (five files once refused for a task
+levelling delay now match). What the corpus **cannot** prove is the
 uncovered list above, progress beyond three tasks per file, and any file with both
 progress and a status date. `scripts/msp_corpus.py` prints the per-file result.
 
