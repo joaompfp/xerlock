@@ -24,6 +24,8 @@ class Link:
     succ: int
     type: str = "PR_FS"
     lag_hrs: float = 0.0
+    # A Project lag in elapsed units counts on the clock, not on a calendar.
+    lag_elapsed: bool = False
 
 
 @dataclass
