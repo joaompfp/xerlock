@@ -116,9 +116,12 @@ def test_milestone_in_non_working_time_moves_to_the_next_start():
     assert d.es == dt(2026, 3, 2, 8)
 
 
-def test_elapsed_duration_runs_on_the_clock():
-    d = run([task(1, 24, elapsed=True)])[1]
-    assert d.ef == dt(2026, 3, 3, 8)
+def test_elapsed_duration_runs_on_the_clock_in_both_passes():
+    d = run([task(1, 24, elapsed=True), task(2, 40)])
+    assert d[1].ef == dt(2026, 3, 3, 8)
+    # Its late finish is the project finish on the clock, not the previous period's end.
+    assert (d[1].ls, d[1].lf) == (dt(2026, 3, 5, 16), dt(2026, 3, 6, 16))
+    assert d[1].tf == 80.0
 
 
 # ── Constraints in the forward pass ───────────────────────────────────────────

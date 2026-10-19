@@ -276,11 +276,12 @@ class _Engine:
             if t.deadline is not None and lf > t.deadline:
                 lf = t.deadline
             # A late finish at a period's start is the previous period's end (MS L462),
-            # unless the task has no duration: Project leaves a milestone's late finish
-            # where its successor's late start is, period start or not (the
-            # confidential oracle file, sf259.mpp, and every zero-duration task at a
-            # project start in the MPXJ corpus).
-            if t.duration_hrs > 0:
+            # unless the task has no duration or an elapsed one: Project leaves a
+            # milestone's late finish where its successor's late start is, period
+            # start or not (the confidential oracle file, sf259.mpp, and every
+            # zero-duration task at a project start in the MPXJ corpus), and an
+            # elapsed task's at the clock time (the corpus duration fixtures).
+            if t.duration_hrs > 0 and not t.elapsed:
                 lf = self.cal(t).prev_work_finish(lf)
         calc_ls = self.add_dur(t, lf, -t.remaining_hrs)
         self.calc_ls[t.id] = calc_ls
