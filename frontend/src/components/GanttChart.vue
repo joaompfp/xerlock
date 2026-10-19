@@ -157,14 +157,18 @@
         <p class="g-empty-sub">{{ emptyFilterHint }}</p>
         <button class="btn-tiny-light" @click="clearFilters">Clear filters</button>
       </div>
+      <!-- One grid per page: on screen a single page holds every row; a printout gets one
+           grid per sheet, each with its own header and a slice of the rows (gridPages). -->
       <div
+        v-for="pg in gridPages"
+        :key="pg.start"
         class="gantt-grid"
-        :style="{ gridTemplateColumns: labelColWidth + 'px ' + totalWidth + 'px', width: (labelColWidth + totalWidth) + 'px', height: (HEADER_HEIGHT + bodyHeight) + 'px' }"
+        :style="{ gridTemplateColumns: labelColWidth + 'px ' + totalWidth + 'px', width: (labelColWidth + totalWidth) + 'px', height: (HEADER_HEIGHT + pg.bodyHeight) + 'px' }"
       >
         <!-- Header + label column are positioned manually (top/left tracked from the @scroll
              handler) instead of using position:sticky — Chromium mis-renders sticky grid items
              whose own box exactly fills a narrow track once you scroll near the content's end. -->
-        <div class="g-cell g-corner" :style="{ top: scrollTopPx + 'px', left: scrollLeftPx + 'px', width: labelColWidth + 'px' }">
+        <div class="g-cell g-corner" :style="{ top: pg.top + 'px', left: pg.left + 'px', width: labelColWidth + 'px' }">
           <span class="g-corner-name">Activity</span>
           <span class="g-col-dur g-corner-col">Dur</span>
           <span class="g-col-date g-corner-col">Start</span>
@@ -172,7 +176,7 @@
           <span class="g-col-float g-corner-col">Float</span>
           <span v-if="showSlip" class="g-col-slip g-corner-col" title="Finish slippage against the compared schedule, in calendar days: + later, &minus; earlier">Slip</span>
         </div>
-        <div class="g-cell g-timeline-header" :style="{ top: scrollTopPx + 'px', left: labelColWidth + 'px', width: totalWidth + 'px' }">
+        <div class="g-cell g-timeline-header" :style="{ top: pg.top + 'px', left: labelColWidth + 'px', width: totalWidth + 'px' }">
           <div class="g-header-band-row">
             <div
               v-for="t in bandTicks"
@@ -202,26 +206,26 @@
         <!-- Background layer: weekend shading + gridlines — sits BELOW bars -->
         <svg
           class="g-overlay g-overlay-bg"
-          :style="{ left: labelColWidth + 'px', top: HEADER_HEIGHT + 'px', width: totalWidth + 'px', height: bodyHeight + 'px' }"
+          :style="{ left: labelColWidth + 'px', top: HEADER_HEIGHT + 'px', width: totalWidth + 'px', height: pg.bodyHeight + 'px' }"
           :width="totalWidth"
-          :height="bodyHeight"
+          :height="pg.bodyHeight"
         >
           <rect
             v-for="r in weekendRects"
             :key="'we' + r.x"
-            :x="r.x" y="0" :width="r.w" :height="bodyHeight"
+            :x="r.x" y="0" :width="r.w" :height="pg.bodyHeight"
             class="g-weekend"
           />
           <line
             v-for="t in detailTicks"
             :key="'gl' + t.x"
-            :x1="t.x" :x2="t.x" y1="0" :y2="bodyHeight"
+            :x1="t.x" :x2="t.x" y1="0" :y2="pg.bodyHeight"
             class="g-gridline"
           />
           <line
             v-for="t in secondaryMonthGridlines"
             :key="'glm' + t.x"
-            :x1="t.x" :x2="t.x" y1="0" :y2="bodyHeight"
+            :x1="t.x" :x2="t.x" y1="0" :y2="pg.bodyHeight"
             class="g-gridline-month"
           />
         </svg>
@@ -230,9 +234,9 @@
              visually disappears behind an unrelated activity's bar. -->
         <svg
           class="g-overlay g-overlay-fg"
-          :style="{ left: labelColWidth + 'px', top: HEADER_HEIGHT + 'px', width: totalWidth + 'px', height: bodyHeight + 'px' }"
+          :style="{ left: labelColWidth + 'px', top: HEADER_HEIGHT + 'px', width: totalWidth + 'px', height: pg.bodyHeight + 'px' }"
           :width="totalWidth"
-          :height="bodyHeight"
+          :height="pg.bodyHeight"
         >
           <defs>
             <marker id="gantt-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -242,6 +246,7 @@
               <path d="M0 0L8 4L0 8z" class="g-link-arrow-chain" />
             </marker>
           </defs>
+          <g :transform="'translate(0,' + (-pg.start * ROW_HEIGHT) + ')'">
           <path
             v-for="l in links"
             :key="l.id"
@@ -257,13 +262,14 @@
             :cx="p.x" :cy="p.y" r="2.5"
             class="g-progress-dot"
           />
+          </g>
         </svg>
 
         <!-- Today line (above everything but the frozen header/label) -->
         <div
           v-if="todayX !== null"
           class="g-today-line"
-          :style="{ left: (labelColWidth + todayX) + 'px', top: HEADER_HEIGHT + 'px', height: bodyHeight + 'px' }"
+          :style="{ left: (labelColWidth + todayX) + 'px', top: HEADER_HEIGHT + 'px', height: pg.bodyHeight + 'px' }"
         ><span class="g-today-flag">Today</span></div>
 
         <!-- Data date line: the schedule's own status date — the anchor every
@@ -271,27 +277,28 @@
         <div
           v-if="dataDateX !== null"
           class="g-dd-line"
-          :style="{ left: (labelColWidth + dataDateX) + 'px', top: HEADER_HEIGHT + 'px', height: bodyHeight + 'px' }"
+          :style="{ left: (labelColWidth + dataDateX) + 'px', top: HEADER_HEIGHT + 'px', height: pg.bodyHeight + 'px' }"
           :title="'Data date: ' + formatDate(data.project.data_date)"
         ></div>
 
         <!-- Resize handle for the label column, tracked against horizontal scroll manually
              (position:sticky inside a CSS-grid item gets unreliable with explicit track spans,
-             so we just follow scrollLeftPx from the @scroll handler instead). -->
+             so we just follow pg.left from the @scroll handler instead). -->
         <div
+          v-if="pg.screen"
           class="g-resize-handle"
           :class="{ resizing }"
-          :style="{ left: (scrollLeftPx + labelColWidth - 3) + 'px', height: (HEADER_HEIGHT + bodyHeight) + 'px' }"
+          :style="{ left: (pg.left + labelColWidth - 3) + 'px', height: (HEADER_HEIGHT + pg.bodyHeight) + 'px' }"
           @mousedown.stop="onResizeStart"
           title="Drag to resize"
         ></div>
 
         <!-- Rows -->
-        <template v-for="row in rows" :key="row.key">
+        <template v-for="row in pg.rows" :key="row.key">
           <div
             class="g-cell g-label"
             :class="{ 'g-label-wbs': row.type === 'wbs', selected: row.type === 'activity' && row.activity.task_id === selectedTaskId }"
-            :style="{ top: (HEADER_HEIGHT + row.index * ROW_HEIGHT) + 'px', left: scrollLeftPx + 'px', width: labelColWidth + 'px', paddingLeft: (8 + row.level * 11) + 'px' }"
+            :style="{ top: (HEADER_HEIGHT + (row.index - pg.start) * ROW_HEIGHT) + 'px', left: pg.left + 'px', width: labelColWidth + 'px', paddingLeft: (8 + row.level * 11) + 'px' }"
             @click="row.type === 'wbs' ? toggleWbs(row.wbsId) : selectActivity(row.activity)"
           >
             <template v-if="row.type === 'wbs'">
@@ -317,7 +324,7 @@
           </div>
           <div
             class="g-cell g-timeline-row"
-            :style="{ gridRow: (row.index + 2), gridColumn: 2, width: totalWidth + 'px' }"
+            :style="{ gridRow: (row.index - pg.start + 2), gridColumn: 2, width: totalWidth + 'px' }"
           >
             <div
               v-if="row.type === 'wbs'"
@@ -498,6 +505,17 @@ interface SavedView {
 
 /** WBS ids, plus the synthetic group holding activities with no known WBS. */
 type WbsKey = number | '__unassigned'
+
+interface GridPage {
+  screen: boolean
+  /** Index of the page's first row in `rows`. */
+  start: number
+  rows: Row[]
+  bodyHeight: number
+  /** Where the frozen header and label column sit (the scroll offsets on screen). */
+  top: number
+  left: number
+}
 
 interface SlipCell { text: string; cls: string; title: string }
 const NO_SLIP: SlipCell = { text: '', cls: '', title: '' }
@@ -757,6 +775,11 @@ export default defineComponent({
     },
     bodyHeight(): number {
       return this.rows.length * ROW_HEIGHT
+    },
+    // The pages the grid is drawn as. On screen: one page with every row, its header and
+    // label column following the scroll position.
+    gridPages(): GridPage[] {
+      return [{ screen: true, start: 0, rows: this.rows, bodyHeight: this.bodyHeight, top: this.scrollTopPx, left: this.scrollLeftPx }]
     },
     yearTicks(): Tick[] {
       return yearTicks(this.rangeStart, this.rangeEnd, this.dayWidth)
