@@ -1,7 +1,7 @@
 # SPEC: Microsoft Project files
 
 Status: **phases 0-2 shipped in 1.2.0** (PR #17, 2026-10-19). **Phase 3 specified in §7**
-(2026-10-19, target release 1.3.0); no engine code yet. Written 2026-10-18. Read `docs/METHODOLOGY.md`
+(2026-10-19, target release 1.3.0); stage 2 (the engine) in progress on `msproject-engine`. Written 2026-10-18. Read `docs/METHODOLOGY.md`
 and `SPEC.md` first: this builds on the same principles.
 
 ## 1. Objective
@@ -676,7 +676,14 @@ after the refactor commit.
 - Copy MPXJ code (LGPL) into XERlock; rules only, cited.
 - Push, PR, deploy or release: the supervisor does that.
 
-### 7.12 Open questions for the supervisor (with recommendations)
+### 7.12 Open questions, decided 2026-10-19
+
+The supervisor decided every question as recommended, with two riders: on Q2, if the
+confidential file does not reproduce after reasonable effort, summary logic is refused
+and the report says so; on Q4, no user-made oracle files are planned (the user does not
+use Project). Stage 2 builds to these decisions. The questions and recommendations are
+kept below as the record.
+
 
 1. **Resource rule: narrow or strict?** Narrow (recommended): refuse only assignments on
    other working time, delayed or contoured. It admits 7 more corpus files, 62 more
