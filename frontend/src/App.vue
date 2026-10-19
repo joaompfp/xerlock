@@ -158,6 +158,7 @@
         <GanttChart
           :data="data"
           :baseline="compareData"
+          :baseline-filename="compareFilename"
           :jump-to="pendingJump"
           :annotations="annotations"
           :return-tab="jumpOrigin ? (tabLabels[jumpOrigin] || '') : ''"
@@ -1463,6 +1464,10 @@ th.num { text-align: right !important; }
      while the Gantt's own fixed, repeating column header (position: fixed, so it can
      repeat on every page) paints on top of it, since fixed elements ignore flow. */
   .detail-drawer, .tabs, .header, .metrics-strip, .parse-warnings, .cp-below-section { display: none; }
+  .topbar, .sidebar { display: none !important; }
+  /* The screen's tinted page background would otherwise print on every sheet (the Gantt
+     prints its colours exactly). */
+  html, body, .app-shell { background: #fff !important; }
   .dashboard, .dashboard.header-collapsed { padding: 0; }
 }
 

@@ -147,3 +147,25 @@ export function dayTicks(rangeStart: Date, rangeEnd: Date, dayWidth: number): Ti
 export function weekendRects(ticks: readonly { x: number; weekend?: boolean }[], dayWidth: number): { x: number; w: number }[] {
   return ticks.filter(t => t.weekend).map(t => ({ x: t.x, w: dayWidth }))
 }
+
+/** How many rows fit on a printed sheet: the usable height less what each sheet repeats
+ *  above the rows (title line and column header), in whole rows, never fewer than one. */
+export function rowsPerPrintPage(usableHeightPx: number, reservedPx: number, rowHeight: number): number {
+  return Math.max(1, Math.floor((usableHeightPx - reservedPx) / rowHeight))
+}
+
+/** The rows split into consecutive pages of `perPage`: [start, end) index ranges that
+ *  cover every row exactly once. An empty chart still prints one (empty) page. */
+export function printPageRanges(rowCount: number, perPage: number): { start: number; end: number }[] {
+  const out: { start: number; end: number }[] = []
+  for (let start = 0; start < rowCount; start += perPage) out.push({ start, end: Math.min(rowCount, start + perPage) })
+  return out.length ? out : [{ start: 0, end: 0 }]
+}
+
+/** The zoom whose ticks suit a given day width: the finest one whose nominal width fits
+ *  in it. Used where the day width is fitted to something (a printed sheet) instead of
+ *  chosen, so week ticks are not drawn two pixels apart. */
+export function zoomForDayWidth(dayWidth: number): Zoom {
+  const order: Zoom[] = ['day', 'week', 'month', 'quarter']
+  return order.find(z => ZOOM_DAY_WIDTH[z] <= dayWidth) ?? 'quarter'
+}

@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
+  rowsPerPrintPage,
+  zoomForDayWidth,
+  printPageRanges,
   ZOOM_DAY_WIDTH, MIN_DAY_WIDTH, MAX_DAY_WIDTH,
   timelineRange, dayWidthFor, clampDayWidth, totalWidth,
   dateToX, yearTicks, monthTicks, weekTicks, dayTicks, weekendRects, unionRange,
@@ -175,5 +178,27 @@ describe('unionRange (baseline overhang)', () => {
       .toEqual({ start: '2026-01-01', end: '2026-12-31' })
     expect(unionRange(null, null, '2026-02-01', '2026-05-01'))
       .toEqual({ start: '2026-02-01', end: '2026-05-01' })
+  })
+})
+
+describe('print pagination', () => {
+  it('fits whole rows below the repeated title and header, at least one', () => {
+    expect(rowsPerPrintPage(698, 80, 26)).toBe(23)
+    expect(rowsPerPrintPage(100, 80, 26)).toBe(1)
+  })
+  it('covers every row exactly once, in order', () => {
+    expect(printPageRanges(50, 23)).toEqual([{ start: 0, end: 23 }, { start: 23, end: 46 }, { start: 46, end: 50 }])
+    expect(printPageRanges(23, 23)).toEqual([{ start: 0, end: 23 }])
+    expect(printPageRanges(0, 23)).toEqual([{ start: 0, end: 0 }])
+  })
+})
+
+describe('zoomForDayWidth', () => {
+  it('picks the finest zoom whose nominal day width fits', () => {
+    expect(zoomForDayWidth(40)).toBe('day')
+    expect(zoomForDayWidth(9)).toBe('week')
+    expect(zoomForDayWidth(2.6)).toBe('quarter')
+    expect(zoomForDayWidth(3.5)).toBe('month')
+    expect(zoomForDayWidth(0.5)).toBe('quarter')
   })
 })
