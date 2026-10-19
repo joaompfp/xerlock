@@ -4,7 +4,7 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
-## [Unreleased]
+## [1.4.0] - 2026-10-19
 
 ### Added
 - Gantt: a **Slip** column beside Float whenever the compared schedule's bars are drawn,
