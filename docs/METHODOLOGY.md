@@ -304,6 +304,7 @@ re-exports. Internal IDs do not. All date movements are in **calendar days**.
 |---|---|
 | Project finish | Latest displayed finish in each file |
 | Date changes | Displayed finish moved |
+| Gantt Slip column | Shown while the compared schedule's bars are drawn on the Gantt: the same displayed-finish movement per activity, current minus compared (+ later, − earlier); "new" marks an activity the compared file does not have |
 | Duration changes | Original duration changed, in the current activity's calendar days |
 | Actual dates changed | An actual start/finish present in the earlier file moved or disappeared. As-built history should not change between updates; AACE 29R-03 treats validating it as a precondition of any delay analysis |
 | Constraint changes | Primary or secondary constraint type or date added, removed or changed |
