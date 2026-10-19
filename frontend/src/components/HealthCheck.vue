@@ -486,7 +486,7 @@
         <p v-if="!recalculation.supported" class="section-note">Not recalculated: {{ recalculation.reason }}. The Critical Path Test is withheld.</p>
         <template v-else>
           <p v-if="isProjectFile" class="section-note">
-            {{ recalculation.compared }} tasks compared on Start and Finish, late dates, total and free slack{{ recalculation.excluded.wbs_summary ? ' (' + recalculation.excluded.wbs_summary + ' summary tasks roll up and are not compared)' : '' }}.
+            {{ recalculation.compared }} tasks compared on Start and Finish, late dates, total and free slack{{ recalculation.excluded.wbs_summary ? ' (' + recalculation.excluded.wbs_summary + ' summary task' + (recalculation.excluded.wbs_summary === 1 ? ' rolls' : 's roll') + ' up and ' + (recalculation.excluded.wbs_summary === 1 ? 'is' : 'are') + ' not compared)' : '' }}.
             Engine settings from the file: scheduled from the {{ recalculation.options.schedule_from || 'start' }} date, lag on the successor's calendar, constraint dates honoured over links{{ recalculation.options.critical_slack_limit_days ? ', critical at slack ≤ ' + recalculation.options.critical_slack_limit_days + ' days' : '' }}.
           </p>
           <p v-else class="section-note">
