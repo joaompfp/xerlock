@@ -302,7 +302,7 @@
               <span class="g-col-date">{{ row.start ? formatDateShort(row.start) : '' }}</span>
               <span class="g-col-date">{{ row.finish ? formatDateShort(row.finish) : '' }}</span>
               <span class="g-col-float"></span>
-              <span v-if="showSlip" class="g-col-slip"></span>
+              <span v-if="showSlip" class="g-col-slip" :class="wbsSlipCell(row).cls" :title="wbsSlipCell(row).title">{{ wbsSlipCell(row).text }}</span>
             </template>
             <template v-else>
               <i v-if="annotations[row.activity.task_id]" class="annotation-flag" :class="'sev-' + annotations[row.activity.task_id].severity" :title="annotations[row.activity.task_id].note"></i>
@@ -458,7 +458,7 @@ const FLOAT_TAIL_MAX_DAYS = 26
 const STATUS_LABELS: Record<string, string> = { TK_NotStart: 'Not started', TK_Active: 'Active', TK_Complete: 'Complete' }
 import fullscreenMixin from '../mixins/fullscreen'
 import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
-import { finishSlipDays } from '../utils/compareChecks'
+import { dateSlipDays, finishSlipDays } from '../utils/compareChecks'
 import { PAPER_SIZES, paperOrDefault, usableWidthPx } from '../utils/paper'
 import {
   type Zoom,
@@ -499,7 +499,19 @@ interface SavedView {
 /** WBS ids, plus the synthetic group holding activities with no known WBS. */
 type WbsKey = number | '__unassigned'
 
-interface Rollup { start: Date | null; finish: Date | null; count: number }
+interface SlipCell { text: string; cls: string; title: string }
+const NO_SLIP: SlipCell = { text: '', cls: '', title: '' }
+function slipCellOf(d: number, was: string, what: string): SlipCell {
+  return {
+    text: (d > 0 ? '+' : '') + d + 'd',
+    cls: d > 0 ? 'slip-late' : d < 0 ? 'slip-early' : '',
+    title: d === 0 ? `${what} unchanged (${was})` : `${what} ${d > 0 ? 'later' : 'earlier'} by ${Math.abs(d)} calendar day${Math.abs(d) === 1 ? '' : 's'} (was ${was})`,
+  }
+}
+
+// baseFinish: the latest compared finish of the activities under the node that the
+// compared schedule also has (null without a compared schedule or with none in common).
+interface Rollup { start: Date | null; finish: Date | null; baseFinish: Date | null; count: number }
 
 interface WbsRow {
   type: 'wbs'
@@ -510,6 +522,7 @@ interface WbsRow {
   count: number
   start?: Date | null
   finish?: Date | null
+  baseFinish?: Date | null
   index: number
 }
 
@@ -902,7 +915,7 @@ export default defineComponent({
       const walk = (nodes: WbsNode[], level: number) => {
         const sorted = [...nodes].sort((a, b) => a.seq_num - b.seq_num)
         for (const node of sorted) {
-          const roll = rollups.get(node.wbs_id) || { start: null, finish: null, count: 0 }
+          const roll = rollups.get(node.wbs_id) || { start: null, finish: null, baseFinish: null, count: 0 }
           if (filtering && roll.count === 0) continue
           rows.push({
             type: 'wbs',
@@ -913,6 +926,7 @@ export default defineComponent({
             count: roll.count,
             start: roll.start,
             finish: roll.finish,
+            baseFinish: roll.baseFinish,
           })
           const expanded = filtering ? !this.filterCollapsed.has(node.wbs_id) : this.expandedWbs.has(node.wbs_id)
           if (expanded) {
@@ -1005,11 +1019,18 @@ export default defineComponent({
     computeRollups(matchFn: ((a: Activity) => boolean) | null): Map<number, Rollup> {
       const map = new Map<number, Rollup>()
       const activitiesByWbs = this.activitiesByWbs
+      const baselineByCode = this.baselineByCode
       const visit = (node: WbsNode): Rollup => {
-        let start: Date | null = null, finish: Date | null = null, count = 0
+        let start: Date | null = null, finish: Date | null = null, baseFinish: Date | null = null, count = 0
         for (const a of activitiesByWbs.get(node.wbs_id) || []) {
           if (matchFn && !matchFn(a)) continue
           count++
+          const b = baselineByCode?.get(a.task_code)
+          const be = b ? displayEnd(b) : null
+          if (be) {
+            const d = new Date(be)
+            if (!baseFinish || d > baseFinish) baseFinish = d
+          }
           const ds = displayStart(a)
           const de = displayEnd(a)
           if (ds) {
@@ -1026,8 +1047,9 @@ export default defineComponent({
           count += r.count
           if (r.start && (!start || r.start < start)) start = r.start
           if (r.finish && (!finish || r.finish > finish)) finish = r.finish
+          if (r.baseFinish && (!baseFinish || r.baseFinish > baseFinish)) baseFinish = r.baseFinish
         }
-        const roll = { start, finish, count }
+        const roll = { start, finish, baseFinish, count }
         map.set(node.wbs_id, roll)
         return roll
       }
@@ -1078,17 +1100,18 @@ export default defineComponent({
       // `?? 0` mirrors JS's null-to-0 coercion in subtraction.
       return { left: x + 'px', width: Math.max((xEnd ?? 0) - (x ?? 0), 3) + 'px' }
     },
-    slipCell(a: Activity): { text: string; cls: string; title: string } {
+    slipCell(a: Activity): SlipCell {
       const b = this.baselineByCode?.get(a.task_code)
       if (!b) return { text: 'new', cls: 'slip-new', title: 'Not in the compared schedule' }
       const d = finishSlipDays(a, b)
-      if (d === null) return { text: '', cls: '', title: '' }
-      const was = formatDateShort(displayEnd(b))
-      return {
-        text: (d > 0 ? '+' : '') + d + 'd',
-        cls: d > 0 ? 'slip-late' : d < 0 ? 'slip-early' : '',
-        title: d === 0 ? `Finish unchanged (${was})` : `Finish ${d > 0 ? 'later' : 'earlier'} by ${Math.abs(d)} calendar day${Math.abs(d) === 1 ? '' : 's'} (was ${was})`,
-      }
+      return d === null ? NO_SLIP : slipCellOf(d, formatDateShort(displayEnd(b)), 'Finish')
+    },
+    // A WBS row's finish is the latest finish under it, as shown in its Finish cell; it is
+    // measured against the latest compared finish of the same activities.
+    wbsSlipCell(row: WbsRow): SlipCell {
+      if (!row.finish) return NO_SLIP
+      if (!row.baseFinish) return { text: 'new', cls: 'slip-new', title: 'None of these activities is in the compared schedule' }
+      return slipCellOf(dateSlipDays(row.finish, row.baseFinish), formatDateShort(row.baseFinish.toISOString()), 'Latest finish')
     },
     ghostFor(a: Activity): { x: number | null; w: number; label: string } | null {
       if (!this.showBaseline || !this.baselineByCode) return null
