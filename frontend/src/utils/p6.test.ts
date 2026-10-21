@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   relTypeLabel, cstrLabel, HARD_CONSTRAINT_TYPES, displayStart, displayEnd,
+  matchesConstraintFilter, constraintFilterLabel,
 } from './p6'
 import { formatFloat, formatHours, formatLag, isMilestone } from './format'
 import { PAPER_SIZES, paperOrDefault, usableWidthPx, usableHeightPx } from './paper'
@@ -129,5 +130,37 @@ describe('paper sizes', () => {
 
   it('gives A3 more usable width than A4', () => {
     expect(usableWidthPx('a3', 15)).toBeGreaterThan(usableWidthPx('a4', 15))
+  })
+})
+
+describe('constraint filter', () => {
+  const free = { cstr_type: null, cstr_type2: null }
+  const alap = { cstr_type: 'CS_ALAP', cstr_type2: null }
+  const soft = { cstr_type: 'CS_MSOA', cstr_type2: null }
+  const secondaryHard = { cstr_type: 'CS_MSOA', cstr_type2: 'CS_MEOB' }
+
+  it('passes everything when unset', () => {
+    for (const a of [free, alap, soft]) expect(matchesConstraintFilter(a, '')).toBe(true)
+  })
+
+  it('splits constrained from pure-logic activities', () => {
+    expect([free, alap, soft].map(a => matchesConstraintFilter(a, 'any'))).toEqual([false, true, true])
+    expect([free, alap, soft].map(a => matchesConstraintFilter(a, 'none'))).toEqual([true, false, false])
+  })
+
+  it('counts the secondary constraint', () => {
+    expect(matchesConstraintFilter(soft, 'hard')).toBe(false)
+    expect(matchesConstraintFilter(secondaryHard, 'hard')).toBe(true)
+    expect(matchesConstraintFilter(secondaryHard, 'CS_MEOB')).toBe(true)
+  })
+
+  it('matches one type exactly', () => {
+    expect(matchesConstraintFilter(alap, 'CS_ALAP')).toBe(true)
+    expect(matchesConstraintFilter(soft, 'CS_ALAP')).toBe(false)
+  })
+
+  it('labels groups and types', () => {
+    expect(constraintFilterLabel('hard')).toBe('Hard constraints')
+    expect(constraintFilterLabel('CS_ALAP')).toBe('As Late As Possible')
   })
 })

@@ -84,6 +84,13 @@
                 <option value="TK_Complete">Complete</option>
               </select>
             </label>
+            <label class="fp-row">
+              <span>Constraint</span>
+              <select v-model="filterConstraint" class="filter-select">
+                <option value="">All activities</option>
+                <option v-for="o in constraintFilterOptions" :key="o.value" :value="o.value" :disabled="o.count === 0">{{ o.label }} ({{ o.count }})</option>
+              </select>
+            </label>
             <label class="fp-check"><input type="checkbox" v-model="filterCriticalOnly" /> Critical only</label>
             <div class="fp-sep"></div>
             <label class="fp-row"><span>From</span><input type="date" v-model="filterFrom" class="filter-date" /></label>
@@ -418,7 +425,7 @@ const NEAR_CRITICAL_HRS = 80 // 10 working days
 const FLOAT_TAIL_MAX_DAYS = 26
 const STATUS_LABELS: Record<string, string> = { TK_NotStart: 'Not started', TK_Active: 'Active', TK_Complete: 'Complete' }
 import fullscreenMixin from '../mixins/fullscreen'
-import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
+import { relTypeLabel, cstrLabel, displayStart, displayEnd, CSTR_LABELS, CONSTRAINT_FILTER_GROUPS, constraintTypesOf, matchesConstraintFilter, constraintFilterLabel } from '../utils/p6'
 import { dateSlipDays, finishSlipDays } from '../utils/compareChecks'
 import { PAPER_SIZES, paperOrDefault, usableWidthPx, usableHeightPx } from '../utils/paper'
 import {
@@ -606,6 +613,7 @@ export default defineComponent({
       filterText: '',
       filterStatus: '',
       filterCriticalOnly: false,
+      filterConstraint: '',
       filterFrom: '',
       filterTo: '',
       filtersOpen: false,
@@ -822,6 +830,21 @@ export default defineComponent({
       for (const [t, set] of sets) m.set(t, [...set].sort())
       return m
     },
+    // The groups first, then each P6 type in its usual order, counted on this file so an
+    // empty choice is visibly empty rather than a surprise blank chart.
+    constraintFilterOptions(): { value: string; label: string; count: number }[] {
+      const counts = new Map<string, number>()
+      const bump = (k: string) => counts.set(k, (counts.get(k) || 0) + 1)
+      for (const a of this.data.activities) {
+        const types = constraintTypesOf(a)
+        for (const t of new Set(types)) bump(t)
+        for (const g of Object.keys(CONSTRAINT_FILTER_GROUPS)) if (matchesConstraintFilter(a, g)) bump(g)
+      }
+      const groups = Object.entries(CONSTRAINT_FILTER_GROUPS).map(([value, label]) => ({ value, label, count: counts.get(value) || 0 }))
+      const types = Object.keys(CSTR_LABELS).filter(t => counts.has(t))
+        .map(t => ({ value: t, label: cstrLabel(t), count: counts.get(t)! }))
+      return [...groups, ...types]
+    },
     activeCodeFilters(): [string, string][] {
       return Object.entries(this.filterCodes).filter(([, v]) => v)
     },
@@ -829,7 +852,7 @@ export default defineComponent({
       return this.isolatedIds !== null
     },
     isFilterActive(): boolean {
-      return this.isolationActive || !!(this.filterText.trim() || this.filterStatus || this.filterCriticalOnly || this.filterFrom || this.filterTo || this.activeCodeFilters.length)
+      return this.isolationActive || !!(this.filterText.trim() || this.filterStatus || this.filterConstraint || this.filterCriticalOnly || this.filterFrom || this.filterTo || this.activeCodeFilters.length)
     },
     matchedTaskIds(): Set<number> | null {
       // Isolation takes precedence over the text/status/code filters: the trace IS the view.
@@ -850,6 +873,7 @@ export default defineComponent({
           if (this.filterFrom && aEnd < this.filterFrom) continue
           if (this.filterTo && aStart > this.filterTo) continue
         }
+        if (!matchesConstraintFilter(a, this.filterConstraint)) continue
         if (this.filterCriticalOnly && !this.isBasisCritical(a)) continue
         if (this.activeCodeFilters.length) {
           const matchesAll = this.activeCodeFilters.every(([type, code]) =>
@@ -879,6 +903,7 @@ export default defineComponent({
       const q = this.filterText.trim()
       if (q) out.push({ id: 'text', label: `Search: ${q}` })
       if (this.filterStatus) out.push({ id: 'status', label: `Status: ${STATUS_LABELS[this.filterStatus] || this.filterStatus}` })
+      if (this.filterConstraint) out.push({ id: 'cstr', label: `Constraint: ${constraintFilterLabel(this.filterConstraint)}` })
       if (this.filterCriticalOnly) out.push({ id: 'crit', label: 'Critical only' })
       if (this.filterFrom || this.filterTo) {
         const la = [28, 56].find(d => this.lookAheadActive(d))
@@ -893,6 +918,7 @@ export default defineComponent({
       const bits: string[] = []
       if (this.filterText.trim()) bits.push(`text “${this.filterText.trim()}”`)
       if (this.filterStatus) bits.push('a status')
+      if (this.filterConstraint) bits.push('a constraint')
       if (this.filterCriticalOnly) bits.push('critical only')
       if (this.filterFrom || this.filterTo) bits.push('a date window')
       if (this.activeCodeFilters.length) bits.push('an activity code')
@@ -1261,6 +1287,7 @@ export default defineComponent({
     clearFilter(id: string) {
       if (id === 'text') this.filterText = ''
       else if (id === 'status') this.filterStatus = ''
+      else if (id === 'cstr') this.filterConstraint = ''
       else if (id === 'crit') this.filterCriticalOnly = false
       else if (id === 'dates') { this.filterFrom = ''; this.filterTo = '' }
       else if (id.startsWith('code:')) this.filterCodes[id.slice(5)] = ''
@@ -1270,6 +1297,7 @@ export default defineComponent({
       this.filterText = ''
       this.filterStatus = ''
       this.filterCriticalOnly = false
+      this.filterConstraint = ''
       this.filterFrom = ''
       this.filterTo = ''
       // Reseed one '' entry per category — an undefined v-model renders the select blank.
