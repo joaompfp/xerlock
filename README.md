@@ -60,7 +60,8 @@ meaning. Works down to a phone, where the sidebar slides over from a hamburger.
 - Key dates and periods: your own labelled lines and shaded date ranges (client access,
   shutdowns, permit windows) in muted colours, on screen and on the printout
 - Note callouts: click a review note's dot to show it on the chart, drag it where it reads best; it
-  stays tied to its bar, is remembered in this browser, and prints
+  stays tied to its bar and is remembered in this browser. On the printout notes become
+  numbered markers with the notes listed after the chart
 - Float tails: a dashed line off each bar end, proportional to total float, so slack is visible
   in the chart rather than a number to look up
 - Baseline ghost bars: with a Compare baseline loaded, every activity draws a hollow bar at its

@@ -4,6 +4,13 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.6.1] - 2026-10-22
+
+### Changed
+- On the Gantt printout each review note is a numbered marker, on its bar and before
+  its name, and the notes are listed in full after the chart (number, activity,
+  severity, text). Callouts are screen-only: they no longer print.
+
 ## [1.6.0] - 2026-10-22
 
 ### Added

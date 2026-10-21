@@ -364,7 +364,8 @@
               <span v-if="showSlip" class="g-col-slip" :class="wbsSlipCell(row).cls" :title="wbsSlipCell(row).title">{{ wbsSlipCell(row).text }}</span>
             </template>
             <template v-else>
-              <button v-if="annotations[row.activity.task_id]" class="annotation-hit" :title="(annotations[row.activity.task_id].callout ? 'Hide' : 'Show') + ' note on the chart: ' + annotations[row.activity.task_id].note" @click.stop="toggleCallout(row.activity.task_id)"><i class="annotation-flag" :class="'sev-' + annotations[row.activity.task_id].severity"></i></button>
+              <span v-if="!pg.screen && noteNumbers.has(row.activity.task_id)" class="g-note-num">{{ noteNumbers.get(row.activity.task_id) }}</span>
+              <button v-else-if="annotations[row.activity.task_id]" class="annotation-hit" :title="(annotations[row.activity.task_id].callout ? 'Hide' : 'Show') + ' note on the chart: ' + annotations[row.activity.task_id].note" @click.stop="toggleCallout(row.activity.task_id)"><i class="annotation-flag" :class="'sev-' + annotations[row.activity.task_id].severity"></i></button>
               <span class="g-act-code">{{ row.activity.task_code }}</span>
               <span class="g-act-name">{{ row.activity.task_name }}</span>
               <span class="g-col-dur">{{ formatHours(row.activity.duration_hrs, row.activity.calendar_hrs_per_day) }}</span>
@@ -422,8 +423,13 @@
                 <div class="g-bar-progress" :style="{ width: row.activity.pct_complete + '%' }"></div>
               </div>
             </template>
+            <span
+              v-if="!pg.screen && row.type === 'activity' && noteNumbers.has(row.activity.task_id)"
+              class="g-note-num g-note-num-bar"
+              :style="{ left: (calloutAnchorX(row) + 4) + 'px' }"
+            >{{ noteNumbers.get(row.activity.task_id) }}</span>
             <button
-              v-if="row.type === 'activity' && annotations[row.activity.task_id]"
+              v-else-if="row.type === 'activity' && annotations[row.activity.task_id]"
               class="g-note-dot annotation-hit"
               :style="{ left: (calloutAnchorX(row) + 3) + 'px' }"
               :title="(annotations[row.activity.task_id].callout ? 'Hide' : 'Show') + ' note: ' + annotations[row.activity.task_id].note"
@@ -453,6 +459,19 @@
         </div>
       </div>
       </template>
+
+      <!-- On paper a note is a numbered marker on its bar, listed here in full: callouts
+           don't survive the change of scale, and a numbered list reads like a markup. -->
+      <section v-if="printing && printNotes.length" class="print-notes">
+        <div class="print-notes-title">Review notes</div>
+        <div v-for="n in printNotes" :key="n.num" class="print-note">
+          <span class="g-note-num">{{ n.num }}</span>
+          <span class="pn-code">{{ n.code }}</span>
+          <span class="pn-name">{{ n.name }}</span>
+          <span v-if="n.severity" class="pn-sev" :class="'sev-' + n.severity">{{ severityLabel(n.severity) }}</span>
+          <div class="pn-text">{{ n.note }}</div>
+        </div>
+      </section>
     </div>
 
 
@@ -903,6 +922,25 @@ export default defineComponent({
       const dd = new Date(this.data.project.data_date)
       if (isNaN(dd.getTime()) || dd < this.rangeStart || dd > this.rangeEnd) return null
       return Math.round(((dd.getTime() - this.rangeStart.getTime()) / 86400000) * this.dayWidth)
+    },
+    // The printout numbers each note in row order over what is printed (collapsed and
+    // filtered-out activities are left out, as their bars are).
+    noteNumbers(): Map<number, number> {
+      const m = new Map<number, number>()
+      for (const row of this.rows) {
+        if (row.type === 'activity' && this.annotations[row.activity.task_id]) m.set(row.activity.task_id, m.size + 1)
+      }
+      return m
+    },
+    printNotes(): { num: number; code: string; name: string; severity: Severity | null; note: string }[] {
+      const out = []
+      for (const row of this.rows) {
+        if (row.type !== 'activity') continue
+        const num = this.noteNumbers.get(row.activity.task_id)
+        const a = this.annotations[row.activity.task_id]
+        if (num && a) out.push({ num, code: row.activity.task_code, name: row.activity.task_name, severity: a.severity, note: a.note })
+      }
+      return out
     },
     hasMarkup(): boolean {
       return this.markup.keyDates.length + this.markup.periods.length > 0
@@ -1650,6 +1688,7 @@ export default defineComponent({
     },
     calloutsOf(pg: GridPage): Callout[] {
       const out: Callout[] = []
+      if (!pg.screen) return out
       for (const row of pg.rows) {
         if (row.type !== 'activity') continue
         const a = this.annotations[row.activity.task_id]
@@ -1917,6 +1956,20 @@ export default defineComponent({
 .annotation-hit:hover .annotation-flag { transform: scale(1.5); }
 .g-note-dot { position: absolute; top: 50%; margin: 0; transform: translateY(-50%); z-index: 1; }
 .g-note-dot .annotation-flag { width: 7px; height: 7px; box-shadow: 0 0 0 1.5px var(--panel); }
+.g-note-num { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; min-width: 14px; height: 14px; padding: 0 3px; box-sizing: border-box; border-radius: 7px; background: var(--ink); color: var(--panel); font: 700 9px/1 var(--font-mono); }
+.g-note-num-bar { position: absolute; top: 50%; transform: translateY(-50%); z-index: 1; }
+.print-notes { margin-top: 10px; break-inside: auto; }
+.print-notes-title { font: 600 12px/18px var(--font-ui); color: var(--ink); border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.print-note { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 3px 0; border-bottom: 1px solid var(--line-soft); break-inside: avoid; font: 11px/15px var(--font-ui); color: var(--ink-soft); }
+.print-note .g-note-num { align-self: center; }
+.pn-code { font-family: var(--font-mono); color: var(--ink-3); }
+.pn-name { font-weight: 600; color: var(--ink); }
+.pn-sev { font: 700 9px/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.04em; color: var(--gray-500); }
+.pn-sev.sev-query { color: var(--active); }
+.pn-sev.sev-risk { color: var(--near); }
+.pn-sev.sev-logic { color: var(--crit); }
+.pn-sev.sev-resolved { color: var(--ok); }
+.pn-text { flex-basis: 100%; padding-left: 22px; white-space: pre-wrap; color: var(--ink); }
 .g-callout { position: absolute; z-index: 4; max-width: 230px; min-width: 120px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--gray-500); border-radius: var(--radius-sm); box-shadow: 0 6px 18px -8px rgba(0,0,0,0.35); padding: 4px 6px 5px 7px; cursor: move; user-select: none; font: var(--text-small); color: var(--ink); }
 .g-callout.sev-query { border-left-color: var(--active); }
 .g-callout.sev-risk { border-left-color: var(--near); }
