@@ -57,6 +57,8 @@ meaning. Works down to a phone, where the sidebar slides over from a hamburger.
   float is zero in working time, exactly as P6 defines it
 - Progress line, today + data-date markers, weekend shading, filter bar (text/status/critical/constraint/review notes/
   activity codes/date window with 4- and 8-week look-ahead presets from the data date)
+- Key dates and periods: your own labelled lines and shaded date ranges (client access,
+  shutdowns, permit windows) in muted colours, on screen and on the printout
 - Note callouts: click a review note's dot to show it on the chart, drag it where it reads best; it
   stays tied to its bar, is remembered in this browser, and prints
 - Float tails: a dashed line off each bar end, proportional to total float, so slack is visible

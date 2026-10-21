@@ -990,6 +990,13 @@ export default defineComponent({
   --space-8: 32px;
   --radius-sm: 4px;
   --radius-md: 8px;
+  /* Reviewer markup (key dates, periods): muted, so it never competes with the bars. */
+  --mk-slate: #5B6B7F;
+  --mk-teal: #1F7A72;
+  --mk-amber: #A86A00;
+  --mk-rose: #B2456E;
+  --mk-violet: #6B4FB0;
+  --mk-band-opacity: 0.08;
 }
 
 /* ── Alternate themes ──────────────────────────────────────────────────────
@@ -1041,6 +1048,12 @@ export default defineComponent({
   --float-tail: #39424D;
   --bar-normal-fill: rgba(123,162,255,0.20);
   --bar-progress: rgba(233,237,242,0.28);
+  --mk-slate: #9AA8BA;
+  --mk-teal: #5CC2B6;
+  --mk-amber: #E0A84A;
+  --mk-rose: #E58AAE;
+  --mk-violet: #A992F0;
+  --mk-band-opacity: 0.12;
 }
 
 
@@ -1390,6 +1403,11 @@ th.num { text-align: right !important; }
 /* Toggle chip, shared by the Gantt and Critical Path toolbars: solid border with
    a dot when on, dashed when off. Global because both components use it — defined
    in one component's scoped block it renders as an unstyled UA button in the other. */
+.mk-slate { --mk: var(--mk-slate); }
+.mk-teal { --mk: var(--mk-teal); }
+.mk-amber { --mk: var(--mk-amber); }
+.mk-rose { --mk: var(--mk-rose); }
+.mk-violet { --mk: var(--mk-violet); }
 .tb-chip { display: inline-flex; align-items: center; gap: 5px; border: 1px dashed var(--line); border-radius: 14px; background: var(--panel); color: var(--ink-3); padding: 4px 9px; cursor: pointer; font: var(--text-small); }
 .tb-chip i { width: 6px; height: 6px; border-radius: 50%; background: transparent; border: 1px solid var(--ink-3); }
 .tb-chip:hover { border-color: var(--ink-3); color: var(--ink-2); }

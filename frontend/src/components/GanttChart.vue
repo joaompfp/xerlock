@@ -70,10 +70,16 @@
 
       <div class="tb-right">
         <div class="tb-pop">
-          <button class="ctrl-btn tb-more" @click="overflowOpen = !overflowOpen" :aria-expanded="(String(overflowOpen) as 'true' | 'false')" title="More actions" aria-label="More actions">⋯</button>
+          <button class="ctrl-btn tb-more" @click="overflowOpen = !overflowOpen; markupOpen = false" :aria-expanded="(String(overflowOpen) as 'true' | 'false')" title="More actions" aria-label="More actions">⋯</button>
+          <div v-if="markupOpen" class="tb-panel">
+            <GanttMarkupPanel :markup="markup" :default-date="markupDefaultDate" @change="setMarkup" />
+          </div>
           <div v-if="overflowOpen" class="tb-panel tb-panel-menu">
             <button :disabled="todayX === null" @click="overflowOpen = false; scrollToToday()">Scroll to today</button>
             <button @click="overflowOpen = false; toggleFullscreen()">{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</button>
+            <div class="fp-sep"></div>
+            <button @click="overflowOpen = false; markupOpen = true">Key dates &amp; periods…</button>
+            <label v-if="hasMarkup" class="tb-menu-check"><input type="checkbox" v-model="showMarkup" /> Show key dates &amp; periods</label>
             <div class="fp-sep"></div>
             <label class="fp-row"><span>Paper</span>
               <select v-model="printPaperSize" class="filter-select">
@@ -191,6 +197,25 @@
               :style="{ left: ddX(pg) + 'px' }"
               :title="'Data date: ' + formatDate(data.project.data_date)"
             >{{ formatDateShort(data.project.data_date) }} &middot; data date</span>
+            <template v-if="markupShown">
+              <div
+                v-for="p in markupPeriods"
+                :key="'mph' + p.id"
+                class="g-mk-span"
+                :class="'mk-' + p.color"
+                :style="{ left: p.x + 'px', width: p.w + 'px' }"
+                :title="p.title"
+              ><span v-if="p.label">{{ p.label }}</span></div>
+              <span
+                v-for="k in markupKeyDates"
+                v-show="k.label"
+                :key="'mkh' + k.id"
+                class="g-mk-chip"
+                :class="'mk-' + k.color"
+                :style="{ left: k.x + 'px' }"
+                :title="k.title"
+              >{{ k.label }}</span>
+            </template>
           </div>
           <div class="g-header-detail-row">
             <div
@@ -222,6 +247,15 @@
             :x1="t.x" :x2="t.x" y1="0" :y2="pg.bodyHeight"
             class="g-gridline"
           />
+          <template v-if="markupShown">
+            <rect
+              v-for="p in markupPeriods"
+              :key="'mp' + p.id"
+              :x="p.x" y="0" :width="p.w" :height="pg.bodyHeight"
+              class="g-mk-band"
+              :class="'mk-' + p.color"
+            />
+          </template>
           <line
             v-for="t in secondaryMonthGridlines"
             :key="'glm' + t.x"
@@ -286,6 +320,17 @@
           :style="{ left: (labelColWidth + ddX(pg)!) + 'px', top: HEADER_HEIGHT + 'px', height: pg.bodyHeight + 'px' }"
           :title="'Data date: ' + formatDate(data.project.data_date)"
         ></div>
+
+        <!-- Reviewer key dates: a thin line in the date's muted colour, labelled in the header. -->
+        <template v-if="markupShown">
+          <div
+            v-for="k in markupKeyDates"
+            :key="'mk' + k.id"
+            class="g-mk-line"
+            :class="'mk-' + k.color"
+            :style="{ left: (labelColWidth + k.x) + 'px', top: HEADER_HEIGHT + 'px', height: pg.bodyHeight + 'px' }"
+          ></div>
+        </template>
 
         <!-- Resize handle for the label column, tracked against horizontal scroll manually
              (position:sticky inside a CSS-grid item gets unreliable with explicit track spans,
@@ -437,6 +482,8 @@
 <script lang="ts">
 import { defineComponent, type PropType } from 'vue'
 import type { Activity, Schedule, WbsNode } from '../types/schedule'
+import { loadMarkup, saveMarkup, periodSpan, type Markup, type MarkColor } from '../utils/markup'
+import GanttMarkupPanel from './GanttMarkupPanel.vue'
 import { matchesNoteFilter, NOTE_FILTER_LABELS, DEFAULT_CALLOUT, SEVERITY_LABELS, type Annotations, type CalloutOffset, type NoteFilter, type Severity } from '../utils/annotations'
 import { formatDate, formatDateShort, formatHours, isMilestone, formatFloat, formatLag, statusLabel } from '../utils/format'
 
@@ -482,6 +529,7 @@ interface SavedView {
   showLinks?: boolean
   linksScope?: LinksScope
   showProgressLine?: boolean
+  showMarkup?: boolean
   labelColWidth?: number
   dayWidthOverride?: number | null
   printPaperSize?: string
@@ -591,7 +639,7 @@ function saveView(view: SavedView): void {
 export default defineComponent({
   name: 'GanttChart',
   mixins: [fullscreenMixin],
-  components: { IconChevron, ActivityDetailDrawer },
+  components: { IconChevron, ActivityDetailDrawer, GanttMarkupPanel },
   props: {
     data: { type: Object as PropType<Schedule>, required: true },
     // A task id. Activities are keyed by number; a string id would silently match nothing.
@@ -641,6 +689,9 @@ export default defineComponent({
       showLinks: saved.showLinks ?? true,
       linksScope: (saved.linksScope || 'critical') as LinksScope,
       showProgressLine: saved.showProgressLine ?? false,
+      showMarkup: saved.showMarkup ?? true,
+      markupOpen: false,
+      markup: loadMarkup(this.data.project.proj_short_name) as Markup,
       selectedTaskId: null as number | null,
       filterText: '',
       filterStatus: '',
@@ -670,8 +721,9 @@ export default defineComponent({
     // overlay swallowing the interaction context.
     drag(this)._onDocMousedown = (e: MouseEvent) => {
       const target = e.target as Element
-      if (this.overflowOpen && !target.closest('.tb-pop')) {
+      if ((this.overflowOpen || this.markupOpen) && !target.closest('.tb-pop')) {
         this.overflowOpen = false
+        this.markupOpen = false
       }
       if (this.selectedTaskId && this.$el.offsetParent !== null && !this.$el.contains(target)) {
         this.selectedTaskId = null
@@ -694,12 +746,14 @@ export default defineComponent({
     // filter keys for the new file — an undefined v-model renders the select blank.
     data() {
       this.clearFilters()
+      this.markup = loadMarkup(this.data.project.proj_short_name)
     },
     zoom() { this.persistView() },
     criticalBasis() { this.persistView() },
     showLinks() { this.persistView() },
     linksScope() { this.persistView() },
     showProgressLine() { this.persistView() },
+    showMarkup() { this.persistView() },
     dayWidthOverride() { this.persistView() },
     jumpTo: {
       immediate: true,
@@ -849,6 +903,45 @@ export default defineComponent({
       const dd = new Date(this.data.project.data_date)
       if (isNaN(dd.getTime()) || dd < this.rangeStart || dd > this.rangeEnd) return null
       return Math.round(((dd.getTime() - this.rangeStart.getTime()) / 86400000) * this.dayWidth)
+    },
+    hasMarkup(): boolean {
+      return this.markup.keyDates.length + this.markup.periods.length > 0
+    },
+    markupShown(): boolean {
+      return this.showMarkup && this.hasMarkup
+    },
+    markupDefaultDate(): string {
+      const dd = this.data.project.data_date
+      if (dd) return dd.slice(0, 10)
+      const t = new Date()
+      return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+    },
+    // Days are local midnights: a key date's line sits at the start of its day, and a
+    // period's band runs to the end of its last day.
+    markupKeyDates(): { id: string; x: number; label: string; color: MarkColor; title: string }[] {
+      const out = []
+      for (const k of this.markup.keyDates) {
+        const x = this.dateToX(k.date + 'T00:00:00')
+        if (x === null || x < 0 || x > this.totalWidth) continue
+        out.push({ id: k.id, x, label: k.label, color: k.color, title: `${k.label || 'Key date'} — ${formatDate(k.date + 'T00:00:00')}` })
+      }
+      return out
+    },
+    markupPeriods(): { id: string; x: number; w: number; label: string; color: MarkColor; title: string }[] {
+      const out = []
+      for (const p of this.markup.periods) {
+        const { from, to } = periodSpan(p)
+        const x0 = this.dateToX(from + 'T00:00:00')
+        const xTo = this.dateToX(to + 'T00:00:00')
+        if (x0 === null || xTo === null) continue
+        const x1 = xTo + this.dayWidth
+        const x = Math.max(0, x0)
+        const w = Math.min(this.totalWidth, x1) - x
+        if (w <= 0) continue
+        out.push({ id: p.id, x, w, label: p.label, color: p.color,
+          title: `${p.label || 'Period'} — ${formatDate(from + 'T00:00:00')} to ${formatDate(to + 'T00:00:00')}` })
+      }
+      return out
     },
     codeTypesAvailable(): string[] {
       return this.data.project.has_activity_codes ? this.data.project.activity_code_types : []
@@ -1431,6 +1524,10 @@ export default defineComponent({
       // before the print dialog captures the page.
       this.$nextTick(() => requestAnimationFrame(() => window.print()))
     },
+    setMarkup(m: Markup) {
+      this.markup = m
+      saveMarkup(this.data.project.proj_short_name, m)
+    },
     persistView() {
       saveView({
         zoom: this.zoom,
@@ -1438,6 +1535,7 @@ export default defineComponent({
         showLinks: this.showLinks,
         linksScope: this.linksScope,
         showProgressLine: this.showProgressLine,
+        showMarkup: this.showMarkup,
         labelColWidth: this.labelColWidth,
         dayWidthOverride: this.dayWidthOverride,
         printPaperSize: this.printPaperSize,
@@ -1685,6 +1783,7 @@ export default defineComponent({
 .fp-sep { height: 1px; background: var(--line); margin: 2px 0; }
 .tb-panel-menu button { text-align: left; background: none; border: none; border-radius: var(--radius-sm); padding: 6px 8px; cursor: pointer; font: var(--text-small); color: var(--ink-2); }
 .tb-panel-menu button:hover:not(:disabled) { background: var(--chip); color: var(--ink); }
+.tb-menu-check { display: flex; align-items: center; gap: 6px; padding: 4px 8px; font: var(--text-small); color: var(--ink-2); cursor: pointer; }
 .tb-panel-menu button:disabled { opacity: 0.45; cursor: default; }
 
 /* ── Active-filter strip ──────────────────────────────────────────────────── */
@@ -1792,6 +1891,11 @@ export default defineComponent({
 .g-progress-dot { fill: var(--milestone); }
 
 .g-today-line { position: absolute; width: 2px; background: var(--accent); z-index: 4; pointer-events: none; }
+.g-mk-line { position: absolute; width: 0; border-left: 1.5px solid var(--mk); opacity: 0.7; z-index: 4; pointer-events: none; }
+.g-mk-band { fill: var(--mk); fill-opacity: var(--mk-band-opacity); }
+.g-mk-chip { position: absolute; top: 4px; transform: translateX(-50%); max-width: 160px; overflow: hidden; text-overflow: ellipsis; background: var(--panel); color: var(--mk); border: 1px solid var(--mk); font-size: 10px; font-weight: 600; padding: 0 5px; border-radius: 3px; white-space: nowrap; z-index: 3; }
+.g-mk-span { position: absolute; bottom: 0; height: 100%; border-bottom: 3px solid var(--mk); box-sizing: border-box; overflow: hidden; z-index: 1; pointer-events: auto; }
+.g-mk-span span { position: absolute; bottom: 4px; left: 4px; max-width: calc(100% - 6px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; font-weight: 600; color: var(--mk); }
 .g-dd-line { position: absolute; width: 0; border-left: 2px dashed var(--milestone); z-index: 4; pointer-events: none; }
 .g-dd-flag { position: absolute; top: 2px; left: 3px; font: var(--text-micro); font-weight: 700; color: var(--on-solid); background: var(--milestone); padding: 0 5px; border-radius: var(--radius-sm); white-space: nowrap; }
 .g-today-flag { position: absolute; top: -18px; left: 2px; font: var(--text-micro); font-weight: 700; color: var(--accent); white-space: nowrap; }

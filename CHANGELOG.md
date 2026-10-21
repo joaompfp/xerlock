@@ -4,6 +4,15 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.6.0] - 2026-10-22
+
+### Added
+- Gantt key dates and periods (⋯ → Key dates & periods…). A key date is a thin line
+  with its label in the timeline header; a period is a faint band behind the bars with
+  a coloured rule and label in the header. Each takes a label, its date(s) and one of
+  five muted colours (click the swatch to change it). Saved per project in this
+  browser, shown on screen and on the printout, and switched off from the same menu.
+
 ## [1.5.1] - 2026-10-22
 
 ### Changed
