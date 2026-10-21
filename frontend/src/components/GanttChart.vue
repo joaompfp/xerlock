@@ -20,6 +20,16 @@
         <span class="legend-item"><i class="bar-wbs"></i>WBS rollup</span>
         <span class="legend-item" v-if="baseline && showBaseline"><i class="lg-bar lg-ghost"></i>Baseline</span>
       </div>
+      <GanttViewBar
+        :views="views"
+        :current-id="currentViewId"
+        @apply="applyView"
+        @step="stepViews"
+        @save="saveNamedView"
+        @update="updateView"
+        @rename="renameView"
+        @remove="removeView"
+      />
     </div>
 
     <!-- One toolbar row, ordered by frequency of use. What is used once per session
@@ -510,6 +520,8 @@ import { defineComponent, type PropType } from 'vue'
 import type { Activity, Schedule, WbsNode } from '../types/schedule'
 import { loadMarkup, saveMarkup, periodSpan, highlightColors, toggleMember, newMarkId, MARK_COLORS, type Markup, type MarkColor } from '../utils/markup'
 import GanttMarkupPanel from './GanttMarkupPanel.vue'
+import GanttViewBar from './GanttViewBar.vue'
+import { loadViews, saveViews, completeState, stepView, type SavedView as NamedView, type ViewState } from '../utils/views'
 import { matchesNoteFilter, NOTE_FILTER_LABELS, DEFAULT_CALLOUT, SEVERITY_LABELS, type Annotations, type CalloutOffset, type NoteFilter, type Severity } from '../utils/annotations'
 import { formatDate, formatDateShort, formatHours, isMilestone, formatFloat, formatLag, statusLabel } from '../utils/format'
 
@@ -665,7 +677,7 @@ function saveView(view: SavedView): void {
 export default defineComponent({
   name: 'GanttChart',
   mixins: [fullscreenMixin],
-  components: { IconChevron, ActivityDetailDrawer, GanttMarkupPanel },
+  components: { IconChevron, ActivityDetailDrawer, GanttMarkupPanel, GanttViewBar },
   props: {
     data: { type: Object as PropType<Schedule>, required: true },
     // A task id. Activities are keyed by number; a string id would silently match nothing.
@@ -718,6 +730,9 @@ export default defineComponent({
       showMarkup: saved.showMarkup ?? true,
       markupOpen: false,
       markup: loadMarkup(this.data.project.proj_short_name) as Markup,
+      views: loadViews(this.data.project.proj_short_name) as NamedView[],
+      // The view last applied or saved; the select shows it, and ‹ › step from it.
+      currentViewId: null as string | null,
       selectedTaskId: null as number | null,
       filterText: '',
       filterStatus: '',
@@ -773,6 +788,8 @@ export default defineComponent({
     data() {
       this.clearFilters()
       this.markup = loadMarkup(this.data.project.proj_short_name)
+      this.views = loadViews(this.data.project.proj_short_name)
+      this.currentViewId = null
     },
     zoom() { this.persistView() },
     criticalBasis() { this.persistView() },
@@ -1598,6 +1615,95 @@ export default defineComponent({
       if (!this.isolatedIds) return
       const codes = [...this.isolatedIds].map(id => this.actLookup.get(id)?.task_code).filter((c): c is string => !!c)
       this.newGroup(`Chain ${this.markup.groups.length + 1}`, codes)
+    },
+    // ── Saved views ──────────────────────────────────────────────────────
+    captureView(): ViewState {
+      const el = this.$refs.scrollEl as HTMLElement | undefined
+      const left = el ? el.scrollLeft : 0
+      const leftDay = new Date(this.rangeStart.getTime() + (left / this.dayWidth) * 86400000)
+      const top = el ? Math.floor(el.scrollTop / ROW_HEIGHT) : 0
+      const codeOf = (id: number) => this.actLookup.get(id)?.task_code
+      return {
+        zoom: this.zoom, dayWidthOverride: this.dayWidthOverride, criticalBasis: this.criticalBasis,
+        showLinks: this.showLinks, linksScope: this.linksScope, showProgressLine: this.showProgressLine,
+        showBaseline: this.showBaseline, showMarkup: this.showMarkup,
+        filterText: this.filterText, filterStatus: this.filterStatus, filterConstraint: this.filterConstraint,
+        filterNotes: this.filterNotes, filterCriticalOnly: this.filterCriticalOnly,
+        filterFrom: this.filterFrom, filterTo: this.filterTo, filterCodes: { ...this.filterCodes },
+        isolatedCodes: this.isolatedIds ? [...this.isolatedIds].map(codeOf).filter((c): c is string => !!c) : null,
+        expandedWbs: [...this.expandedWbs], filterCollapsed: [...this.filterCollapsed],
+        groupsOn: this.markup.groups.filter(g => g.on).map(g => g.id),
+        leftDate: leftDay.toISOString(),
+        topRowKey: this.rows[top]?.key ?? null,
+      }
+    },
+    applyView(id: string) {
+      const v = this.views.find(x => x.id === id)
+      if (!v) return
+      const s = completeState(v.state, this.captureView())
+      this.zoom = s.zoom as Zoom
+      this.dayWidthOverride = s.dayWidthOverride
+      this.criticalBasis = s.criticalBasis as CriticalBasis
+      this.showLinks = s.showLinks
+      this.linksScope = s.linksScope as LinksScope
+      this.showProgressLine = s.showProgressLine
+      this.showBaseline = s.showBaseline
+      this.showMarkup = s.showMarkup
+      this.filterText = s.filterText
+      this.filterStatus = s.filterStatus
+      this.filterConstraint = s.filterConstraint
+      this.filterNotes = s.filterNotes as NoteFilter
+      this.filterCriticalOnly = s.filterCriticalOnly
+      this.filterFrom = s.filterFrom
+      this.filterTo = s.filterTo
+      // Only this file's code categories: a category that no longer exists is dropped.
+      this.filterCodes = Object.fromEntries((this.data.project.activity_code_types || []).map(t => [t, s.filterCodes[t] || '']))
+      if (s.isolatedCodes) {
+        const want = new Set(s.isolatedCodes)
+        this.isolatedIds = new Set(this.data.activities.filter(a => want.has(a.task_code)).map(a => a.task_id))
+      } else {
+        this.isolatedIds = null
+      }
+      this.expandedWbs = new Set(s.expandedWbs)
+      this.filterCollapsed = new Set(s.filterCollapsed)
+      if (this.markup.groups.some(g => g.on !== s.groupsOn.includes(g.id))) {
+        this.setMarkup({ ...this.markup, groups: this.markup.groups.map(g => ({ ...g, on: s.groupsOn.includes(g.id) })) })
+      }
+      this.currentViewId = id
+      // Scroll once the new zoom and rows have rendered.
+      this.$nextTick(() => requestAnimationFrame(() => {
+        const el = this.$refs.scrollEl as HTMLElement | undefined
+        if (!el) return
+        const x = s.leftDate ? this.dateToX(s.leftDate) : null
+        if (x !== null) el.scrollLeft = Math.max(0, x)
+        const i = s.topRowKey ? this.rows.findIndex(r => r.key === s.topRowKey) : -1
+        el.scrollTop = i > 0 ? i * ROW_HEIGHT : 0
+      }))
+    },
+    stepViews(dir: 1 | -1) {
+      const v = stepView(this.views, this.currentViewId, dir)
+      if (v) this.applyView(v.id)
+    },
+    setViews(views: NamedView[]) {
+      this.views = views
+      saveViews(this.data.project.proj_short_name, views)
+    },
+    saveNamedView(name: string) {
+      const v: NamedView = { id: newMarkId(), name, savedAt: Date.now(), state: this.captureView() }
+      this.setViews([...this.views, v])
+      this.currentViewId = v.id
+    },
+    updateView(id: string) {
+      this.setViews(this.views.map(v => (v.id === id ? { ...v, savedAt: Date.now(), state: this.captureView() } : v)))
+      this.currentViewId = id
+    },
+    renameView(id: string, name: string) {
+      if (!name.trim()) return
+      this.setViews(this.views.map(v => (v.id === id ? { ...v, name: name.trim() } : v)))
+    },
+    removeView(id: string) {
+      this.setViews(this.views.filter(v => v.id !== id))
+      if (this.currentViewId === id) this.currentViewId = null
     },
     setMarkup(m: Markup) {
       this.markup = m
