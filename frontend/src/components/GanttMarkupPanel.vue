@@ -28,13 +28,26 @@
         <button class="mk-x" title="Remove" @click="removePeriod(p.id)">&times;</button>
       </div>
     </section>
+    <section>
+      <div class="mk-head">
+        <span class="mk-title">Highlights</span>
+      </div>
+      <p v-if="!markup.groups.length" class="mk-empty">A named set of activities in one colour; while it is on, everything else is dimmed. Start one from an activity's details (Highlight), or save a chain trace.</p>
+      <div v-for="g in markup.groups" :key="g.id" class="mk-row">
+        <input type="checkbox" :checked="g.on" :title="g.on ? 'Shown — click to hide' : 'Hidden — click to show'" @change="patchGroup(g.id, { on: !g.on })" />
+        <button class="mk-swatch" :class="'mk-' + g.color" :title="'Colour: ' + g.color + ' (click to change)'" @click="patchGroup(g.id, { color: nextColor(g.color) })"></button>
+        <input class="mk-label" :value="g.label" placeholder="Label" maxlength="40" @input="patchGroup(g.id, { label: inputValue($event) })" />
+        <span class="mk-count">{{ g.codes.length }} {{ g.codes.length === 1 ? 'activity' : 'activities' }}</span>
+        <button class="mk-x" title="Remove" @click="removeGroup(g.id)">&times;</button>
+      </div>
+    </section>
     <p class="mk-foot">Saved in this browser for this project.</p>
   </div>
 </template>
 
 <script lang="ts">
 import { defineComponent, type PropType } from 'vue'
-import { MARK_COLORS, newMarkId, nextColor, type KeyDate, type Markup, type Period } from '../utils/markup'
+import { MARK_COLORS, newMarkId, nextColor, type HighlightGroup, type KeyDate, type Markup, type Period } from '../utils/markup'
 
 export default defineComponent({
   name: 'GanttMarkupPanel',
@@ -88,6 +101,12 @@ export default defineComponent({
     removePeriod(id: string) {
       this.emit({ periods: this.markup.periods.filter(p => p.id !== id) })
     },
+    patchGroup(id: string, patch: Partial<HighlightGroup>) {
+      this.emit({ groups: this.markup.groups.map(g => (g.id === id ? { ...g, ...patch } : g)) })
+    },
+    removeGroup(id: string) {
+      this.emit({ groups: this.markup.groups.filter(g => g.id !== id) })
+    },
   },
 })
 </script>
@@ -104,5 +123,6 @@ export default defineComponent({
 .mk-dash { color: var(--ink-3); }
 .mk-x { border: none; background: none; cursor: pointer; color: var(--ink-3); font-size: 15px; line-height: 1; padding: 0 3px; }
 .mk-x:hover { color: var(--crit); }
+.mk-count { font: var(--text-small); color: var(--ink-3); white-space: nowrap; min-width: 84px; }
 .mk-foot { margin: 0; font: var(--text-micro); color: var(--ink-3); }
 </style>

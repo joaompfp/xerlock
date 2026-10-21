@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { loadMarkup, saveMarkup, nextColor, periodSpan, MARK_COLORS } from './markup'
+import { loadMarkup, saveMarkup, nextColor, periodSpan, highlightColors, toggleMember, MARK_COLORS, type HighlightGroup } from './markup'
 
 describe('markup storage', () => {
   const mem = new Map<string, string>()
@@ -15,10 +15,11 @@ describe('markup storage', () => {
     const m = {
       keyDates: [{ id: 'a', date: '2026-08-03', label: 'Client access', color: 'teal' as const }],
       periods: [{ id: 'b', from: '2026-08-10', to: '2026-08-21', label: 'Shutdown', color: 'amber' as const }],
+      groups: [{ id: 'g', label: 'Delay path', color: 'rose' as const, on: true, codes: ['A1', 'A2'] }],
     }
     saveMarkup('P1', m)
     expect(loadMarkup('P1')).toEqual(m)
-    expect(loadMarkup('P2')).toEqual({ keyDates: [], periods: [] })
+    expect(loadMarkup('P2')).toEqual({ keyDates: [], periods: [], groups: [] })
   })
 
   it('drops malformed entries instead of failing', () => {
@@ -33,7 +34,7 @@ describe('markup storage', () => {
 
   it('survives unreadable storage', () => {
     mem.set('schedule-app:markup:P', '{not json')
-    expect(loadMarkup('P')).toEqual({ keyDates: [], periods: [] })
+    expect(loadMarkup('P')).toEqual({ keyDates: [], periods: [], groups: [] })
   })
 })
 
@@ -44,5 +45,29 @@ describe('markup helpers', () => {
 
   it('reads a backwards period the right way round', () => {
     expect(periodSpan({ from: '2026-05-10', to: '2026-05-01' })).toEqual({ from: '2026-05-01', to: '2026-05-10' })
+  })
+})
+
+describe('highlight groups', () => {
+  const g = (id: string, color: HighlightGroup['color'], on: boolean, codes: string[]): HighlightGroup => ({ id, label: id, color, on, codes })
+
+  it('colours members of switched-on groups only, first group winning', () => {
+    const m = highlightColors([g('a', 'rose', true, ['X', 'Y']), g('b', 'teal', true, ['Y', 'Z']), g('c', 'amber', false, ['W'])])
+    expect([...m.entries()]).toEqual([['X', 'rose'], ['Y', 'rose'], ['Z', 'teal']])
+  })
+
+  it('is empty when nothing is on', () => {
+    expect(highlightColors([g('a', 'rose', false, ['X'])]).size).toBe(0)
+  })
+
+  it('toggles membership', () => {
+    const a = g('a', 'rose', true, ['X'])
+    expect(toggleMember(a, 'Y').codes).toEqual(['X', 'Y'])
+    expect(toggleMember(a, 'X').codes).toEqual([])
+  })
+
+  it('reads markup saved before groups existed', () => {
+    globalThis.localStorage = { getItem: () => JSON.stringify({ keyDates: [], periods: [] }), setItem: () => {} } as unknown as Storage
+    expect(loadMarkup('old').groups).toEqual([])
   })
 })
