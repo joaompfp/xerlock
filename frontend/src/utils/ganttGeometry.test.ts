@@ -24,7 +24,8 @@ describe('timelineRange', () => {
 
   it('falls back to today when the project has no dates', () => {
     const { rangeStart: s, rangeEnd: e } = timelineRange(null, null)
-    expect(e.getTime() - s.getTime()).toBe(10 * 86400000)
+    // Calendar days, not 24-hour blocks: the window may span a clock change.
+    expect(Math.round((e.getTime() - s.getTime()) / 86400000)).toBe(10)
   })
 
   it('does not mutate its inputs', () => {
