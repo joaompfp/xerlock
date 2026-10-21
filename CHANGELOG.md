@@ -4,6 +4,15 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.8.0] - 2026-10-22
+
+### Added
+- Saved Gantt views. "Save view" (top right of the Gantt) keeps the chart as it is: zoom,
+  the date window and first row in view, expanded WBS, every filter, the chain trace,
+  overlays and which highlight groups are on. Pick a view from the list, or step through
+  them with ‹ › like slides; Manage renames, updates or removes them. Saved per project
+  in this browser; a chain trace is kept by activity code, so it survives a file update.
+
 ## [1.7.0] - 2026-10-22
 
 ### Added

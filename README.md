@@ -60,6 +60,8 @@ meaning. Works down to a phone, where the sidebar slides over from a hamburger.
 - Key dates and periods: your own labelled lines and shaded date ranges (client access,
   shutdowns, permit windows) in muted colours, on screen and on the printout; highlight
   groups dim everything but a named set of activities (save a chain trace as one)
+- Saved views: name the chart as it is (zoom, scroll, WBS, filters, chain trace, highlights)
+  and step through the views with ‹ › like slides in a review meeting
 - Note callouts: click a review note's dot to show it on the chart, drag it where it reads best; it
   stays tied to its bar and is remembered in this browser. On the printout notes become
   numbered markers with the notes listed after the chart
