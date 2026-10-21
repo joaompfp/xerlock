@@ -89,6 +89,7 @@
             <button @click="overflowOpen = false; toggleFullscreen()">{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</button>
             <div class="fp-sep"></div>
             <button @click="overflowOpen = false; markupOpen = true">Key dates &amp; highlights…</button>
+            <label v-if="showSlip" class="tb-menu-check" title="An arrow under each moved activity, from its compared finish to its current one"><input type="checkbox" v-model="showSlipArrows" /> Slip arrows</label>
             <label v-if="hasMarkup" class="tb-menu-check"><input type="checkbox" v-model="showMarkup" /> Show key dates &amp; highlights</label>
             <div class="fp-sep"></div>
             <label class="fp-row"><span>Paper</span>
@@ -287,6 +288,12 @@
             <marker id="gantt-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
               <path d="M0 0L8 4L0 8z" class="g-link-arrow" />
             </marker>
+            <marker id="gantt-slip-late" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto">
+              <path d="M0 0L8 4L0 8z" class="g-slip-head-late" />
+            </marker>
+            <marker id="gantt-slip-early" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto">
+              <path d="M0 0L8 4L0 8z" class="g-slip-head-early" />
+            </marker>
             <marker id="gantt-arrow-chain" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
               <path d="M0 0L8 4L0 8z" class="g-link-arrow-chain" />
             </marker>
@@ -301,6 +308,13 @@
             :marker-end="l.chain ? 'url(#gantt-arrow-chain)' : 'url(#gantt-arrow)'"
           />
           <path v-if="progressLinePath" :d="progressLinePath" class="g-progress-line" />
+          <line
+            v-for="sa in slipArrowsOf(pg)"
+            :key="'sa' + sa.id"
+            :x1="sa.x1" :x2="sa.x2" :y1="sa.y" :y2="sa.y"
+            :class="sa.late ? 'g-slip-arrow-late' : 'g-slip-arrow-early'"
+            :marker-end="sa.late ? 'url(#gantt-slip-late)' : 'url(#gantt-slip-early)'"
+          />
           <line
             v-for="c in calloutsOf(pg)"
             :key="'cl' + c.id"
@@ -568,6 +582,7 @@ interface SavedView {
   linksScope?: LinksScope
   showProgressLine?: boolean
   showMarkup?: boolean
+  showSlipArrows?: boolean
   labelColWidth?: number
   dayWidthOverride?: number | null
   printPaperSize?: string
@@ -728,6 +743,7 @@ export default defineComponent({
       linksScope: (saved.linksScope || 'critical') as LinksScope,
       showProgressLine: saved.showProgressLine ?? false,
       showMarkup: saved.showMarkup ?? true,
+      showSlipArrows: saved.showSlipArrows ?? false,
       markupOpen: false,
       markup: loadMarkup(this.data.project.proj_short_name) as Markup,
       views: loadViews(this.data.project.proj_short_name) as NamedView[],
@@ -797,6 +813,7 @@ export default defineComponent({
     linksScope() { this.persistView() },
     showProgressLine() { this.persistView() },
     showMarkup() { this.persistView() },
+    showSlipArrows() { this.persistView() },
     dayWidthOverride() { this.persistView() },
     jumpTo: {
       immediate: true,
@@ -1626,7 +1643,7 @@ export default defineComponent({
       return {
         zoom: this.zoom, dayWidthOverride: this.dayWidthOverride, criticalBasis: this.criticalBasis,
         showLinks: this.showLinks, linksScope: this.linksScope, showProgressLine: this.showProgressLine,
-        showBaseline: this.showBaseline, showMarkup: this.showMarkup,
+        showBaseline: this.showBaseline, showMarkup: this.showMarkup, showSlipArrows: this.showSlipArrows,
         filterText: this.filterText, filterStatus: this.filterStatus, filterConstraint: this.filterConstraint,
         filterNotes: this.filterNotes, filterCriticalOnly: this.filterCriticalOnly,
         filterFrom: this.filterFrom, filterTo: this.filterTo, filterCodes: { ...this.filterCodes },
@@ -1649,6 +1666,7 @@ export default defineComponent({
       this.showProgressLine = s.showProgressLine
       this.showBaseline = s.showBaseline
       this.showMarkup = s.showMarkup
+      this.showSlipArrows = s.showSlipArrows
       this.filterText = s.filterText
       this.filterStatus = s.filterStatus
       this.filterConstraint = s.filterConstraint
@@ -1717,6 +1735,7 @@ export default defineComponent({
         linksScope: this.linksScope,
         showProgressLine: this.showProgressLine,
         showMarkup: this.showMarkup,
+        showSlipArrows: this.showSlipArrows,
         labelColWidth: this.labelColWidth,
         dayWidthOverride: this.dayWidthOverride,
         printPaperSize: this.printPaperSize,
@@ -1828,6 +1847,23 @@ export default defineComponent({
     // ── Note callouts ────────────────────────────────────────────────────
     calloutAnchorX(row: ActivityRow): number {
       return row.milestone ? row.x + 7 : row.x + row.w
+    },
+    // Finish movement against the compared schedule, drawn just under the bar. Only rows
+    // that moved by at least a calendar day, so a steady programme draws nothing.
+    slipArrowsOf(pg: GridPage): { id: number; x1: number; x2: number; y: number; late: boolean }[] {
+      if (!this.showSlip || !this.showSlipArrows || !this.baselineByCode) return []
+      const out = []
+      for (const row of pg.rows) {
+        if (row.type !== 'activity') continue
+        const b = this.baselineByCode.get(row.activity.task_code)
+        const d = b ? finishSlipDays(row.activity, b) : null
+        if (!b || !d) continue
+        const x1 = this.dateToX(displayEnd(b))
+        const x2 = this.dateToX(displayEnd(row.activity))
+        if (x1 === null || x2 === null) continue
+        out.push({ id: row.activity.task_id, x1, x2, y: row.index * ROW_HEIGHT + 24, late: d > 0 })
+      }
+      return out
     },
     calloutsOf(pg: GridPage): Callout[] {
       const out: Callout[] = []
@@ -2068,6 +2104,11 @@ export default defineComponent({
 .g-link { fill: none; stroke: var(--crit); stroke-width: 1.5; opacity: 0.75; }
 .g-link-arrow { fill: var(--crit); }
 .g-link.g-link-chain { stroke: var(--accent); stroke-width: 1.5; opacity: 0.85; }
+.g-slip-arrow-late, .g-slip-arrow-early { stroke-width: 1.25; opacity: 0.8; }
+.g-slip-arrow-late { stroke: var(--crit); }
+.g-slip-arrow-early { stroke: var(--ok); }
+.g-slip-head-late { fill: var(--crit); }
+.g-slip-head-early { fill: var(--ok); }
 .g-link-arrow-chain { fill: var(--accent); }
 .g-progress-line { fill: none; stroke: var(--milestone); stroke-width: 2; stroke-dasharray: 4 3; opacity: 0.9; }
 .g-progress-dot { fill: var(--milestone); }
