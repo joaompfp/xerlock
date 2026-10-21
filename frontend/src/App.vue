@@ -166,6 +166,7 @@
           @return-to-origin="returnToOrigin"
           @annotate="setAnnotation"
           @unannotate="removeAnnotationFor"
+          @callout="setCalloutFor"
         />
       </div>
 
@@ -454,7 +455,7 @@ import CompareView from './components/CompareView.vue'
 import { formatDate, formatHours, statusLabel, isMilestone, formatFloat, timeAgo } from './utils/format'
 import { exportWorkbook, exportActivitiesCsv, exportReviewReport } from './utils/export'
 import { loadLastFile, saveLastFile, clearLastFile, type LastFile, type StoredSchedule } from './utils/lastFile'
-import { loadAnnotations, saveAnnotation, removeAnnotation, type Annotations, type Severity } from './utils/annotations'
+import { loadAnnotations, saveAnnotation, removeAnnotation, setCallout, type Annotations, type CalloutOffset, type Severity } from './utils/annotations'
 import { listSnapshots, saveSnapshot, getSnapshotData, deleteSnapshot, type SnapshotMeta } from './utils/snapshots'
 import { displayStart, displayEnd } from './utils/p6'
 import { compareBy, type SortDir } from './utils/sort'
@@ -882,6 +883,9 @@ export default defineComponent({
     },
     removeAnnotationFor(taskId: number) {
       this.annotations = removeAnnotation(this.projectKey, taskId)
+    },
+    setCalloutFor(taskId: number, callout: CalloutOffset | null) {
+      this.annotations = setCallout(this.projectKey, taskId, callout)
     },
   },
 })

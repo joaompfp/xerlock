@@ -57,6 +57,8 @@ meaning. Works down to a phone, where the sidebar slides over from a hamburger.
   float is zero in working time, exactly as P6 defines it
 - Progress line, today + data-date markers, weekend shading, filter bar (text/status/critical/constraint/review notes/
   activity codes/date window with 4- and 8-week look-ahead presets from the data date)
+- Note callouts: click a review note's dot to show it on the chart, drag it where it reads best; it
+  stays tied to its bar, is remembered in this browser, and prints
 - Float tails: a dashed line off each bar end, proportional to total float, so slack is visible
   in the chart rather than a number to look up
 - Baseline ghost bars: with a Compare baseline loaded, every activity draws a hollow bar at its
