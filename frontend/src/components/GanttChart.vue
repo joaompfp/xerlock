@@ -101,6 +101,10 @@
         <option value="">Constraint</option>
         <option v-for="o in constraintFilterOptions" :key="o.value" :value="o.value" :disabled="o.count === 0">{{ o.label }} ({{ o.count }})</option>
       </select>
+      <select v-model="filterNotes" class="fb-select" :class="{ set: filterNotes }" title="Your review notes (the dot after an activity's name)">
+        <option value="">Notes</option>
+        <option v-for="o in noteFilterOptions" :key="o.value" :value="o.value" :disabled="o.count === 0">{{ o.label }} ({{ o.count }})</option>
+      </select>
       <button class="tb-chip" :class="{ on: filterCriticalOnly }" @click="filterCriticalOnly = !filterCriticalOnly" title="Critical activities only, on the current basis"><i></i>Critical</button>
       <span class="fb-dates" :class="{ set: filterFrom || filterTo }" title="Date window: activities touching it">
         <input type="date" v-model="filterFrom" class="filter-date" aria-label="From" />
@@ -126,7 +130,7 @@
         Chain trace &middot; {{ isolatedIds.size }} {{ isolatedIds.size === 1 ? 'activity' : 'activities' }}
         <button class="isolation-exit" @click="exitIsolation">Show all</button>
       </span>
-      <span class="filter-count">{{ matchCount }} of {{ data.activities.length }} activities</span>
+      <span class="filter-count" title="Activities shown">{{ matchCount }} of {{ data.activities.length }}</span>
     </div>
 
     <div class="gantt-body">
@@ -399,7 +403,7 @@
 <script lang="ts">
 import { defineComponent, type PropType } from 'vue'
 import type { Activity, Schedule, WbsNode } from '../types/schedule'
-import type { Annotations } from '../utils/annotations'
+import { matchesNoteFilter, NOTE_FILTER_LABELS, type Annotations, type NoteFilter } from '../utils/annotations'
 import { formatDate, formatDateShort, formatHours, isMilestone, formatFloat, formatLag, statusLabel } from '../utils/format'
 
 const NEAR_CRITICAL_HRS = 80 // 10 working days
@@ -595,6 +599,7 @@ export default defineComponent({
       filterStatus: '',
       filterCriticalOnly: false,
       filterConstraint: '',
+      filterNotes: '' as NoteFilter,
       filterFrom: '',
       filterTo: '',
       overflowOpen: false,
@@ -824,6 +829,13 @@ export default defineComponent({
         .map(t => ({ value: t, label: cstrLabel(t), count: counts.get(t)! }))
       return [...groups, ...types]
     },
+    // Counted over this file's activities, so a note left on an activity the file no
+    // longer has doesn't promise a match.
+    noteFilterOptions(): { value: NoteFilter; label: string; count: number }[] {
+      const notes = this.data.activities.map(a => this.annotations[a.task_id]).filter(Boolean)
+      return (Object.entries(NOTE_FILTER_LABELS) as [NoteFilter, string][])
+        .map(([value, label]) => ({ value, label, count: notes.filter(n => matchesNoteFilter(n, value)).length }))
+    },
     activeCodeFilters(): [string, string][] {
       return Object.entries(this.filterCodes).filter(([, v]) => v)
     },
@@ -831,7 +843,7 @@ export default defineComponent({
       return this.isolatedIds !== null
     },
     isFilterActive(): boolean {
-      return this.isolationActive || !!(this.filterText.trim() || this.filterStatus || this.filterConstraint || this.filterCriticalOnly || this.filterFrom || this.filterTo || this.activeCodeFilters.length)
+      return this.isolationActive || !!(this.filterText.trim() || this.filterStatus || this.filterConstraint || this.filterNotes || this.filterCriticalOnly || this.filterFrom || this.filterTo || this.activeCodeFilters.length)
     },
     matchedTaskIds(): Set<number> | null {
       // Isolation takes precedence over the text/status/code filters: the trace IS the view.
@@ -853,6 +865,7 @@ export default defineComponent({
           if (this.filterTo && aStart > this.filterTo) continue
         }
         if (!matchesConstraintFilter(a, this.filterConstraint)) continue
+        if (!matchesNoteFilter(this.annotations[a.task_id], this.filterNotes)) continue
         if (this.filterCriticalOnly && !this.isBasisCritical(a)) continue
         if (this.activeCodeFilters.length) {
           const matchesAll = this.activeCodeFilters.every(([type, code]) =>
@@ -883,6 +896,7 @@ export default defineComponent({
       if (q) out.push({ id: 'text', label: `Search: ${q}` })
       if (this.filterStatus) out.push({ id: 'status', label: `Status: ${STATUS_LABELS[this.filterStatus] || this.filterStatus}` })
       if (this.filterConstraint) out.push({ id: 'cstr', label: `Constraint: ${constraintFilterLabel(this.filterConstraint)}` })
+      if (this.filterNotes) out.push({ id: 'notes', label: `Notes: ${NOTE_FILTER_LABELS[this.filterNotes]}` })
       if (this.filterCriticalOnly) out.push({ id: 'crit', label: 'Critical only' })
       if (this.filterFrom || this.filterTo) {
         const la = [28, 56].find(d => this.lookAheadActive(d))
@@ -898,6 +912,7 @@ export default defineComponent({
       if (this.filterText.trim()) bits.push(`text “${this.filterText.trim()}”`)
       if (this.filterStatus) bits.push('a status')
       if (this.filterConstraint) bits.push('a constraint')
+      if (this.filterNotes) bits.push('notes')
       if (this.filterCriticalOnly) bits.push('critical only')
       if (this.filterFrom || this.filterTo) bits.push('a date window')
       if (this.activeCodeFilters.length) bits.push('an activity code')
@@ -1267,6 +1282,7 @@ export default defineComponent({
       if (id === 'text') this.filterText = ''
       else if (id === 'status') this.filterStatus = ''
       else if (id === 'cstr') this.filterConstraint = ''
+      else if (id === 'notes') this.filterNotes = ''
       else if (id === 'crit') this.filterCriticalOnly = false
       else if (id === 'dates') { this.filterFrom = ''; this.filterTo = '' }
       else if (id.startsWith('code:')) this.filterCodes[id.slice(5)] = ''
@@ -1287,6 +1303,7 @@ export default defineComponent({
       this.filterStatus = ''
       this.filterCriticalOnly = false
       this.filterConstraint = ''
+      this.filterNotes = ''
       this.filterFrom = ''
       this.filterTo = ''
       // Reseed one '' entry per category — an undefined v-model renders the select blank.
@@ -1561,14 +1578,15 @@ export default defineComponent({
 .fs-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); border-radius: 14px; padding: 2px 5px 2px 10px; cursor: pointer; font: var(--text-small); font-weight: 600; }
 .fs-chip:hover { background: var(--panel); }
 .fs-x { font-size: 14px; line-height: 1; opacity: 0.75; }
-.filter-strip .fb-search { width: 160px; padding: 3px 8px; }
-.filter-strip .fb-select { height: 26px; padding: 0 4px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); color: var(--ink-2); max-width: 150px; }
+.filter-strip .fb-search { width: 140px; padding: 3px 8px; }
+.filter-strip .fb-select { height: 26px; padding: 0 4px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); color: var(--ink-2); max-width: 128px; }
+.filter-strip .fb-select.set { max-width: 180px; }
 .filter-strip .tb-chip { padding: 3px 9px; }
 .fb-dates { display: inline-flex; align-items: center; gap: 2px; }
 .filter-strip .fb-dates .filter-date { height: 26px; box-sizing: border-box; padding: 0 3px; width: 122px; }
 .fb-dash { color: var(--ink-3); }
 .filter-strip .set, .fb-dates.set .filter-date { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.filter-strip .filter-count { margin-left: auto; font: var(--text-small); color: var(--ink-3); font-family: var(--font-mono); }
+.filter-strip .filter-count { margin-left: auto; white-space: nowrap; font: var(--text-small); color: var(--ink-3); font-family: var(--font-mono); }
 
 
 .gantt-wrap.is-fullscreen .gantt-scroll { flex: 1; height: auto; max-height: none; }

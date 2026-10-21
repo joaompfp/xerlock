@@ -4,6 +4,18 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.4.3] - 2026-10-21
+
+### Added
+- Gantt notes filter: activities with any review note, one severity (Query, Risk, Logic
+  Issue, Resolved), or notes saved without a severity, each with its count.
+
+### Changed
+- The Gantt filters sit on one compact row under the toolbar instead of in a dialog:
+  search, status, constraint, notes, critical, date window with 4/8-week look-ahead, and
+  an activity-code picker. A control that is narrowing the view is drawn in the accent
+  colour; the match count sits at the end of the row.
+
 ## [1.4.2] - 2026-10-21
 
 ### Added

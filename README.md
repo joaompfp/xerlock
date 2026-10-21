@@ -55,7 +55,7 @@ meaning. Works down to a phone, where the sidebar slides over from a hamburger.
 - Two critical-basis modes: total float at or below the project's own critical threshold, or
   Longest Path - traced through driving links, where a link drives when its relationship free
   float is zero in working time, exactly as P6 defines it
-- Progress line, today + data-date markers, weekend shading, filter bar (text/status/critical/constraint/
+- Progress line, today + data-date markers, weekend shading, filter bar (text/status/critical/constraint/review notes/
   activity codes/date window with 4- and 8-week look-ahead presets from the data date)
 - Float tails: a dashed line off each bar end, proportional to total float, so slack is visible
   in the chart rather than a number to look up
