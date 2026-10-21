@@ -34,6 +34,36 @@ export const HARD_CONSTRAINT_TYPES: ReadonlySet<string> = new Set([
   'CS_MANDSTART', 'CS_MANDFIN', 'CS_MSO', 'CS_MEO', 'CS_MSOB', 'CS_MEOB',
 ])
 
+// The Gantt's constraint filter. Besides one P6 type, a planner asks for "anything
+// imposed", "only the hard ones" or "pure logic"; an activity's primary and secondary
+// constraints both count.
+export type ConstraintFilter = '' | 'any' | 'hard' | 'none' | string
+
+export const CONSTRAINT_FILTER_GROUPS: Record<string, string> = {
+  any: 'Any constraint',
+  hard: 'Hard constraints',
+  none: 'No constraint',
+}
+
+type ConstrainedActivity = Pick<Activity, 'cstr_type' | 'cstr_type2'>
+
+export function constraintTypesOf(a: ConstrainedActivity): string[] {
+  return [a.cstr_type, a.cstr_type2].filter((t): t is string => !!t)
+}
+
+export function matchesConstraintFilter(a: ConstrainedActivity, f: ConstraintFilter): boolean {
+  const types = constraintTypesOf(a)
+  if (!f) return true
+  if (f === 'any') return types.length > 0
+  if (f === 'none') return types.length === 0
+  if (f === 'hard') return types.some(t => HARD_CONSTRAINT_TYPES.has(t))
+  return types.includes(f)
+}
+
+export function constraintFilterLabel(f: ConstraintFilter): string {
+  return CONSTRAINT_FILTER_GROUPS[f] || cstrLabel(f)
+}
+
 // P6 display-date convention: once an activity has started, its actual start IS its start;
 // once complete, its actual finish IS its finish. P6 resets the early dates of finished
 // work to the data date on every reschedule, so rendering early dates alone collapses

@@ -4,6 +4,13 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.4.2] - 2026-10-21
+
+### Added
+- Gantt constraint filter: any constraint, hard constraints only, no constraint, or one
+  type (As Late As Possible, Finish On or Before, …). The primary and secondary
+  constraints both count, and each choice shows how many activities it matches.
+
 ## [1.4.1] - 2026-10-19
 
 ### Added
