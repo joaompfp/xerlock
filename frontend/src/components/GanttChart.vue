@@ -69,53 +69,8 @@
       <button v-if="baseline" class="tb-chip" :class="{ on: showBaseline }" @click="showBaseline = !showBaseline" title="Ghost bars at each activity's position in the compared snapshot"><i></i>Baseline</button>
 
       <div class="tb-right">
-        <input type="text" v-model="filterText" class="filter-input" placeholder="Search code, name, or WBS…" />
         <div class="tb-pop">
-          <button class="ctrl-btn" :class="{ 'has-filters': activeFilterChips.length > 0 }" @click="filtersOpen = !filtersOpen; overflowOpen = false" :aria-expanded="(String(filtersOpen) as 'true' | 'false')">
-            Filters<template v-if="activeFilterChips.length"> ({{ activeFilterChips.length }})</template>
-          </button>
-          <div v-if="filtersOpen" class="tb-panel">
-            <label class="fp-row">
-              <span>Status</span>
-              <select v-model="filterStatus" class="filter-select">
-                <option value="">All statuses</option>
-                <option value="TK_NotStart">Not started</option>
-                <option value="TK_Active">Active</option>
-                <option value="TK_Complete">Complete</option>
-              </select>
-            </label>
-            <label class="fp-row">
-              <span>Constraint</span>
-              <select v-model="filterConstraint" class="filter-select">
-                <option value="">All activities</option>
-                <option v-for="o in constraintFilterOptions" :key="o.value" :value="o.value" :disabled="o.count === 0">{{ o.label }} ({{ o.count }})</option>
-              </select>
-            </label>
-            <label class="fp-check"><input type="checkbox" v-model="filterCriticalOnly" /> Critical only</label>
-            <div class="fp-sep"></div>
-            <label class="fp-row"><span>From</span><input type="date" v-model="filterFrom" class="filter-date" /></label>
-            <label class="fp-row"><span>To</span><input type="date" v-model="filterTo" class="filter-date" /></label>
-            <div v-if="data.project.data_date" class="fp-row">
-              <span>Look-ahead</span>
-              <span class="fp-la">
-                <button class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(28) }" @click="setLookAhead(28)">4 wk</button>
-                <button class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(56) }" @click="setLookAhead(56)">8 wk</button>
-              </span>
-            </div>
-            <template v-if="codeTypesAvailable.length">
-              <div class="fp-sep"></div>
-              <label v-for="t in codeTypesAvailable" :key="t" class="fp-row">
-                <span :title="`P6 activity code category read verbatim from this file's ACTVTYPE table`">{{ t }}</span>
-                <select v-model="filterCodes[t]" class="filter-select">
-                  <option value="">All {{ t }}</option>
-                  <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
-                </select>
-              </label>
-            </template>
-          </div>
-        </div>
-        <div class="tb-pop">
-          <button class="ctrl-btn tb-more" @click="overflowOpen = !overflowOpen; filtersOpen = false" :aria-expanded="(String(overflowOpen) as 'true' | 'false')" title="More actions" aria-label="More actions">⋯</button>
+          <button class="ctrl-btn tb-more" @click="overflowOpen = !overflowOpen" :aria-expanded="(String(overflowOpen) as 'true' | 'false')" title="More actions" aria-label="More actions">⋯</button>
           <div v-if="overflowOpen" class="tb-panel tb-panel-menu">
             <button :disabled="todayX === null" @click="overflowOpen = false; scrollToToday()">Scroll to today</button>
             <button @click="overflowOpen = false; toggleFullscreen()">{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</button>
@@ -131,21 +86,51 @@
       </div>
     </div>
 
-    <!-- A filtered view must never be mistaken for the whole programme. -->
+    <!-- Every filter sits on this one row, and a control that is narrowing the view is
+         drawn in the accent colour, so a filtered chart can't be read as the whole programme. -->
     <div class="filter-strip">
-      <template v-if="activeFilterChips.length">
-        <span class="fs-label">ACTIVE FILTERS</span>
-        <button v-for="c in activeFilterChips" :key="c.id" class="fs-chip" @click="clearFilter(c.id)" :title="`Remove: ${c.label}`">
-          {{ c.label }}<span class="fs-x">&times;</span>
-        </button>
-        <button class="btn-tiny-light" @click="clearFilters">Clear all</button>
+      <span class="fs-label">FILTER</span>
+      <input type="text" v-model="filterText" class="filter-input fb-search" :class="{ set: filterText.trim() }" placeholder="Search…" title="Search activity code, name or WBS path" />
+      <select v-model="filterStatus" class="fb-select" :class="{ set: filterStatus }" title="Status">
+        <option value="">Status</option>
+        <option value="TK_NotStart">Not started</option>
+        <option value="TK_Active">Active</option>
+        <option value="TK_Complete">Complete</option>
+      </select>
+      <select v-model="filterConstraint" class="fb-select" :class="{ set: filterConstraint }" title="Constraint">
+        <option value="">Constraint</option>
+        <option v-for="o in constraintFilterOptions" :key="o.value" :value="o.value" :disabled="o.count === 0">{{ o.label }} ({{ o.count }})</option>
+      </select>
+      <select v-model="filterNotes" class="fb-select" :class="{ set: filterNotes }" title="Your review notes (the dot after an activity's name)">
+        <option value="">Notes</option>
+        <option v-for="o in noteFilterOptions" :key="o.value" :value="o.value" :disabled="o.count === 0">{{ o.label }} ({{ o.count }})</option>
+      </select>
+      <button class="tb-chip" :class="{ on: filterCriticalOnly }" @click="filterCriticalOnly = !filterCriticalOnly" title="Critical activities only, on the current basis"><i></i>Critical</button>
+      <span class="fb-dates" :class="{ set: filterFrom || filterTo }" title="Date window: activities touching it">
+        <input type="date" v-model="filterFrom" class="filter-date" aria-label="From" />
+        <span class="fb-dash">–</span>
+        <input type="date" v-model="filterTo" class="filter-date" aria-label="To" />
+      </span>
+      <template v-if="data.project.data_date">
+        <button class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(28) }" title="Data date + 4 weeks" @click="setLookAhead(28)">4 wk</button>
+        <button class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(56) }" title="Data date + 8 weeks" @click="setLookAhead(56)">8 wk</button>
       </template>
+      <select v-if="codeTypesAvailable.length" class="fb-select" title="P6 activity codes, read verbatim from this file's ACTVTYPE table" @change="addCodeFilter">
+        <option value="">Activity code</option>
+        <optgroup v-for="t in codeTypesAvailable" :key="t" :label="t">
+          <option v-for="c in codeValuesByType.get(t)" :key="c" :value="JSON.stringify([t, c])">{{ c }}</option>
+        </optgroup>
+      </select>
+      <button v-for="[type, code] in activeCodeFilters" :key="type" class="fs-chip" @click="clearFilter('code:' + type)" :title="`Remove: ${type}: ${code}`">
+        {{ type }}: {{ code }}<span class="fs-x">&times;</span>
+      </button>
+      <button v-if="activeFilterChips.length" class="btn-tiny-light" @click="clearFilters">Clear</button>
       <button v-if="returnTab" class="return-chip" @click="$emit('return-to-origin')">&larr; Back to {{ returnTab }}</button>
       <span v-if="isolatedIds" class="isolation-chip">
         Chain trace &middot; {{ isolatedIds.size }} {{ isolatedIds.size === 1 ? 'activity' : 'activities' }}
         <button class="isolation-exit" @click="exitIsolation">Show all</button>
       </span>
-      <span class="filter-count">{{ matchCount }} of {{ data.activities.length }} activities</span>
+      <span class="filter-count" title="Activities shown">{{ matchCount }} of {{ data.activities.length }}</span>
     </div>
 
     <div class="gantt-body">
@@ -418,7 +403,7 @@
 <script lang="ts">
 import { defineComponent, type PropType } from 'vue'
 import type { Activity, Schedule, WbsNode } from '../types/schedule'
-import type { Annotations } from '../utils/annotations'
+import { matchesNoteFilter, NOTE_FILTER_LABELS, type Annotations, type NoteFilter } from '../utils/annotations'
 import { formatDate, formatDateShort, formatHours, isMilestone, formatFloat, formatLag, statusLabel } from '../utils/format'
 
 const NEAR_CRITICAL_HRS = 80 // 10 working days
@@ -614,9 +599,9 @@ export default defineComponent({
       filterStatus: '',
       filterCriticalOnly: false,
       filterConstraint: '',
+      filterNotes: '' as NoteFilter,
       filterFrom: '',
       filterTo: '',
-      filtersOpen: false,
       overflowOpen: false,
       filterCodes: Object.fromEntries<string>((this.data.project.activity_code_types || []).map(t => [t, ''])),
       // Chain tracing: null = off; a Set of task_ids = show ONLY these activities.
@@ -636,8 +621,7 @@ export default defineComponent({
     // overlay swallowing the interaction context.
     drag(this)._onDocMousedown = (e: MouseEvent) => {
       const target = e.target as Element
-      if ((this.filtersOpen || this.overflowOpen) && !target.closest('.tb-pop')) {
-        this.filtersOpen = false
+      if (this.overflowOpen && !target.closest('.tb-pop')) {
         this.overflowOpen = false
       }
       if (this.selectedTaskId && this.$el.offsetParent !== null && !this.$el.contains(target)) {
@@ -845,6 +829,13 @@ export default defineComponent({
         .map(t => ({ value: t, label: cstrLabel(t), count: counts.get(t)! }))
       return [...groups, ...types]
     },
+    // Counted over this file's activities, so a note left on an activity the file no
+    // longer has doesn't promise a match.
+    noteFilterOptions(): { value: NoteFilter; label: string; count: number }[] {
+      const notes = this.data.activities.map(a => this.annotations[a.task_id]).filter(Boolean)
+      return (Object.entries(NOTE_FILTER_LABELS) as [NoteFilter, string][])
+        .map(([value, label]) => ({ value, label, count: notes.filter(n => matchesNoteFilter(n, value)).length }))
+    },
     activeCodeFilters(): [string, string][] {
       return Object.entries(this.filterCodes).filter(([, v]) => v)
     },
@@ -852,7 +843,7 @@ export default defineComponent({
       return this.isolatedIds !== null
     },
     isFilterActive(): boolean {
-      return this.isolationActive || !!(this.filterText.trim() || this.filterStatus || this.filterConstraint || this.filterCriticalOnly || this.filterFrom || this.filterTo || this.activeCodeFilters.length)
+      return this.isolationActive || !!(this.filterText.trim() || this.filterStatus || this.filterConstraint || this.filterNotes || this.filterCriticalOnly || this.filterFrom || this.filterTo || this.activeCodeFilters.length)
     },
     matchedTaskIds(): Set<number> | null {
       // Isolation takes precedence over the text/status/code filters: the trace IS the view.
@@ -874,6 +865,7 @@ export default defineComponent({
           if (this.filterTo && aStart > this.filterTo) continue
         }
         if (!matchesConstraintFilter(a, this.filterConstraint)) continue
+        if (!matchesNoteFilter(this.annotations[a.task_id], this.filterNotes)) continue
         if (this.filterCriticalOnly && !this.isBasisCritical(a)) continue
         if (this.activeCodeFilters.length) {
           const matchesAll = this.activeCodeFilters.every(([type, code]) =>
@@ -904,6 +896,7 @@ export default defineComponent({
       if (q) out.push({ id: 'text', label: `Search: ${q}` })
       if (this.filterStatus) out.push({ id: 'status', label: `Status: ${STATUS_LABELS[this.filterStatus] || this.filterStatus}` })
       if (this.filterConstraint) out.push({ id: 'cstr', label: `Constraint: ${constraintFilterLabel(this.filterConstraint)}` })
+      if (this.filterNotes) out.push({ id: 'notes', label: `Notes: ${NOTE_FILTER_LABELS[this.filterNotes]}` })
       if (this.filterCriticalOnly) out.push({ id: 'crit', label: 'Critical only' })
       if (this.filterFrom || this.filterTo) {
         const la = [28, 56].find(d => this.lookAheadActive(d))
@@ -919,6 +912,7 @@ export default defineComponent({
       if (this.filterText.trim()) bits.push(`text “${this.filterText.trim()}”`)
       if (this.filterStatus) bits.push('a status')
       if (this.filterConstraint) bits.push('a constraint')
+      if (this.filterNotes) bits.push('notes')
       if (this.filterCriticalOnly) bits.push('critical only')
       if (this.filterFrom || this.filterTo) bits.push('a date window')
       if (this.activeCodeFilters.length) bits.push('an activity code')
@@ -1288,9 +1282,20 @@ export default defineComponent({
       if (id === 'text') this.filterText = ''
       else if (id === 'status') this.filterStatus = ''
       else if (id === 'cstr') this.filterConstraint = ''
+      else if (id === 'notes') this.filterNotes = ''
       else if (id === 'crit') this.filterCriticalOnly = false
       else if (id === 'dates') { this.filterFrom = ''; this.filterTo = '' }
       else if (id.startsWith('code:')) this.filterCodes[id.slice(5)] = ''
+    },
+    // The code picker is a one-shot menu: a pick sets that category's filter (shown as a
+    // chip beside it) and the menu returns to its prompt for the next pick.
+    addCodeFilter(e: Event) {
+      const sel = e.target as HTMLSelectElement
+      if (sel.value) {
+        const [type, code] = JSON.parse(sel.value) as [string, string]
+        this.filterCodes[type] = code
+      }
+      sel.value = ''
     },
     clearFilters() {
       this.filterCollapsed = new Set()
@@ -1298,6 +1303,7 @@ export default defineComponent({
       this.filterStatus = ''
       this.filterCriticalOnly = false
       this.filterConstraint = ''
+      this.filterNotes = ''
       this.filterFrom = ''
       this.filterTo = ''
       // Reseed one '' entry per category — an undefined v-model renders the select blank.
@@ -1554,28 +1560,33 @@ export default defineComponent({
 .tb-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 .tb-right .filter-input { width: 172px; }
 .tb-more { font-size: 15px; line-height: 1; padding: 4px 9px; }
-.ctrl-btn.has-filters { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 
 /* Popovers: filters and overflow */
 .tb-pop { position: relative; }
 .tb-panel { position: absolute; right: 0; top: calc(100% + 5px); min-width: 250px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: 0 10px 30px -12px rgba(0,0,0,0.35); padding: var(--space-3); z-index: 12; display: flex; flex-direction: column; gap: 7px; }
 .fp-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); font: var(--text-small); color: var(--ink-2); }
 .fp-row > span { white-space: nowrap; }
-.fp-row .filter-select, .fp-row .filter-date { min-width: 132px; }
-.fp-check { display: flex; align-items: center; gap: 6px; font: var(--text-small); color: var(--ink-2); cursor: pointer; }
+.fp-row .filter-select { min-width: 132px; }
 .fp-sep { height: 1px; background: var(--line); margin: 2px 0; }
-.fp-la { display: flex; gap: 4px; }
 .tb-panel-menu button { text-align: left; background: none; border: none; border-radius: var(--radius-sm); padding: 6px 8px; cursor: pointer; font: var(--text-small); color: var(--ink-2); }
 .tb-panel-menu button:hover:not(:disabled) { background: var(--chip); color: var(--ink); }
 .tb-panel-menu button:disabled { opacity: 0.45; cursor: default; }
 
 /* ── Active-filter strip ──────────────────────────────────────────────────── */
-.filter-strip { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; min-height: 34px; padding: 5px var(--space-4); background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.filter-strip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 34px; padding: 5px var(--space-4); background: var(--panel-2); border-bottom: 1px solid var(--line); }
 .fs-label { font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em; color: var(--ink-3); }
 .fs-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); border-radius: 14px; padding: 2px 5px 2px 10px; cursor: pointer; font: var(--text-small); font-weight: 600; }
 .fs-chip:hover { background: var(--panel); }
 .fs-x { font-size: 14px; line-height: 1; opacity: 0.75; }
-.filter-strip .filter-count { margin-left: auto; font: var(--text-small); color: var(--ink-3); font-family: var(--font-mono); }
+.filter-strip .fb-search { width: 140px; padding: 3px 8px; }
+.filter-strip .fb-select { height: 26px; padding: 0 4px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); color: var(--ink-2); max-width: 128px; }
+.filter-strip .fb-select.set { max-width: 180px; }
+.filter-strip .tb-chip { padding: 3px 9px; }
+.fb-dates { display: inline-flex; align-items: center; gap: 2px; }
+.filter-strip .fb-dates .filter-date { height: 26px; box-sizing: border-box; padding: 0 3px; width: 122px; }
+.fb-dash { color: var(--ink-3); }
+.filter-strip .set, .fb-dates.set .filter-date { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.filter-strip .filter-count { margin-left: auto; white-space: nowrap; font: var(--text-small); color: var(--ink-3); font-family: var(--font-mono); }
 
 
 .gantt-wrap.is-fullscreen .gantt-scroll { flex: 1; height: auto; max-height: none; }
@@ -1619,7 +1630,7 @@ export default defineComponent({
 
 .filter-input { padding: 6px 12px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); width: 240px; }
 .filter-date { border: 1px solid var(--gray-300); border-radius: var(--radius-sm); padding: 4px 6px; background: var(--white); font-family: var(--font-mono); font-size: 12px; color: var(--ink); }
-.la-btn.active { background: var(--active-soft); border-color: var(--active); color: var(--active); font-weight: 700; }
+.la-btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 700; }
 .filter-select { padding: 6px 8px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); }
 .filter-check { font: var(--text-small); color: var(--gray-700); display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .filter-count { font: var(--text-small); color: var(--gray-500); margin-left: auto; }

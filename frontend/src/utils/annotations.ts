@@ -15,6 +15,21 @@ export type Annotations = Record<string, Annotation>
 export const SEVERITIES: readonly Severity[] = ['query', 'risk', 'logic', 'resolved']
 export const SEVERITY_LABELS: Record<string, string> = { query: 'Query', risk: 'Risk', logic: 'Logic Issue', resolved: 'Resolved' }
 
+// The Gantt's notes filter: every noted activity, one severity, or notes saved without one.
+export type NoteFilter = '' | 'any' | 'unflagged' | Severity
+
+export const NOTE_FILTER_LABELS: Record<Exclude<NoteFilter, ''>, string> = {
+  any: 'Any note', ...SEVERITY_LABELS, unflagged: 'No severity',
+} as Record<Exclude<NoteFilter, ''>, string>
+
+export function matchesNoteFilter(a: Annotation | undefined, f: NoteFilter): boolean {
+  if (!f) return true
+  if (!a) return false
+  if (f === 'any') return true
+  if (f === 'unflagged') return a.severity === null
+  return a.severity === f
+}
+
 function keyFor(projectKey: string | null | undefined): string {
   return PREFIX + (projectKey || 'default')
 }
