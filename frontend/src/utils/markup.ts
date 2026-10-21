@@ -16,13 +16,18 @@ export interface Period { id: string; from: string; to: string; label: string; c
 /** Members are activity codes, not task ids: a code survives the next update of the file. */
 export interface HighlightGroup { id: string; label: string; color: MarkColor; on: boolean; codes: string[] }
 
+/** A free remark on the chart, pinned to a moment on the timeline (`at`, ISO) and a
+ *  height in pixels from the top of the rows, so it scrolls and zooms with the bars. */
+export interface TextBox { id: string; at: string; y: number; text: string; color: MarkColor }
+
 export interface Markup {
   keyDates: KeyDate[]
   periods: Period[]
   groups: HighlightGroup[]
+  texts: TextBox[]
 }
 
-export const emptyMarkup = (): Markup => ({ keyDates: [], periods: [], groups: [] })
+export const emptyMarkup = (): Markup => ({ keyDates: [], periods: [], groups: [], texts: [] })
 
 function keyFor(projectKey: string | null | undefined): string {
   return PREFIX + (projectKey || 'default')
@@ -43,6 +48,8 @@ export function loadMarkup(projectKey: string | null | undefined): Markup {
       periods: (m.periods || []).filter(p => p && isDay(p.from) && isDay(p.to) && isColor(p.color) && typeof p.label === 'string'),
       groups: (m.groups || []).filter(g => g && isColor(g.color) && typeof g.label === 'string' && Array.isArray(g.codes))
         .map(g => ({ ...g, on: !!g.on, codes: g.codes.filter(c => typeof c === 'string') })),
+      texts: (m.texts || []).filter(t => t && typeof t.at === 'string' && !isNaN(new Date(t.at).getTime())
+        && typeof t.y === 'number' && typeof t.text === 'string' && isColor(t.color)),
     }
   } catch {
     return emptyMarkup()
