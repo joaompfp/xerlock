@@ -4,6 +4,16 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.5.0] - 2026-10-21
+
+### Added
+- Gantt note callouts. Clicking a note's dot (after the activity name, or the new one
+  at the bar's end) shows the note as a callout on the chart; clicking it again or the
+  callout's × hides it. Drag a callout to move it: a dashed leader keeps it tied to its
+  bar, and it follows the bar through zoom and scroll. Shown callouts and their
+  positions are saved with the notes in this browser, and print on their bar's sheet.
+  Clicking a bar still opens the activity's details.
+
 ## [1.4.3] - 2026-10-21
 
 ### Added

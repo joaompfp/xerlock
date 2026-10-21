@@ -7,7 +7,15 @@ export interface Annotation {
   severity: Severity | null
   note: string
   updatedAt: number
+  /** Present while the note's callout is shown on the Gantt: its offset in pixels from
+   *  the bar's finish end, so it follows the bar through zoom and scroll. */
+  callout?: CalloutOffset
 }
+
+export interface CalloutOffset { dx: number; dy: number }
+
+/** Where a newly opened callout sits: just right of the bar end, a little below it. */
+export const DEFAULT_CALLOUT: CalloutOffset = { dx: 18, dy: 10 }
 
 /** task_id -> annotation. Keys are strings once round-tripped through JSON. */
 export type Annotations = Record<string, Annotation>
@@ -57,7 +65,8 @@ export function saveAnnotation(
   { severity, note }: { severity: Severity | null; note: string },
 ): Annotations {
   const all = loadAnnotations(projectKey)
-  all[taskId] = { severity, note, updatedAt: Date.now() }
+  // Editing the text keeps the callout where the reviewer put it.
+  all[taskId] = { ...all[taskId], severity, note, updatedAt: Date.now() }
   persist(projectKey, all)
   return all
 }
@@ -65,6 +74,21 @@ export function saveAnnotation(
 export function removeAnnotation(projectKey: string | null | undefined, taskId: number | string): Annotations {
   const all = loadAnnotations(projectKey)
   delete all[taskId]
+  persist(projectKey, all)
+  return all
+}
+
+/** Show (with an offset) or hide (null) a note's callout. No-op for an unannotated task. */
+export function setCallout(
+  projectKey: string | null | undefined,
+  taskId: number | string,
+  callout: CalloutOffset | null,
+): Annotations {
+  const all = loadAnnotations(projectKey)
+  const a = all[taskId]
+  if (!a) return all
+  if (callout) a.callout = { dx: Math.round(callout.dx), dy: Math.round(callout.dy) }
+  else delete a.callout
   persist(projectKey, all)
   return all
 }

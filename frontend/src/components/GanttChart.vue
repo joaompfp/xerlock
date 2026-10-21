@@ -256,6 +256,12 @@
             :marker-end="l.chain ? 'url(#gantt-arrow-chain)' : 'url(#gantt-arrow)'"
           />
           <path v-if="progressLinePath" :d="progressLinePath" class="g-progress-line" />
+          <line
+            v-for="c in calloutsOf(pg)"
+            :key="'cl' + c.id"
+            :x1="c.ax" :y1="c.ay" :x2="c.ax + c.dx" :y2="c.ay + c.dy + 9"
+            class="g-callout-leader"
+          />
           <circle
             v-for="(p, i) in progressLinePoints"
             :key="'pp' + i"
@@ -312,7 +318,7 @@
               <span v-if="showSlip" class="g-col-slip" :class="wbsSlipCell(row).cls" :title="wbsSlipCell(row).title">{{ wbsSlipCell(row).text }}</span>
             </template>
             <template v-else>
-              <i v-if="annotations[row.activity.task_id]" class="annotation-flag" :class="'sev-' + annotations[row.activity.task_id].severity" :title="annotations[row.activity.task_id].note"></i>
+              <button v-if="annotations[row.activity.task_id]" class="annotation-hit" :title="(annotations[row.activity.task_id].callout ? 'Hide' : 'Show') + ' note on the chart: ' + annotations[row.activity.task_id].note" @click.stop="toggleCallout(row.activity.task_id)"><i class="annotation-flag" :class="'sev-' + annotations[row.activity.task_id].severity"></i></button>
               <span class="g-act-code">{{ row.activity.task_code }}</span>
               <span class="g-act-name">{{ row.activity.task_name }}</span>
               <span class="g-col-dur">{{ formatHours(row.activity.duration_hrs, row.activity.calendar_hrs_per_day) }}</span>
@@ -370,8 +376,35 @@
                 <div class="g-bar-progress" :style="{ width: row.activity.pct_complete + '%' }"></div>
               </div>
             </template>
+            <button
+              v-if="row.type === 'activity' && annotations[row.activity.task_id]"
+              class="g-note-dot annotation-hit"
+              :style="{ left: (calloutAnchorX(row) + 3) + 'px' }"
+              :title="(annotations[row.activity.task_id].callout ? 'Hide' : 'Show') + ' note: ' + annotations[row.activity.task_id].note"
+              @mousedown.stop
+              @click.stop="toggleCallout(row.activity.task_id)"
+            ><i class="annotation-flag" :class="'sev-' + annotations[row.activity.task_id].severity"></i></button>
           </div>
         </template>
+
+        <!-- Note callouts: opened from a note dot, dragged to wherever they read best.
+             Only rows on this page carry one, so a callout prints on its bar's sheet. -->
+        <div
+          v-for="c in calloutsOf(pg)"
+          :key="'co' + c.id"
+          class="g-callout"
+          :class="'sev-' + c.severity"
+          :style="{ left: (labelColWidth + c.ax + c.dx) + 'px', top: (HEADER_HEIGHT + c.ay + c.dy - pg.start * ROW_HEIGHT) + 'px' }"
+          title="Drag to move"
+          @mousedown.stop="onCalloutDragStart($event, c)"
+        >
+          <div class="g-callout-head">
+            <span class="g-callout-code">{{ c.code }}</span>
+            <span v-if="c.severity" class="g-callout-sev">{{ severityLabel(c.severity) }}</span>
+            <button class="g-callout-x" title="Hide note" @mousedown.stop @click.stop="toggleCallout(c.id)">&times;</button>
+          </div>
+          <div class="g-callout-text">{{ c.note }}</div>
+        </div>
       </div>
       </template>
     </div>
@@ -403,7 +436,7 @@
 <script lang="ts">
 import { defineComponent, type PropType } from 'vue'
 import type { Activity, Schedule, WbsNode } from '../types/schedule'
-import { matchesNoteFilter, NOTE_FILTER_LABELS, type Annotations, type NoteFilter } from '../utils/annotations'
+import { matchesNoteFilter, NOTE_FILTER_LABELS, DEFAULT_CALLOUT, SEVERITY_LABELS, type Annotations, type CalloutOffset, type NoteFilter, type Severity } from '../utils/annotations'
 import { formatDate, formatDateShort, formatHours, isMilestone, formatFloat, formatLag, statusLabel } from '../utils/format'
 
 const NEAR_CRITICAL_HRS = 80 // 10 working days
@@ -507,6 +540,18 @@ interface ActivityRow {
 }
 
 type Row = WbsRow | ActivityRow
+
+interface Callout {
+  id: number
+  code: string
+  note: string
+  severity: Severity | null
+  /** The bar's finish end, in timeline coordinates (row centre). */
+  ax: number
+  ay: number
+  dx: number
+  dy: number
+}
 // Rows before `rows` numbers them.
 type UnindexedRow = Omit<WbsRow, 'index'> | Omit<ActivityRow, 'index'>
 
@@ -557,7 +602,7 @@ export default defineComponent({
     // Its file name, for the printout's title line.
     baselineFilename: { type: String, default: '' },
   },
-  emits: ['jumped', 'annotate', 'unannotate', 'return-to-origin'],
+  emits: ['jumped', 'annotate', 'unannotate', 'return-to-origin', 'callout'],
   data() {
     const saved = loadSavedView()
 
@@ -612,6 +657,8 @@ export default defineComponent({
       scrollTopPx: 0,
       panning: false,
       resizing: false,
+      // The callout being dragged, with its offset live until the drop saves it.
+      calloutDrag: null as { id: number; startX: number; startY: number; dx0: number; dy0: number; dx: number; dy: number } | null,
     }
   },
   mounted() {
@@ -637,6 +684,8 @@ export default defineComponent({
     window.removeEventListener('mouseup', this.onPanEnd)
     window.removeEventListener('mousemove', this.onResizeMove)
     window.removeEventListener('mouseup', this.onResizeEnd)
+    window.removeEventListener('mousemove', this.onCalloutDragMove)
+    window.removeEventListener('mouseup', this.onCalloutDragEnd)
   },
   watch: {
     // The component survives file swaps (tabs use v-show), so reseed the per-category
@@ -1414,6 +1463,7 @@ export default defineComponent({
     cstrLabel,
     displayStart,
     displayEnd,
+    severityLabel(s: Severity): string { return SEVERITY_LABELS[s] },
     // Selects a predecessor/successor from the detail panel: expands every WBS
     // ancestor so the row actually renders (it may be tucked under a collapsed
     // branch, or hidden by an active filter), then scrolls to it.
@@ -1494,6 +1544,53 @@ export default defineComponent({
       this.scrollLeftPx = target.scrollLeft
       this.scrollTopPx = target.scrollTop
     },
+    // ── Note callouts ────────────────────────────────────────────────────
+    calloutAnchorX(row: ActivityRow): number {
+      return row.milestone ? row.x + 7 : row.x + row.w
+    },
+    calloutsOf(pg: GridPage): Callout[] {
+      const out: Callout[] = []
+      for (const row of pg.rows) {
+        if (row.type !== 'activity') continue
+        const a = this.annotations[row.activity.task_id]
+        if (!a?.callout) continue
+        const live = this.calloutDrag?.id === row.activity.task_id ? this.calloutDrag : a.callout
+        out.push({
+          id: row.activity.task_id, code: row.activity.task_code, note: a.note, severity: a.severity,
+          ax: this.calloutAnchorX(row) + 7, ay: row.index * ROW_HEIGHT + ROW_HEIGHT / 2,
+          dx: live.dx, dy: live.dy,
+        })
+      }
+      return out
+    },
+    toggleCallout(taskId: number) {
+      const open = !!this.annotations[taskId]?.callout
+      this.$emit('callout', taskId, open ? null : { ...DEFAULT_CALLOUT })
+    },
+    onCalloutDragStart(e: MouseEvent, c: Callout) {
+      if (e.button !== 0) return
+      e.preventDefault()
+      this.calloutDrag = { id: c.id, startX: e.clientX, startY: e.clientY, dx0: c.dx, dy0: c.dy, dx: c.dx, dy: c.dy }
+      window.addEventListener('mousemove', this.onCalloutDragMove)
+      window.addEventListener('mouseup', this.onCalloutDragEnd)
+    },
+    onCalloutDragMove(e: MouseEvent) {
+      const d = this.calloutDrag
+      if (!d) return
+      d.dx = d.dx0 + e.clientX - d.startX
+      d.dy = d.dy0 + e.clientY - d.startY
+    },
+    onCalloutDragEnd() {
+      const d = this.calloutDrag
+      window.removeEventListener('mousemove', this.onCalloutDragMove)
+      window.removeEventListener('mouseup', this.onCalloutDragEnd)
+      if (d && (d.dx !== d.dx0 || d.dy !== d.dy0)) {
+        const moved: CalloutOffset = { dx: d.dx, dy: d.dy }
+        this.$emit('callout', d.id, moved)
+      }
+      this.calloutDrag = null
+    },
+
     onPanStart(e: MouseEvent) {
       if (e.button !== 0) return
       const target = e.target as Element
@@ -1694,6 +1791,21 @@ export default defineComponent({
 .g-wbs-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
 .g-wbs-count { padding-right: 4px; font: var(--text-micro); color: var(--gray-500); flex-shrink: 0; }
 .g-act-code { font-family: var(--font-mono); font-size: 12px; color: var(--gray-500); flex-shrink: 0; }
+.annotation-hit { border: none; background: none; padding: 4px; margin: -4px; cursor: pointer; display: inline-flex; flex-shrink: 0; }
+.annotation-hit:hover .annotation-flag { transform: scale(1.5); }
+.g-note-dot { position: absolute; top: 50%; margin: 0; transform: translateY(-50%); z-index: 1; }
+.g-note-dot .annotation-flag { width: 7px; height: 7px; box-shadow: 0 0 0 1.5px var(--panel); }
+.g-callout { position: absolute; z-index: 4; max-width: 230px; min-width: 120px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--gray-500); border-radius: var(--radius-sm); box-shadow: 0 6px 18px -8px rgba(0,0,0,0.35); padding: 4px 6px 5px 7px; cursor: move; user-select: none; font: var(--text-small); color: var(--ink); }
+.g-callout.sev-query { border-left-color: var(--active); }
+.g-callout.sev-risk { border-left-color: var(--near); }
+.g-callout.sev-logic { border-left-color: var(--crit); }
+.g-callout.sev-resolved { border-left-color: var(--ok); }
+.g-callout-head { display: flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); }
+.g-callout-sev { font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.g-callout-x { margin-left: auto; border: none; background: none; cursor: pointer; color: var(--ink-3); font-size: 14px; line-height: 1; padding: 0 2px; }
+.g-callout-x:hover { color: var(--ink); }
+.g-callout-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.35; margin-top: 1px; }
+.g-callout-leader { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 3 2; }
 .annotation-flag { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--gray-500); }
 .annotation-flag.sev-query { background: var(--active); }
 .annotation-flag.sev-risk { background: var(--near); }
@@ -1755,7 +1867,7 @@ export default defineComponent({
 
 @media print {
   @page { size: landscape; margin: 10mm; }
-  .view-bar, .gantt-toolbar, .filter-strip, .g-empty, .g-resize-handle { display: none !important; }
+  .view-bar, .gantt-toolbar, .filter-strip, .g-empty, .g-resize-handle, .g-callout-x { display: none !important; }
   .gantt-wrap, .gantt-wrap.is-fullscreen { border: none; box-shadow: none; height: auto; overflow: visible; display: block; }
   .gantt-body { display: block !important; }
   /* The printout is the screen's grid, drawn once per sheet (gridPages): each sheet is a
