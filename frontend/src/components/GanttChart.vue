@@ -89,6 +89,7 @@
             <button @click="overflowOpen = false; toggleFullscreen()">{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</button>
             <div class="fp-sep"></div>
             <button @click="overflowOpen = false; markupOpen = true">Key dates &amp; highlights…</button>
+            <button @click="overflowOpen = false; addTextBox()">Add text box</button>
             <label v-if="showSlip" class="tb-menu-check" title="An arrow under each moved activity, from its compared finish to its current one"><input type="checkbox" v-model="showSlipArrows" /> Slip arrows</label>
             <label v-if="hasMarkup" class="tb-menu-check"><input type="checkbox" v-model="showMarkup" /> Show key dates &amp; highlights</label>
             <div class="fp-sep"></div>
@@ -483,6 +484,38 @@
           </div>
           <div class="g-callout-text">{{ c.note }}</div>
         </div>
+
+        <!-- Free text boxes: pinned to a moment on the timeline and a height, screen only. -->
+        <template v-if="pg.screen && markupShown">
+          <div
+            v-for="t in textBoxes"
+            :key="'tx' + t.id"
+            class="g-callout g-textbox"
+            :class="'mk-' + t.color"
+            :style="{ left: (labelColWidth + t.x) + 'px', top: (HEADER_HEIGHT + t.y) + 'px' }"
+            title="Drag to move; double-click to edit"
+            @mousedown.stop="onTextDragStart($event, t)"
+            @dblclick.stop="editingTextId = t.id"
+          >
+            <div class="g-callout-head">
+              <button class="mk-swatch-sm" title="Change colour" @mousedown.stop @click.stop="patchText(t.id, { color: nextColor(t.color) })"></button>
+              <button class="g-callout-x" title="Remove" @mousedown.stop @click.stop="removeText(t.id)">&times;</button>
+            </div>
+            <textarea
+              v-if="editingTextId === t.id"
+              class="g-textbox-edit"
+              :value="t.text"
+              rows="3"
+              maxlength="400"
+              placeholder="Type a remark…"
+              v-focus
+              @mousedown.stop
+              @blur="finishText(t.id, ($event.target as HTMLTextAreaElement).value)"
+              @keydown.ctrl.enter.prevent="($event.target as HTMLTextAreaElement).blur()"
+            ></textarea>
+            <div v-else class="g-callout-text">{{ t.text }}</div>
+          </div>
+        </template>
       </div>
       </template>
 
@@ -532,7 +565,7 @@
 <script lang="ts">
 import { defineComponent, type PropType } from 'vue'
 import type { Activity, Schedule, WbsNode } from '../types/schedule'
-import { loadMarkup, saveMarkup, periodSpan, highlightColors, toggleMember, newMarkId, MARK_COLORS, type Markup, type MarkColor } from '../utils/markup'
+import { loadMarkup, saveMarkup, periodSpan, highlightColors, toggleMember, newMarkId, nextColor, MARK_COLORS, type Markup, type MarkColor, type TextBox } from '../utils/markup'
 import GanttMarkupPanel from './GanttMarkupPanel.vue'
 import GanttViewBar from './GanttViewBar.vue'
 import { loadViews, saveViews, completeState, stepView, type SavedView as NamedView, type ViewState } from '../utils/views'
@@ -693,6 +726,7 @@ export default defineComponent({
   name: 'GanttChart',
   mixins: [fullscreenMixin],
   components: { IconChevron, ActivityDetailDrawer, GanttMarkupPanel, GanttViewBar },
+  directives: { focus: { mounted: (el: HTMLElement) => el.focus() } },
   props: {
     data: { type: Object as PropType<Schedule>, required: true },
     // A task id. Activities are keyed by number; a string id would silently match nothing.
@@ -749,6 +783,8 @@ export default defineComponent({
       views: loadViews(this.data.project.proj_short_name) as NamedView[],
       // The view last applied or saved; the select shows it, and ‹ › step from it.
       currentViewId: null as string | null,
+      editingTextId: null as string | null,
+      textDrag: null as { id: string; startX: number; startY: number; x0: number; y0: number; x: number; y: number } | null,
       selectedTaskId: null as number | null,
       filterText: '',
       filterStatus: '',
@@ -797,6 +833,8 @@ export default defineComponent({
     window.removeEventListener('mouseup', this.onResizeEnd)
     window.removeEventListener('mousemove', this.onCalloutDragMove)
     window.removeEventListener('mouseup', this.onCalloutDragEnd)
+    window.removeEventListener('mousemove', this.onTextDragMove)
+    window.removeEventListener('mouseup', this.onTextDragEnd)
   },
   watch: {
     // The component survives file swaps (tabs use v-show), so reseed the per-category
@@ -984,7 +1022,17 @@ export default defineComponent({
       return out
     },
     hasMarkup(): boolean {
-      return this.markup.keyDates.length + this.markup.periods.length + this.markup.groups.length > 0
+      return this.markup.keyDates.length + this.markup.periods.length + this.markup.groups.length + this.markup.texts.length > 0
+    },
+    textBoxes(): (TextBox & { x: number })[] {
+      const out = []
+      for (const t of this.markup.texts) {
+        const live = this.textDrag?.id === t.id ? this.textDrag : null
+        const x = live ? live.x : this.dateToX(t.at)
+        if (x === null) continue
+        out.push({ ...t, x, y: live ? live.y : t.y })
+      }
+      return out
     },
     // Activity code → highlight colour; empty (nothing dimmed) unless a group is on.
     hlColors(): Map<string, MarkColor> {
@@ -1723,6 +1771,52 @@ export default defineComponent({
       this.setViews(this.views.filter(v => v.id !== id))
       if (this.currentViewId === id) this.currentViewId = null
     },
+    // ── Free text boxes ──────────────────────────────────────────────────
+    addTextBox() {
+      const el = this.$refs.scrollEl as HTMLElement | undefined
+      const x = (el ? el.scrollLeft + (el.clientWidth - this.labelColWidth) / 3 : 0)
+      const y = (el ? el.scrollTop : 0) + 2 * ROW_HEIGHT
+      const t: TextBox = { id: newMarkId(), at: this.xToIso(x), y, text: '', color: 'slate' }
+      this.showMarkup = true
+      this.setMarkup({ ...this.markup, texts: [...this.markup.texts, t] })
+      this.editingTextId = t.id
+    },
+    xToIso(x: number): string {
+      return new Date(this.rangeStart.getTime() + (x / this.dayWidth) * 86400000).toISOString()
+    },
+    patchText(id: string, patch: Partial<TextBox>) {
+      this.setMarkup({ ...this.markup, texts: this.markup.texts.map(t => (t.id === id ? { ...t, ...patch } : t)) })
+    },
+    removeText(id: string) {
+      this.setMarkup({ ...this.markup, texts: this.markup.texts.filter(t => t.id !== id) })
+    },
+    // Leaving a box empty removes it: an empty remark is a mis-click, not content.
+    finishText(id: string, text: string) {
+      this.editingTextId = null
+      if (text.trim()) this.patchText(id, { text: text.trim() })
+      else this.removeText(id)
+    },
+    onTextDragStart(e: MouseEvent, t: TextBox & { x: number }) {
+      if (e.button !== 0 || this.editingTextId === t.id) return
+      e.preventDefault()
+      this.textDrag = { id: t.id, startX: e.clientX, startY: e.clientY, x0: t.x, y0: t.y, x: t.x, y: t.y }
+      window.addEventListener('mousemove', this.onTextDragMove)
+      window.addEventListener('mouseup', this.onTextDragEnd)
+    },
+    onTextDragMove(e: MouseEvent) {
+      const d = this.textDrag
+      if (!d) return
+      d.x = d.x0 + e.clientX - d.startX
+      d.y = Math.max(0, d.y0 + e.clientY - d.startY)
+    },
+    onTextDragEnd() {
+      const d = this.textDrag
+      window.removeEventListener('mousemove', this.onTextDragMove)
+      window.removeEventListener('mouseup', this.onTextDragEnd)
+      if (d && (d.x !== d.x0 || d.y !== d.y0)) this.patchText(d.id, { at: this.xToIso(d.x), y: Math.round(d.y) })
+      this.textDrag = null
+    },
+    nextColor,
     setMarkup(m: Markup) {
       this.markup = m
       saveMarkup(this.data.project.proj_short_name, m)
@@ -2170,6 +2264,10 @@ export default defineComponent({
 .g-callout-x { margin-left: auto; border: none; background: none; cursor: pointer; color: var(--ink-3); font-size: 14px; line-height: 1; padding: 0 2px; }
 .g-callout-x:hover { color: var(--ink); }
 .g-callout-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.35; margin-top: 1px; }
+.g-textbox { border-left-color: var(--mk); min-width: 150px; }
+.g-textbox .g-callout-head { justify-content: space-between; }
+.mk-swatch-sm { width: 9px; height: 9px; border-radius: 50%; border: none; padding: 0; cursor: pointer; background: var(--mk); }
+.g-textbox-edit { display: block; width: 200px; margin-top: 2px; resize: vertical; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); padding: 3px 5px; background: var(--white); color: var(--ink); cursor: text; user-select: text; }
 .g-callout-leader { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 3 2; }
 .annotation-flag { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: var(--gray-500); }
 .annotation-flag.sev-query { background: var(--active); }

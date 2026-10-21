@@ -4,6 +4,15 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.8.2] - 2026-10-22
+
+### Added
+- Gantt text boxes (⋯ → Add text box): a free remark on the chart, not tied to an
+  activity. Type straight away; double-click to edit, drag to move, the dot changes its
+  colour, × removes it (so does leaving it empty). Pinned to a date and a height, so it
+  follows the timeline through zoom and scroll. Saved with the key dates and highlights,
+  switched off with them, and screen-only like callouts.
+
 ## [1.8.1] - 2026-10-22
 
 ### Added

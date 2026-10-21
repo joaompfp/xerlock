@@ -59,7 +59,8 @@ meaning. Works down to a phone, where the sidebar slides over from a hamburger.
   activity codes/date window with 4- and 8-week look-ahead presets from the data date)
 - Key dates and periods: your own labelled lines and shaded date ranges (client access,
   shutdowns, permit windows) in muted colours, on screen and on the printout; highlight
-  groups dim everything but a named set of activities (save a chain trace as one)
+  groups dim everything but a named set of activities (save a chain trace as one); free
+  text boxes for remarks not tied to one activity
 - Saved views: name the chart as it is (zoom, scroll, WBS, filters, chain trace, highlights)
   and step through the views with ‹ › like slides in a review meeting
 - Note callouts: click a review note's dot to show it on the chart, drag it where it reads best; it
