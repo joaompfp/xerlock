@@ -78,8 +78,8 @@
             <button :disabled="todayX === null" @click="overflowOpen = false; scrollToToday()">Scroll to today</button>
             <button @click="overflowOpen = false; toggleFullscreen()">{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</button>
             <div class="fp-sep"></div>
-            <button @click="overflowOpen = false; markupOpen = true">Key dates &amp; periods…</button>
-            <label v-if="hasMarkup" class="tb-menu-check"><input type="checkbox" v-model="showMarkup" /> Show key dates &amp; periods</label>
+            <button @click="overflowOpen = false; markupOpen = true">Key dates &amp; highlights…</button>
+            <label v-if="hasMarkup" class="tb-menu-check"><input type="checkbox" v-model="showMarkup" /> Show key dates &amp; highlights</label>
             <div class="fp-sep"></div>
             <label class="fp-row"><span>Paper</span>
               <select v-model="printPaperSize" class="filter-select">
@@ -134,6 +134,7 @@
       <button v-if="returnTab" class="return-chip" @click="$emit('return-to-origin')">&larr; Back to {{ returnTab }}</button>
       <span v-if="isolatedIds" class="isolation-chip">
         Chain trace &middot; {{ isolatedIds.size }} {{ isolatedIds.size === 1 ? 'activity' : 'activities' }}
+        <button class="isolation-exit isolation-save" title="Keep this chain as a named highlight group" @click="saveTraceAsGroup">Save as highlight</button>
         <button class="isolation-exit" @click="exitIsolation">Show all</button>
       </span>
       <span class="filter-count" title="Activities shown">{{ matchCount }} of {{ data.activities.length }}</span>
@@ -349,7 +350,7 @@
         <template v-for="row in pg.rows" :key="row.key">
           <div
             class="g-cell g-label"
-            :class="{ 'g-label-wbs': row.type === 'wbs', selected: row.type === 'activity' && row.activity.task_id === selectedTaskId }"
+            :class="[{ 'g-label-wbs': row.type === 'wbs', selected: row.type === 'activity' && row.activity.task_id === selectedTaskId }, hlClass(row)]"
             :style="{ top: (HEADER_HEIGHT + (row.index - pg.start) * ROW_HEIGHT) + 'px', left: pg.left + 'px', width: labelColWidth + 'px', paddingLeft: (8 + row.level * 11) + 'px' }"
             @click="row.type === 'wbs' ? toggleWbs(row.wbsId) : selectActivity(row.activity)"
           >
@@ -377,6 +378,7 @@
           </div>
           <div
             class="g-cell g-timeline-row"
+            :class="hlClass(row)"
             :style="{ gridRow: (row.index - pg.start + 2), gridColumn: 2, width: totalWidth + 'px' }"
           >
             <div
@@ -491,6 +493,11 @@
             Isolate &amp; trace chain
           </button>
           <span v-else class="trace-hint">Tracing — click a predecessor or successor below to add it and walk the chain.</span>
+          <select v-if="selectedActivity" class="filter-select hl-pick" title="Put this activity in a highlight group, or take it out" @change="onHighlightPick">
+            <option value="">Highlight…</option>
+            <option v-for="g in markup.groups" :key="g.id" :value="g.id">{{ g.codes.includes(selectedActivity.task_code) ? '✓ ' : '' }}{{ g.label || 'Untitled' }}</option>
+            <option value="__new">+ New highlight group</option>
+          </select>
         </div>
       </template>
     </ActivityDetailDrawer>
@@ -501,7 +508,7 @@
 <script lang="ts">
 import { defineComponent, type PropType } from 'vue'
 import type { Activity, Schedule, WbsNode } from '../types/schedule'
-import { loadMarkup, saveMarkup, periodSpan, type Markup, type MarkColor } from '../utils/markup'
+import { loadMarkup, saveMarkup, periodSpan, highlightColors, toggleMember, newMarkId, MARK_COLORS, type Markup, type MarkColor } from '../utils/markup'
 import GanttMarkupPanel from './GanttMarkupPanel.vue'
 import { matchesNoteFilter, NOTE_FILTER_LABELS, DEFAULT_CALLOUT, SEVERITY_LABELS, type Annotations, type CalloutOffset, type NoteFilter, type Severity } from '../utils/annotations'
 import { formatDate, formatDateShort, formatHours, isMilestone, formatFloat, formatLag, statusLabel } from '../utils/format'
@@ -943,7 +950,11 @@ export default defineComponent({
       return out
     },
     hasMarkup(): boolean {
-      return this.markup.keyDates.length + this.markup.periods.length > 0
+      return this.markup.keyDates.length + this.markup.periods.length + this.markup.groups.length > 0
+    },
+    // Activity code → highlight colour; empty (nothing dimmed) unless a group is on.
+    hlColors(): Map<string, MarkColor> {
+      return this.markupShown ? highlightColors(this.markup.groups) : new Map()
     },
     markupShown(): boolean {
       return this.showMarkup && this.hasMarkup
@@ -1562,6 +1573,32 @@ export default defineComponent({
       // before the print dialog captures the page.
       this.$nextTick(() => requestAnimationFrame(() => window.print()))
     },
+    hlClass(row: Row): string | string[] {
+      if (!this.hlColors.size) return ''
+      if (row.type === 'wbs') return 'hl-dim'
+      const c = this.hlColors.get(row.activity.task_code)
+      return c ? ['hl', 'mk-' + c] : 'hl-dim'
+    },
+    newGroup(label: string, codes: string[]) {
+      // Teal first: rose sits too close to the critical red to lead.
+      const color = MARK_COLORS[(this.markup.groups.length + 1) % MARK_COLORS.length]
+      this.showMarkup = true
+      this.setMarkup({ ...this.markup, groups: [...this.markup.groups, { id: newMarkId(), label, color, on: true, codes }] })
+    },
+    onHighlightPick(e: Event) {
+      const sel = e.target as HTMLSelectElement
+      const a = this.selectedActivity
+      if (a && sel.value === '__new') this.newGroup(`Highlight ${this.markup.groups.length + 1}`, [a.task_code])
+      else if (a && sel.value) {
+        this.setMarkup({ ...this.markup, groups: this.markup.groups.map(g => (g.id === sel.value ? toggleMember(g, a.task_code) : g)) })
+      }
+      sel.value = ''
+    },
+    saveTraceAsGroup() {
+      if (!this.isolatedIds) return
+      const codes = [...this.isolatedIds].map(id => this.actLookup.get(id)?.task_code).filter((c): c is string => !!c)
+      this.newGroup(`Chain ${this.markup.groups.length + 1}`, codes)
+    },
     setMarkup(m: Markup) {
       this.markup = m
       saveMarkup(this.data.project.proj_short_name, m)
@@ -1930,6 +1967,12 @@ export default defineComponent({
 .g-progress-dot { fill: var(--milestone); }
 
 .g-today-line { position: absolute; width: 2px; background: var(--accent); z-index: 4; pointer-events: none; }
+.g-timeline-row.hl-dim > * { opacity: 0.25; }
+.g-label.hl-dim .g-act-code, .g-label.hl-dim .g-act-name, .g-label.hl-dim .g-col-dur, .g-label.hl-dim .g-col-date, .g-label.hl-dim .g-col-float { opacity: 0.45; }
+.g-label.hl { box-shadow: inset 3px 0 0 var(--mk), 2px 0 5px -3px rgba(28,25,23,0.1); }
+.g-timeline-row.hl .g-bar, .g-timeline-row.hl .g-milestone { box-shadow: 0 0 0 2px var(--mk); }
+.hl-pick { margin-left: 6px; font: var(--text-small); padding: 3px 6px; }
+.isolation-save { background: var(--panel); color: var(--accent); border: 1px solid var(--accent); }
 .g-mk-line { position: absolute; width: 0; border-left: 1.5px solid var(--mk); opacity: 0.7; z-index: 4; pointer-events: none; }
 .g-mk-band { fill: var(--mk); fill-opacity: var(--mk-band-opacity); }
 .g-mk-chip { position: absolute; top: 4px; transform: translateX(-50%); max-width: 160px; overflow: hidden; text-overflow: ellipsis; background: var(--panel); color: var(--mk); border: 1px solid var(--mk); font-size: 10px; font-weight: 600; padding: 0 5px; border-radius: 3px; white-space: nowrap; z-index: 3; }

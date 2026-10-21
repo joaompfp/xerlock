@@ -4,6 +4,16 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.7.0] - 2026-10-22
+
+### Added
+- Gantt highlight groups: named sets of activities in one of the markup colours. While a
+  group is on, its activities carry a coloured edge and ring and everything else is
+  dimmed. Add or remove an activity from its details (Highlight…), or keep a chain trace
+  with "Save as highlight". Groups are listed with the key dates (⋯ → Key dates &
+  highlights…) to rename, recolour, switch on/off or remove; members are kept by
+  activity code, so they survive the next update of the file.
+
 ## [1.6.1] - 2026-10-22
 
 ### Changed
