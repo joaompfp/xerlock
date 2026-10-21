@@ -15,6 +15,7 @@ export interface ViewState {
   showProgressLine: boolean
   showBaseline: boolean
   showMarkup: boolean
+  showSlipArrows: boolean
   filterText: string
   filterStatus: string
   filterConstraint: string

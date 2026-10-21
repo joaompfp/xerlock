@@ -4,6 +4,14 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.8.1] - 2026-10-22
+
+### Added
+- Gantt slip arrows (⋯ → Slip arrows, off by default, offered while the compared
+  schedule's bars are drawn): under each activity whose finish moved by a calendar day or
+  more, an arrow from the compared finish to the current one, red when later and green
+  when earlier. The figure stays in the Slip column. Saved views keep the setting.
+
 ## [1.8.0] - 2026-10-22
 
 ### Added

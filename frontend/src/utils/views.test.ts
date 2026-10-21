@@ -3,7 +3,7 @@ import { loadViews, saveViews, completeState, stepView, type SavedView, type Vie
 
 const state = (over: Partial<ViewState> = {}): ViewState => ({
   zoom: 'week', dayWidthOverride: null, criticalBasis: 'tf0', showLinks: true, linksScope: 'critical',
-  showProgressLine: false, showBaseline: true, showMarkup: true, filterText: '', filterStatus: '',
+  showProgressLine: false, showBaseline: true, showMarkup: true, showSlipArrows: false, filterText: '', filterStatus: '',
   filterConstraint: '', filterNotes: '', filterCriticalOnly: false, filterFrom: '', filterTo: '',
   filterCodes: {}, isolatedCodes: null, expandedWbs: [], filterCollapsed: [], groupsOn: [],
   leftDate: null, topRowKey: null, ...over,
