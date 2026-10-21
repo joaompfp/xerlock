@@ -296,7 +296,8 @@
           :class="{ resizing }"
           :style="{ left: (pg.left + labelColWidth - 3) + 'px', height: (HEADER_HEIGHT + pg.bodyHeight) + 'px' }"
           @mousedown.stop="onResizeStart"
-          title="Drag to resize"
+          @dblclick.stop="fitLabelColumn"
+          title="Drag to resize; double-click to fit the names"
         ></div>
 
         <!-- Rows -->
@@ -458,7 +459,8 @@ import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
 
 const LABEL_COL_WIDTH_DEFAULT = 428
 const LABEL_COL_MIN = 200
-const LABEL_COL_MAX = 700
+// Long activity names need room; the cap leaves a fifth of the window for the bars.
+const labelColMax = () => Math.max(700, Math.floor(window.innerWidth * 0.8))
 const HEADER_HEIGHT = 56
 const ROW_HEIGHT = 26
 // 15px safety buffer: tuned against this chart's printed output (see utils/paper.ts).
@@ -626,7 +628,7 @@ export default defineComponent({
       printPaperSize: saved.printPaperSize || 'a4',
       paperSizes: PAPER_SIZES,
       dayWidthOverride: saved.dayWidthOverride ?? null,
-      labelColWidth: Math.min(saved.labelColWidth || LABEL_COL_WIDTH_DEFAULT, Math.max(220, Math.floor(window.innerWidth * 0.55))),
+      labelColWidth: Math.min(saved.labelColWidth || LABEL_COL_WIDTH_DEFAULT, labelColMax()),
       criticalBasis: (saved.criticalBasis || 'tf0') as CriticalBasis,
       expandedWbs,
       // WBS ids collapsed while a filter is active. Filtering auto-expands everything so
@@ -1632,7 +1634,23 @@ export default defineComponent({
       if (!this.resizing) return
       const st = drag(this)
       const dx = e.clientX - st._resizeStartX
-      this.labelColWidth = Math.min(LABEL_COL_MAX, Math.max(LABEL_COL_MIN, st._resizeStartWidth + dx))
+      this.labelColWidth = Math.min(labelColMax(), Math.max(LABEL_COL_MIN, st._resizeStartWidth + dx))
+    },
+    // Double-click on the column edge: widen (or narrow) it to the longest name on screen.
+    fitLabelColumn() {
+      const names = (this.$el as HTMLElement).querySelectorAll<HTMLElement>('.g-label .g-act-name, .g-label .g-wbs-name')
+      if (!names.length) return
+      // Measure the text itself: an element that already fits reports no overflow, and the
+      // fit must be able to narrow the column as well as widen it.
+      const ctx = document.createElement('canvas').getContext('2d')
+      if (!ctx) return
+      let slack = -Infinity
+      for (const n of names) {
+        ctx.font = getComputedStyle(n).font
+        slack = Math.max(slack, Math.ceil(ctx.measureText(n.textContent || '').width) - n.clientWidth)
+      }
+      this.labelColWidth = Math.min(labelColMax(), Math.max(LABEL_COL_MIN, this.labelColWidth + slack + 2))
+      this.persistView()
     },
     onResizeEnd() {
       if (!this.resizing) return

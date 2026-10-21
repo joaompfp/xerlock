@@ -4,6 +4,15 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.5.1] - 2026-10-22
+
+### Changed
+- The Gantt activity column can be dragged up to 80% of the window (was 700 px), and a
+  saved width is no longer cut back to 55% of the window on reload.
+
+### Added
+- Double-click the activity column's edge to fit it to the longest name on screen.
+
 ## [1.5.0] - 2026-10-21
 
 ### Added
