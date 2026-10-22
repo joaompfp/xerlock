@@ -78,6 +78,14 @@
    "absorbed_by_task_id": null
   },
   "source_format": "xer",
+  "proj_id": 1000,
+  "projects_in_file": [
+   {
+    "proj_id": 1000,
+    "proj_short_name": "DEMO-DC-01",
+    "activities": 24
+   }
+  ],
   "inactive_activities": null,
   "summary_links": null,
   "msp_options": null

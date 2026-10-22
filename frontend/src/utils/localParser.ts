@@ -40,12 +40,12 @@ export function warmUp(): void {
   getWorker().postMessage({ id } satisfies ParseRequest)
 }
 
-export async function parseLocally(file: File, onStage?: OnStage): Promise<Schedule> {
+export async function parseLocally(file: File, onStage?: OnStage, project?: number): Promise<Schedule> {
   const bytes = await file.arrayBuffer()
   const id = nextId++
   return new Promise<Schedule>((resolve, reject) => {
     pending.set(id, { resolve, reject, onStage })
-    const req: ParseRequest = { id, bytes }
+    const req: ParseRequest = { id, bytes, project }
     getWorker().postMessage(req, [bytes])
   })
 }

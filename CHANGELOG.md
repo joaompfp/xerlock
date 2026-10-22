@@ -4,6 +4,14 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.12.0] - 2026-10-22
+
+### Added
+- A .xer holding several projects shows them above the chart: any of them opens from
+  the same file, and Compare offers the others as the earlier file, so a baseline the
+  export carries as a second project can be compared directly. The largest project is
+  still the one opened first. The upload API takes an optional `project` id.
+
 ## [1.11.0] - 2026-10-22
 
 States, keyboard and phone (council review, batch B).

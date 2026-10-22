@@ -9,7 +9,7 @@
 import type { PyodideInterface } from 'pyodide'
 
 /** Without bytes, the request only boots the runtime (warm-up). */
-export interface ParseRequest { id: number; bytes?: ArrayBuffer }
+export interface ParseRequest { id: number; bytes?: ArrayBuffer; project?: number }
 export type ParseResponse =
   | { id: number; stage: string }
   | { id: number; ok: true; json: string }
@@ -48,7 +48,7 @@ function userMessage(err: unknown): string {
 }
 
 self.onmessage = async (e: MessageEvent<ParseRequest>) => {
-  const { id, bytes } = e.data
+  const { id, bytes, project } = e.data
   const stage = (s: string) => post({ id, stage: s })
   try {
     ready ??= boot(stage)
@@ -58,7 +58,8 @@ self.onmessage = async (e: MessageEvent<ParseRequest>) => {
     py.FS.writeFile('/tmp/upload.bin', new Uint8Array(bytes))
     try {
       const json = py.runPython(
-        "import json\nfrom backend.schedule import parse_schedule\njson.dumps(parse_schedule('/tmp/upload.bin'))",
+        "import json\nfrom backend.schedule import parse_schedule\n"
+          + `json.dumps(parse_schedule('/tmp/upload.bin'${Number.isInteger(project) ? `, ${project}` : ''}))`,
       ) as string
       post({ id, ok: true, json })
     } finally {

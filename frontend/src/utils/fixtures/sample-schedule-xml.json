@@ -69,6 +69,8 @@
   },
   "critical_path_test": null,
   "source_format": "mspdi",
+  "proj_id": null,
+  "projects_in_file": null,
   "inactive_activities": 1,
   "summary_links": [
    {
