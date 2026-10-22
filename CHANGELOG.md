@@ -4,6 +4,16 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.14.0] - 2026-10-22
+
+### Added
+- Review: one page to forward. What the file is; the verdict, with the failing checks
+  that cost the most, each with its measure and points; schedule risk (negative float,
+  near-critical work, CPLI with its inputs); the milestones ahead; the comparison when
+  an earlier file is loaded; and the reviewer's notes. It prints to PDF on its own or
+  downloads as a single HTML file that opens anywhere. A project opened for the first
+  time in this browser starts on it; after that, on the Gantt.
+
 ## [1.13.0] - 2026-10-22
 
 ### Added
