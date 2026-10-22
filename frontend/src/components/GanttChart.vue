@@ -149,27 +149,27 @@
         <!-- Background layer: weekend shading + gridlines — sits BELOW bars -->
         <svg
           class="g-overlay g-overlay-bg"
-          :style="{ left: labelColWidth + 'px', top: HEADER_HEIGHT + 'px', width: totalWidth + 'px', height: pg.bodyHeight + 'px' }"
+          :style="{ left: labelColWidth + 'px', top: winTop(pg) + 'px', width: totalWidth + 'px', height: winHeight(pg) + 'px' }"
           :width="totalWidth"
-          :height="pg.bodyHeight"
+          :height="winHeight(pg)"
         >
           <rect
             v-for="r in weekendRects"
             :key="'we' + r.x"
-            :x="r.x" y="0" :width="r.w" :height="pg.bodyHeight"
+            :x="r.x" y="0" :width="r.w" :height="winHeight(pg)"
             class="g-weekend"
           />
           <line
             v-for="t in detailTicks"
             :key="'gl' + t.x"
-            :x1="t.x" :x2="t.x" y1="0" :y2="pg.bodyHeight"
+            :x1="t.x" :x2="t.x" y1="0" :y2="winHeight(pg)"
             class="g-gridline"
           />
           <template v-if="markupShown">
             <rect
               v-for="p in markupPeriods"
               :key="'mp' + p.id"
-              :x="p.x" y="0" :width="p.w" :height="pg.bodyHeight"
+              :x="p.x" y="0" :width="p.w" :height="winHeight(pg)"
               class="g-mk-band"
               :class="'mk-' + p.color"
             />
@@ -177,7 +177,7 @@
           <line
             v-for="t in secondaryMonthGridlines"
             :key="'glm' + t.x"
-            :x1="t.x" :x2="t.x" y1="0" :y2="pg.bodyHeight"
+            :x1="t.x" :x2="t.x" y1="0" :y2="winHeight(pg)"
             class="g-gridline-month"
           />
         </svg>
@@ -186,9 +186,9 @@
              visually disappears behind an unrelated activity's bar. -->
         <svg
           class="g-overlay g-overlay-fg"
-          :style="{ left: labelColWidth + 'px', top: HEADER_HEIGHT + 'px', width: totalWidth + 'px', height: pg.bodyHeight + 'px' }"
+          :style="{ left: labelColWidth + 'px', top: winTop(pg) + 'px', width: totalWidth + 'px', height: winHeight(pg) + 'px' }"
           :width="totalWidth"
-          :height="pg.bodyHeight"
+          :height="winHeight(pg)"
         >
           <defs>
             <marker id="gantt-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -204,9 +204,9 @@
               <path d="M0 0L8 4L0 8z" class="g-link-arrow-chain" />
             </marker>
           </defs>
-          <g :transform="'translate(0,' + (-pg.start * ROW_HEIGHT) + ')'">
+          <g :transform="'translate(0,' + (-pg.from * ROW_HEIGHT) + ')'">
           <path
-            v-for="l in links"
+            v-for="l in linksIn(pg)"
             :key="l.id"
             :d="l.d"
             class="g-link"
@@ -228,7 +228,7 @@
             class="g-callout-leader"
           />
           <circle
-            v-for="(p, i) in progressLinePoints"
+            v-for="(p, i) in progressDotsIn(pg)"
             :key="'pp' + i"
             :cx="p.x" :cy="p.y" r="2.5"
             class="g-progress-dot"
@@ -309,7 +309,7 @@
           <div
             class="g-cell g-timeline-row"
             :class="hlClass(row)"
-            :style="{ gridRow: (row.index - pg.start + 2), gridColumn: 2, width: totalWidth + 'px' }"
+            :style="{ top: (HEADER_HEIGHT + (row.index - pg.start) * ROW_HEIGHT) + 'px', left: labelColWidth + 'px', width: totalWidth + 'px' }"
           >
             <div
               v-if="row.type === 'wbs'"
@@ -488,13 +488,13 @@ import {
   type Zoom,
   timelineRange, unionRange, dayWidthFor, clampDayWidth, totalWidth,
   dateToX, yearTicks, monthTicks, monthBandTicks, weekTicks, dayTicks, weekendRects,
-  rowsPerPrintPage, printPageRanges, zoomForDayWidth,
+  rowsPerPrintPage, printPageRanges, zoomForDayWidth, visibleRowRange,
   type Tick,
 } from '../utils/ganttGeometry'
 import {
   type WbsKey, type CriticalBasis, type Rollup, type WbsRow, type ActivityRow, type Row,
   activitiesByWbs, computeRollups, wbsParentMap, allWbsKeys, wbsNodesByLevel, initialExpanded,
-  isBasisCritical, floatClass, buildActivityRow, buildRows, rowIndexByTaskId, buildLinks, progressPoints,
+  isBasisCritical, floatClass, buildActivityRow, buildRows, rowIndexByTaskId, buildLinks, progressPoints, type Link,
 } from '../utils/ganttRows'
 import { trackDrag } from '../utils/drag'
 import {
@@ -537,8 +537,12 @@ interface SavedView {
 
 interface GridPage {
   screen: boolean
-  /** Index of the page's first row in `rows`. */
+  /** Index of the page's first row in `rows`: row positions on the page count from it. */
   start: number
+  /** The rows drawn, `rows[from..to)`: the sheet's rows when printing; on screen, those
+   *  in view plus a margin, so a long schedule draws a few dozen rows, not thousands. */
+  from: number
+  to: number
   rows: Row[]
   bodyHeight: number
   /** Where the frozen header and label column sit (the scroll offsets on screen). */
@@ -561,6 +565,7 @@ interface DragState {
   _onDocMousedown: (e: MouseEvent) => void
   /** Ends the drag in progress, if any (see utils/drag). */
   _stopDrag: (() => void) | null
+  _resizeObserver: ResizeObserver | null
 }
 function drag(vm: object): DragState {
   return vm as DragState
@@ -648,6 +653,8 @@ export default defineComponent({
       isolatedIds: null as Set<number> | null,
       scrollLeftPx: 0,
       scrollTopPx: 0,
+      // The scroll viewport's height, followed by a ResizeObserver: it sets how many rows are drawn.
+      viewportH: 900,
       panning: false,
       resizing: false,
       // The callout being dragged, with its offset live until the drop saves it.
@@ -656,6 +663,11 @@ export default defineComponent({
   },
   mounted() {
     window.addEventListener('keydown', this.onKeydown)
+    const scrollEl = this.$refs.scrollEl as HTMLElement
+    this.viewportH = scrollEl.clientHeight || this.viewportH
+    const ro = new ResizeObserver(() => { this.viewportH = scrollEl.clientHeight || this.viewportH })
+    ro.observe(scrollEl)
+    drag(this)._resizeObserver = ro
     // The drawer is a fixed overlay; a click on app chrome outside this component
     // (tab bar, summary toggle, another tab's controls) dismisses it instead of the
     // overlay swallowing the interaction context.
@@ -671,6 +683,7 @@ export default defineComponent({
     document.removeEventListener('mousedown', drag(this)._onDocMousedown)
     window.removeEventListener('keydown', this.onKeydown)
     drag(this)._stopDrag?.()
+    drag(this)._resizeObserver?.disconnect()
   },
   watch: {
     // The component survives file swaps (tabs use v-show), so reseed the per-category
@@ -755,11 +768,12 @@ export default defineComponent({
     // sheet's title line and the repeated column header.
     gridPages(): GridPage[] {
       if (!this.printing) {
-        return [{ screen: true, start: 0, rows: this.rows, bodyHeight: this.bodyHeight, top: this.scrollTopPx, left: this.scrollLeftPx }]
+        const { from, to } = visibleRowRange(this.scrollTopPx, this.viewportH, ROW_HEIGHT, this.rows.length)
+        return [{ screen: true, start: 0, from, to, rows: this.rows.slice(from, to), bodyHeight: this.bodyHeight, top: this.scrollTopPx, left: this.scrollLeftPx }]
       }
       const perPage = rowsPerPrintPage(usableHeightPx(this.printPaperSize, PRINT_BUFFER_PX), PRINT_TITLE_HEIGHT + HEADER_HEIGHT, ROW_HEIGHT)
       return printPageRanges(this.rows.length, perPage).map(({ start, end }) => ({
-        screen: false, start, rows: this.rows.slice(start, end), bodyHeight: (end - start) * ROW_HEIGHT, top: 0, left: 0,
+        screen: false, start, from: start, to: end, rows: this.rows.slice(start, end), bodyHeight: (end - start) * ROW_HEIGHT, top: 0, left: 0,
       }))
     },
     yearTicks(): Tick[] {
@@ -917,7 +931,7 @@ export default defineComponent({
     rowIndexByTaskId(): Map<number, number> {
       return rowIndexByTaskId(this.rows)
     },
-    links(): { id: string; d: string; chain: boolean }[] {
+    links(): Link[] {
       // Chain tracing draws its links regardless of the Links toggle — they're the point.
       if (!this.showLinks && !this.isolationActive) return []
       // Normal mode: "Critical" scope draws just critical-to-critical links (per the
@@ -956,6 +970,24 @@ export default defineComponent({
     },
     // The data-date line's position: on screen it yields to a nearby Today line; a printed
     // sheet has no Today line, so it always shows.
+    // The drawn window of a page, in the grid's pixels: the overlays cover just these rows.
+    winTop(pg: GridPage): number {
+      return HEADER_HEIGHT + (pg.from - pg.start) * ROW_HEIGHT
+    },
+    winHeight(pg: GridPage): number {
+      return (pg.to - pg.from) * ROW_HEIGHT
+    },
+    // Links and progress dots that cross the drawn window (a link may start or end outside it).
+    linksIn(pg: GridPage): Link[] {
+      const top = pg.from * ROW_HEIGHT
+      const bottom = pg.to * ROW_HEIGHT
+      return this.links.filter(l => l.yMax >= top && l.yMin <= bottom)
+    },
+    progressDotsIn(pg: GridPage): { x: number; y: number }[] {
+      const top = pg.from * ROW_HEIGHT
+      const bottom = pg.to * ROW_HEIGHT
+      return this.progressLinePoints.filter(p => p.y >= top && p.y <= bottom)
+    },
     ddX(pg: GridPage): number | null {
       return pg.screen ? this.dataDateX : this.printDataDateX
     },
@@ -1652,7 +1684,7 @@ export default defineComponent({
 .g-col-date { width: 48px; }
 
 
-.g-timeline-row { position: relative; height: 26px; border-bottom: 1px solid var(--gray-150); z-index: 2; }
+.g-timeline-row { position: absolute; height: 26px; border-bottom: 1px solid var(--gray-150); z-index: 2; }
 
 .g-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); z-index: 6; background: var(--white); }
 .g-empty-title { font: var(--text-h3); color: var(--ink); margin: 0; }

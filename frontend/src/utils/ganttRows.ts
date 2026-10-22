@@ -261,7 +261,14 @@ export function rowIndexByTaskId(rows: Row[]): Map<number, number> {
 
 // ── Relationship lines and the progress line ────────────────────────────────
 
-export interface Link { id: string; d: string; chain: boolean }
+export interface Link {
+  id: string
+  d: string
+  chain: boolean
+  /** The rows' vertical span the link covers, so a drawn window can pick the ones crossing it. */
+  yMin: number
+  yMax: number
+}
 
 export interface LinkOptions {
   /** Draw only links between two critical activities (on `basis`). */
@@ -294,6 +301,8 @@ export function buildLinks(rows: Row[], indexByTask: Map<number, number>, o: Lin
         id: `${p.task_id}-${row.activity.task_id}-${p.type}-${out.length}`,
         d: `M${predX},${predY} L${midX},${predY} L${midX},${succY} L${succX},${succY}`,
         chain: !bothCritical,
+        yMin: Math.min(predY, succY),
+        yMax: Math.max(predY, succY),
       })
     }
   }
