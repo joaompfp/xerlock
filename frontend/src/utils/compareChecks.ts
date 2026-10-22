@@ -60,3 +60,26 @@ export function finishSlipDays(cur: Activity, base: Activity): number | null {
 export function dateSlipDays(cur: string | Date, base: string | Date): number {
   return Math.round((new Date(cur).getTime() - new Date(base).getTime()) / DAY_MS)
 }
+
+
+export interface FinishVerdict { cls: 'v-slip' | 'v-gain' | 'v-hold'; chips: string[] }
+
+/** How the Compare banner reads a finish move. A later finish is a slip. An earlier one
+ *  is shown as a gain only when the logic that drove the finish largely survived: with
+ *  a new finish driver, or under half the earlier longest path kept, the programme was
+ *  re-sequenced and the move is a re-plan, so the banner stays neutral and says why.
+ *  Without a data-date advance, any move is re-planning rather than progress. */
+export function finishVerdict(
+  finishDelta: number,
+  stability: { pct: number; baseCount: number; driverChanged: boolean | string | null },
+  ddAdvance: number | null,
+): FinishVerdict {
+  const chips: string[] = []
+  if (stability.driverChanged) chips.push('finish driver changed')
+  const fewKept = stability.baseCount > 0 && stability.pct < 50
+  if (fewKept) chips.push(`${stability.pct}% of the longest path kept`)
+  if (ddAdvance === 0 && finishDelta) chips.push('data date unchanged: a re-plan, not progress')
+  const resequenced = !!stability.driverChanged || fewKept
+  const cls = finishDelta > 0 ? 'v-slip' : finishDelta < 0 && !resequenced ? 'v-gain' : 'v-hold'
+  return { cls, chips }
+}

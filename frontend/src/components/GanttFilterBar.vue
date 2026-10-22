@@ -16,7 +16,7 @@
       <option value="">Notes</option>
       <option v-for="o in noteOptions" :key="o.value" :value="o.value" :disabled="o.count === 0">{{ o.label }} ({{ o.count }})</option>
     </select>
-    <button class="tb-chip" :class="{ on: filter.criticalOnly }" @click="set('criticalOnly', !filter.criticalOnly)" title="Critical activities only, on the current basis"><i></i>Critical</button>
+    <button class="tb-chip" :class="{ on: filter.criticalOnly }" @click="set('criticalOnly', !filter.criticalOnly)" title="Critical activities only, on the current basis"><i></i>Critical only</button>
     <span class="fb-dates" :class="{ set: filter.from || filter.to }" title="Date window: activities touching it">
       <input type="date" :value="filter.from" class="filter-date" aria-label="From" @input="set('from', ($event.target as HTMLInputElement).value)" />
       <span class="fb-dash">–</span>
@@ -98,7 +98,7 @@ export default defineComponent({
 .fs-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); border-radius: 14px; padding: 2px 5px 2px 10px; cursor: pointer; font: var(--text-small); font-weight: 600; }
 .fs-chip:hover { background: var(--panel); }
 .fs-x { font-size: 14px; line-height: 1; opacity: 0.75; }
-.filter-input { padding: 6px 12px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); width: 240px; }
+.filter-input { padding: 6px 12px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); width: 240px; background: var(--white); color: var(--ink); }
 .filter-strip .fb-search { width: 124px; padding: 3px 8px; }
 .filter-strip .fb-select { height: 26px; padding: 0 4px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); color: var(--ink-2); max-width: 118px; }
 .filter-strip .fb-select.set { max-width: 180px; }

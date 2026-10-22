@@ -2,7 +2,7 @@
   <div class="progress-wrap">
     <div class="view-bar">
       <div class="strip-title">
-        <span class="strip-sub">Milestones, look-ahead window &amp; progress trend &middot; data date {{ dataDateObj ? formatDate(data.project.data_date) : 'unknown' }}</span>
+        <span class="strip-sub">Milestones, look-ahead window &amp; progress trend &middot; data date {{ dataDateObj ? formatDate(data.project.data_date) : 'unknown' }} &middot; {{ completeCount }} of {{ data.activities.length }} activities complete (a count; the curve below weighs by duration)</span>
       </div>
     </div>
 
@@ -88,11 +88,11 @@
           <path :d="pathOf('forecast')" class="curve-forecast" />
           <path :d="pathOf('actual')" class="curve-actual" />
           <line v-if="ddPoint" :x1="xFor(ddPoint.t)" :x2="xFor(ddPoint.t)" :y1="padT" :y2="chartH - padB" class="data-date-line" />
-          <text v-if="ddPoint" :x="xFor(ddPoint.t)" :y="padT - 4" class="axis-label data-date-label" text-anchor="middle">data date · {{ Math.round(ddPoint.actual ?? 0) }}% earned vs {{ Math.round(ddPoint.planned) }}% planned</text>
+          <text v-if="ddPoint" :x="xFor(ddPoint.t)" :y="padT - 4" class="axis-label data-date-label" text-anchor="middle">data date · {{ Math.round(ddPoint.actual ?? 0) }}% earned vs {{ Math.round(ddPoint.planned) }}% planned, by duration</text>
           <!-- Series named at the end of their own line, in their own colour: no legend
                to look away to and match up. -->
           <template v-if="endLabels">
-            <text :x="endLabels.x" :y="endLabels.plannedY" class="series-label series-planned">Planned</text>
+            <text :x="endLabels.x" :y="endLabels.plannedY" class="series-label series-planned">{{ isProject ? 'Planned (Baseline 0)' : 'Planned (this file)' }}</text>
             <text :x="endLabels.x" :y="endLabels.forecastY" class="series-label series-forecast">Forecast {{ endLabels.forecastPct }}%</text>
           </template>
         </svg>
@@ -139,12 +139,15 @@ export default defineComponent({
       chartW: 900,
       chartH: 280,
       padL: 44,
-      padR: 96,
+      padR: 130,
       padT: 24,
       padB: 26,
     }
   },
   computed: {
+    completeCount(): number {
+      return this.data.activities.filter(a => a.status === 'TK_Complete').length
+    },
     isProject(): boolean { return isProjectFile(this.data.project) },
     dataDateObj(): Date | null {
       return this.data.project.data_date ? new Date(this.data.project.data_date) : null
@@ -282,7 +285,7 @@ export default defineComponent({
 .progress-table td { padding: 6px var(--space-3); border-bottom: 1px solid var(--gray-150); }
 .jump-row { cursor: pointer; }
 .jump-row:hover td { background: var(--accent-soft); }
-.jump-row.critical td { border-left: 3px solid var(--crit); }
+.jump-row.critical td:first-child { border-left: 3px solid var(--crit); }
 .code { font-family: var(--font-mono); font-weight: 600; color: var(--accent); white-space: nowrap; }
 .name-cell { color: var(--ink-soft); }
 .num-cell { font-family: var(--font-mono); text-align: right; white-space: nowrap; }

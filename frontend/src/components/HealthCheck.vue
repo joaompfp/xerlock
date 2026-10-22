@@ -6,7 +6,7 @@
       </div>
       <div class="strip-score">
         <span class="score-num" :class="scoreClass">{{ weightedScore }}%</span>
-        <span class="score-detail" title="Weighted share of included checks that pass. This roll-up is XERlock's; DCMA defines pass/fail per metric, not a composite score.">{{ passCount }}/{{ includedCount }} checks pass &middot; weighted</span>
+        <span class="score-detail" title="100 points shared among the included checks by weight; a failing check loses its share. This roll-up is XERlock's; DCMA defines pass/fail per metric, not a composite score.">{{ passCount }}/{{ includedCount }} checks pass &middot; 100 − {{ pointsLostText }} points lost</span>
         <button class="cfg-btn" :class="{ active: showConfig }" @click="showConfig = !showConfig">⚙ Configure</button>
       </div>
     </div>
@@ -75,6 +75,7 @@
     <div class="hc-results">
       <template v-if="failingChecks.length">
         <div class="hc-group-label">Failing ({{ failingChecks.length }})</div>
+        <p class="hc-lost-summary">{{ lostSummary }}</p>
         <div class="hc-fail-grid">
           <button
             v-for="item in failingChecks"
@@ -86,7 +87,9 @@
           >
             <div class="hc-fail-value">{{ item.display }}</div>
             <div class="hc-fail-name">{{ item.label }}</div>
-            <div class="hc-fail-target">target {{ item.targetText }}</div>
+            <div class="hc-fail-target">{{ item.rateText }} &middot; target {{ item.targetText }}</div>
+            <div v-if="item.detail" class="hc-fail-target">{{ item.detail }}</div>
+            <div class="hc-fail-points">−{{ fmtPoints(item.lost) }} pts &middot; weight {{ item.weight }}</div>
           </button>
         </div>
       </template>
@@ -101,7 +104,7 @@
           @click="item.section && openSection(item.section)"
           :title="item.tip"
         >
-          <b>{{ item.display }}</b>{{ item.label }}
+          <b>{{ item.display }}</b>{{ item.label }}<span v-if="item.detail" class="hc-pass-detail"> &middot; {{ item.detail }}</span>
         </button>
       </div>
 
@@ -635,7 +638,7 @@
 import { defineComponent, type PropType } from 'vue'
 import { formatDate, formatHours, formatFloat, formatLag } from '../utils/format'
 import { REL_TYPE_LABELS, CSTR_LABELS, displayStart, displayEnd } from '../utils/p6'
-import { CHECK_DEFS, defaultConfig, runChecks, weightedScore, loadHealthConfig, saveHealthConfig } from '../utils/healthChecks'
+import { CHECK_DEFS, defaultConfig, runChecks, weightedScore, loadHealthConfig, saveHealthConfig, scoreBreakdown, type ScoreShare } from '../utils/healthChecks'
 import type { CheckDef, CheckKey, CheckResult, HealthConfig } from '../utils/healthChecks'
 import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
 import rowLimitMixin from '../mixins/rowLimit'
@@ -654,6 +657,13 @@ interface ScorecardItem {
   key: CheckKey
   label: string
   display: number | string
+  /** The measured value against which the target is set: "8.3% of 24" or "2". */
+  rateText: string
+  /** The inputs behind a figure that is not a plain count (CPLI). */
+  detail: string | null
+  weight: number
+  /** Points of the 100 this check costs while it fails. */
+  lost: number
   section: SectionKey | null
   state: 'excluded' | 'pass' | 'fail'
   targetText: string
@@ -819,8 +829,41 @@ export default defineComponent({
     scoreClass(): string {
       return this.weightedScore >= 80 ? 'score-good' : this.weightedScore >= 60 ? 'score-mid' : 'score-bad'
     },
+    // Ordered by what they cost, so the first card is the first thing to fix.
     failingChecks(): ScorecardItem[] {
-      return this.scorecard.filter(c => c.state === 'fail')
+      return this.scorecard.filter(c => c.state === 'fail').sort((a, b) => b.lost - a.lost)
+    },
+    scoreShares(): Map<CheckKey, ScoreShare> {
+      return new Map(scoreBreakdown(this.checkResults, this.cfg).map(sh => [sh.key, sh]))
+    },
+    pointsLost(): number {
+      let t = 0
+      for (const sh of this.scoreShares.values()) t += sh.lost
+      return t
+    },
+    pointsLostText(): string {
+      return this.fmtPoints(this.pointsLost)
+    },
+    lostSummary(): string {
+      const f = this.failingChecks
+      if (!f.length) return ''
+      const top = f.slice(0, Math.min(2, f.length))
+      const names = top.map(c => c.label).join(' and ')
+      const lost = top.reduce((t, c) => t + c.lost, 0)
+      return f.length === 1
+        ? `${names} costs all ${this.fmtPoints(lost)} points lost.`
+        : `${names} cost ${this.fmtPoints(lost)} of the ${this.pointsLostText} points lost.`
+    },
+    // CPLI is (critical path length + the finish's total float) / length: its inputs,
+    // so a 1.00 beside negative float elsewhere is explained rather than doubted.
+    cpliDetail(): string | null {
+      const c = this.data.project.cpli
+      if (!c) return null
+      const fin = this.data.activities.find(a => a.task_id === c.finish_task_id)
+      const hpd = fin?.calendar_hrs_per_day || 8
+      const neg = this.data.activities.filter(a => a.is_negative_float).length
+      return `path ${Math.round(c.cpl_hrs / hpd)}d, finish float ${Math.round(c.tf_hrs / hpd)}d` +
+        (neg && c.tf_hrs >= 0 ? `; ${neg} other ${neg === 1 ? 'activity has' : 'activities have'} negative float` : '')
     },
     passingChecks(): ScorecardItem[] {
       return this.scorecard.filter(c => c.state === 'pass')
@@ -833,10 +876,15 @@ export default defineComponent({
         const r = this.checkResults[d.key]
         const c = this.cfg[d.key]
         const targetText = `${d.cmp === 'gte' ? '≥' : '≤'} ${c.target}${d.unit === 'pct' ? '%' : ''}`
+        const share = this.scoreShares.get(d.key)
         return {
           key: d.key,
           label: d.label,
           display: r.display,
+          rateText: d.unit === 'pct' ? `${(Math.round(r.value * 10) / 10).toFixed(1)}% of ${r.denom}` : d.unit === 'ratio' ? String(r.display) : `${r.count}`,
+          detail: d.key === 'cpli' ? this.cpliDetail : null,
+          weight: share?.weight ?? c.weight,
+          lost: share?.lost ?? 0,
           // CHECK_DEFS sections name this component's detail sections.
           section: d.section as SectionKey | null,
           state: !r.included ? 'excluded' : r.pass ? 'pass' : 'fail',
@@ -858,6 +906,9 @@ export default defineComponent({
     document.removeEventListener('mousedown', this.onDocMousedown)
   },
   methods: {
+    fmtPoints(p: number): string {
+      return p >= 10 || Number.isInteger(p) ? String(Math.round(p)) : p.toFixed(1)
+    },
     formatDate,
     formatHours,
     formatFloat,
@@ -940,6 +991,9 @@ export default defineComponent({
 .hc-fail-card { text-align: left; border: 1px solid var(--crit); background: var(--crit-soft); border-radius: var(--radius-md); padding: var(--space-3); cursor: pointer; }
 .hc-fail-card:hover { background: var(--panel); }
 .hc-fail-value { font-family: var(--font-mono); font-size: 26px; font-weight: 700; color: var(--crit); line-height: 1.1; }
+.hc-fail-points { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--crit); margin-top: 4px; }
+.hc-lost-summary { margin: 0 0 var(--space-2); font: var(--text-small); color: var(--ink-2); }
+.hc-pass-detail { color: var(--ink-3); font-weight: 400; }
 .hc-fail-name { font: var(--text-small); font-weight: 600; color: var(--ink); margin-top: 2px; }
 .hc-fail-target { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); margin-top: 2px; }
 .hc-pass-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }

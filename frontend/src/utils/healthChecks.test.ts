@@ -294,3 +294,16 @@ describe('Microsoft Project rules', () => {
     expect(out.availability.loe).toBe(false)
   })
 })
+
+describe('scoreBreakdown', () => {
+  it('splits 100 points by weight and rebuilds the weighted score from the losses', async () => {
+    const { scoreBreakdown, weightedScore, defaultConfig, runChecks } = await import('./healthChecks')
+    const cfg = defaultConfig()
+    const { results } = runChecks(sample, cfg)
+    const shares = scoreBreakdown(results, cfg)
+    expect(shares.reduce((t, s) => t + s.points, 0)).toBeCloseTo(100, 6)
+    const lost = shares.reduce((t, s) => t + s.lost, 0)
+    expect(Math.round(100 - lost)).toBe(weightedScore(results, cfg))
+    for (const s of shares) expect(s.lost === 0).toBe(results[s.key].pass)
+  })
+})

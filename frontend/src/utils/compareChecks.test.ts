@@ -46,3 +46,22 @@ describe('finishSlipDays', () => {
     expect(finishSlipDays(a({}), a({ early_end: '2026-03-10 17:00' }))).toBeNull()
   })
 })
+
+describe('finishVerdict', () => {
+  const kept = { pct: 90, baseCount: 20, driverChanged: false }
+  it('reads a later finish as a slip, whatever else changed', async () => {
+    const { finishVerdict } = await import('./compareChecks')
+    expect(finishVerdict(5, kept, 30).cls).toBe('v-slip')
+  })
+  it('credits an earlier finish only when the driving logic survived', async () => {
+    const { finishVerdict } = await import('./compareChecks')
+    expect(finishVerdict(-8, kept, 30)).toEqual({ cls: 'v-gain', chips: [] })
+    const replanned = finishVerdict(-8, { pct: 14, baseCount: 96, driverChanged: 'A100' }, 0)
+    expect(replanned.cls).toBe('v-hold')
+    expect(replanned.chips).toEqual(['finish driver changed', '14% of the longest path kept', 'data date unchanged: a re-plan, not progress'])
+  })
+  it('says nothing about the data date when the finish did not move', async () => {
+    const { finishVerdict } = await import('./compareChecks')
+    expect(finishVerdict(0, kept, 0)).toEqual({ cls: 'v-hold', chips: [] })
+  })
+})

@@ -42,8 +42,8 @@
           No file handy? <strong>Load the sample project &rarr;</strong>
         </button>
         <p v-if="!loading" class="sample-sub">A 24-activity data-centre fit-out with a real critical path, negative float, and in-progress work. <button class="sample-alt" @click="loadSample('xml')">The same project as Microsoft Project XML &rarr;</button></p>
-        <p v-if="parserMode === 'local'" class="hint">XERlock is read-only by design — the lock in the name. <strong>Your file is parsed on this computer and never uploaded</strong>: it works with the network unplugged. Your last file is kept in this browser only, so you can reopen it without reloading.</p>
-        <p v-else class="hint">XERlock is read-only by design — the lock in the name: files are parsed in memory, never stored, never modified. Your last file is kept in this browser only, so you can reopen it without re-uploading.</p>
+        <p v-if="parserMode === 'local'" class="hint">XERlock is read-only by design — the lock in the name. <strong>Your file is parsed on this computer and never uploaded</strong>: it works with the network unplugged. <template v-if="lastFileKept">Your last file is kept in this browser only, so you can reopen it without reloading.</template><template v-else>This browser did not keep your last file (a private window, or storage full or blocked), so it can't be reopened.</template></p>
+        <p v-else class="hint">XERlock is read-only by design — the lock in the name: files are parsed in memory, never stored, never modified. <template v-if="lastFileKept">Your last file is kept in this browser only, so you can reopen it without re-uploading.</template><template v-else>This browser did not keep your last file (a private window, or storage full or blocked), so it can't be reopened.</template></p>
         <a class="gh-link" href="https://github.com/joaompfp/xerlock" target="_blank" rel="noopener">
           <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
           Open source on GitHub
@@ -82,12 +82,14 @@
           <!-- The headline figures, read once per file: they sit with the project, not
                in a strip above every view. -->
           <div class="sb-metrics">
-            <div class="sb-metric"><b :class="data.project.total_critical > 0 ? 'is-crit' : 'is-ok'">{{ data.project.total_critical }}</b><span>Critical</span></div>
+            <!-- The longest path leads: it is what drives the finish. TF ≤ 0 is the
+                 health signal, with what inflates it in its tooltip. -->
+            <div class="sb-metric sb-metric-wide" title="Activities on the longest path: the chain that drives the project finish"><b :class="data.project.total_longest_path > 0 ? 'is-crit' : ''">{{ data.project.total_longest_path }}</b><span>Longest path</span></div>
+            <div class="sb-metric" :title="criticalTip"><b>{{ data.project.total_critical }}</b><span>TF ≤ 0</span></div>
             <div class="sb-metric"><b>{{ data.project.total_milestones }}</b><span>Milestones</span></div>
-            <div class="sb-metric" :class="{ 'sb-metric-wide': !data.project.total_negative_float }"><b>{{ data.project.total_longest_path }}</b><span>Longest path</span></div>
-            <div class="sb-metric" v-if="data.project.total_negative_float > 0"><b class="is-crit">{{ data.project.total_negative_float }}</b><span>Neg. float</span></div>
-            <div class="sb-metric sb-metric-pct" title="Share of activities with status Complete. A count, not weighted by duration, cost or units; per-activity % complete uses each activity's own percent-complete type.">
-              <b>{{ data.project.pct_complete }}%</b><span>Done</span>
+            <div class="sb-metric sb-metric-wide" v-if="data.project.total_negative_float > 0"><b class="is-crit">{{ data.project.total_negative_float }}</b><span>Neg. float</span></div>
+            <div class="sb-metric sb-metric-pct" :title="`${completeCount} of ${data.activities.length} activities have status Complete. A count of activities, not weighted by duration; the Progress view's earned figure is weighted by duration.`">
+              <b>{{ completeCount }}/{{ data.activities.length }}</b><span>Complete</span>
               <i class="tb-bar"><u :style="{ width: data.project.pct_complete + '%' }"></u></i>
             </div>
           </div>
@@ -105,7 +107,7 @@
             >
               <span class="sb-item-label">{{ it.label }}</span>
               <span v-if="it.id === 'health' && healthScore !== null" class="sb-score" :class="healthScoreClass">{{ healthScore }}%</span>
-              <span v-else-if="it.id === 'compare' && compareData" class="sb-dot" title="A baseline is loaded"></span>
+              <span v-else-if="it.id === 'compare' && compareData" class="sb-dot" title="An earlier file is loaded for comparison"></span>
             </button>
           </template>
         </nav>
@@ -128,7 +130,7 @@
           <div class="sb-theme" role="group" aria-label="Colour theme">
             <button v-for="(label, key) in themeOptions" :key="key" :class="{ active: theme === key }" @click="theme = key">{{ label }}</button>
           </div>
-          <button class="sb-load" @click="data = null">Load another file</button>
+          <button class="sb-load" @click="closeFile">Load another file</button>
           <!-- Same notice as the upload screen, so it stays reachable while the app is in use. -->
           <p class="sb-legal">
             AGPL-3.0 &middot; Based on XERlock by joaompfp &middot;
@@ -378,6 +380,9 @@ import type { Activity } from './types/schedule'
 import { parseSchedule, prepareParser, PARSER_MODE } from './utils/parseSchedule'
 import { ACCEPT, DROP_PROMPT, unsupportedFileMessage } from './utils/source'
 
+// Set while this tab shows a file, so a reload reopens it (sessionStorage: this tab only).
+const SHOWING_FILE = 'xerlock:showing-file'
+
 type Theme = 'light' | 'dark'
 
 const PARSE_STAGES = [
@@ -414,7 +419,11 @@ export default defineComponent({
       dragOver: false,
       tab: 'gantt',
       exporting: false,
-      lastFile: loadLastFile() as LastFile | null,
+      // Read from IndexedDB in created(); null until then, or when nothing is kept.
+      lastFile: null as LastFile | null,
+      // False when this browser would not keep the last file: the landing page then
+      // says it can't be reopened rather than promising it.
+      lastFileKept: true,
       pendingJump: null as number | null,
       annotations: {} as Annotations,
       compareData: null as StoredSchedule | null,
@@ -478,6 +487,13 @@ export default defineComponent({
   },
   created() {
     applyTheme(this.theme)
+    loadLastFile().then(f => {
+      this.lastFile = f
+      // This tab was showing a file before a reload: come back to it.
+      let showing = false
+      try { showing = sessionStorage.getItem(SHOWING_FILE) === '1' } catch { /* no session storage */ }
+      if (f && showing && !this.data) this.reopenLastFile()
+    })
   },
   watch: {
     tab(t: string) {
@@ -502,6 +518,21 @@ export default defineComponent({
       if (!this.data) return null
       const cfg = loadHealthConfig()
       return weightedScore(runChecks(this.data, cfg).results, cfg)
+    },
+    completeCount(): number {
+      return this.data ? this.data.activities.filter(a => a.status === 'TK_Complete').length : 0
+    },
+    // What makes up the TF ≤ 0 count: imposed dates, missing logic and ALAP all put
+    // activities at zero float without their being on the path that drives the finish.
+    criticalTip(): string {
+      if (!this.data) return ''
+      const crit = this.data.activities.filter(a => a.is_critical)
+      const neg = crit.filter(a => a.is_negative_float).length
+      const alap = crit.filter(a => a.cstr_type === 'CS_ALAP' || a.cstr_type2 === 'CS_ALAP').length
+      const open = crit.filter(a => !a.predecessors.length || !a.successors.length).length
+      return `${crit.length} activities with total float ≤ 0. Of these, ${neg} have negative float, ` +
+        `${alap} an ALAP constraint and ${open} an open end (no predecessor or no successor). ` +
+        `The longest path (${this.data.project.total_longest_path}) is what drives the finish.`
     },
     healthScoreClass(): string {
       if (this.healthScore === null) return ''
@@ -620,8 +651,9 @@ export default defineComponent({
         const parsed = await parseSchedule(file, msg => { this.parsingNote = msg })
         this.activateData(parsed)
         this.currentFilename = file.name
-        saveLastFile(file.name, parsed)
-        this.lastFile = loadLastFile()
+        const kept = await saveLastFile(file.name, parsed)
+        this.lastFileKept = !!kept
+        if (kept) this.lastFile = kept
       } catch (e) {
         this.uploadError = `${(e as Error).message} — check the file is a P6 .xer export or a Microsoft Project XML or .mpp file, or try the sample project below.`
       } finally {
@@ -644,6 +676,8 @@ export default defineComponent({
     },
     activateData(parsed: StoredSchedule) {
       this.data = parsed
+      // A reload of this tab comes back to the file (created() reads this).
+      try { sessionStorage.setItem(SHOWING_FILE, '1') } catch { /* reload shows the landing page */ }
       this.tab = 'gantt'
       this.opened = ['gantt']
       this.liveHealthScore = null
@@ -658,9 +692,13 @@ export default defineComponent({
       this.activateData(this.lastFile.data)
       this.currentFilename = this.lastFile.filename
     },
-    forgetLastFile() {
-      clearLastFile()
+    async forgetLastFile() {
+      await clearLastFile()
       this.lastFile = null
+    },
+    closeFile() {
+      this.data = null
+      try { sessionStorage.removeItem(SHOWING_FILE) } catch { /* nothing to undo */ }
     },
     formatDate,
     formatHours,
@@ -858,6 +896,8 @@ export default defineComponent({
 
 /* Slate — cool graphite neutrals, deep indigo accent. */
 [data-theme="dark"] {
+  /* Native controls (inputs, selects, date pickers, scrollbars) draw dark too. */
+  color-scheme: dark;
   --bg: #0C0F13;
   --panel: #14181E;
   --panel-2: #191F26;
@@ -1029,7 +1069,7 @@ th.num { text-align: right !important; }
 
 /* Table controls */
 .table-controls { display: flex; gap: var(--space-2); align-items: center; margin-bottom: var(--space-3); flex-wrap: wrap; }
-.search-input { padding: 6px 12px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); width: 220px; }
+.search-input { padding: 6px 12px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); width: 220px; background: var(--white); color: var(--ink); }
 .filter-select { padding: 6px 8px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); }
 .filter-toggle { font: var(--text-small); color: var(--gray-700); display: flex; align-items: center; gap: var(--space-1); cursor: pointer; }
 .filter-toggle input { margin: 0; }
@@ -1043,9 +1083,9 @@ th.num { text-align: right !important; }
 .data-table th.sortable:hover { background: var(--gray-150); }
 .data-table td { padding: 6px var(--space-3); border-bottom: 1px solid var(--gray-150); vertical-align: middle; white-space: nowrap; }
 .data-table tbody tr:hover td { background: var(--gray-100); }
-.data-table tbody tr.critical td { border-left: 3px solid var(--crit); }
+.data-table tbody tr.critical td:first-child { border-left: 3px solid var(--crit); }
 .data-table tbody tr.negative-float td { background: var(--crit-tint); }
-.data-table tbody tr.milestone td { border-left: 3px solid var(--milestone); }
+.data-table tbody tr.milestone td:first-child { border-left: 3px solid var(--milestone); }
 .data-table .code { color: var(--gray-700); }
 .data-table .name-cell { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
 .data-table .name-col { min-width: 200px; }

@@ -1,6 +1,6 @@
 <template>
   <div class="gantt-wrap" :class="{ 'is-fullscreen': isFullscreen }" ref="wrapEl">
-    <GanttLegend :active="active" :inline="isFullscreen" :basis="criticalBasis" :baseline="!!baseline && showBaseline" />
+    <GanttLegend :active="active" :inline="isFullscreen" :basis="criticalBasis" :baseline="!!baseline && showBaseline" :states="legendStates" />
 
     <GanttToolbar
       :zoom="zoom"
@@ -81,7 +81,7 @@
         <span v-if="data.project.data_date">Data date {{ formatDate(data.project.data_date) }}</span>
         <span v-if="activeFilterChips.length">Filtered: {{ activeFilterChips.map(c => c.label).join(', ') }}</span>
         <span v-if="isolatedIds">Chain trace: {{ isolatedIds.size }} {{ isolatedIds.size === 1 ? 'activity' : 'activities' }}</span>
-        <span v-if="showSlip">Compared with {{ baselineFilename || 'the loaded baseline' }}: outlined bars, Slip in calendar days</span>
+        <span v-if="showSlip">Compared with {{ baselineFilename || 'the earlier file' }}: outlined bars, Slip in calendar days</span>
         <span class="print-pageno">Page {{ pi + 1 }} of {{ gridPages.length }}</span>
       </div>
       <div
@@ -106,7 +106,7 @@
               v-for="t in bandTicks"
               :key="'b' + t.x"
               class="g-band-tick"
-              :style="{ left: t.x + 'px' }"
+              :style="{ left: t.x + 'px', paddingLeft: bandLabelPad(pg, t) + 'px', visibility: bandLabelPad(pg, t) < 0 ? 'hidden' : undefined }"
             >{{ t.label }}</div>
             <!-- The data date labelled where the eye starts reading the timeline -->
             <span
@@ -287,7 +287,7 @@
             <template v-if="row.type === 'wbs'">
               <IconChevron class="g-toggle" :expanded="isFilterActive ? !filterCollapsed.has(row.wbsId) : expandedWbs.has(row.wbsId)" />
               <span class="g-wbs-name">{{ row.name }}</span>
-              <span class="g-wbs-count">{{ row.count }}</span>
+              <span class="g-wbs-count" :title="row.count + (row.count === 1 ? ' activity' : ' activities') + ' under this WBS'">{{ row.count }} act.</span>
               <span class="g-col-dur"></span>
               <span class="g-col-date">{{ row.start ? formatDateShort(row.start) : '' }}</span>
               <span class="g-col-date">{{ row.finish ? formatDateShort(row.finish) : '' }}</span>
@@ -322,7 +322,7 @@
                 v-if="ghostFor(row.activity)"
                 class="g-milestone-ghost"
                 :style="{ left: ghostFor(row.activity)!.x + 'px' }"
-                :title="'Baseline: ' + ghostFor(row.activity)!.label"
+                :title="'Earlier file: ' + ghostFor(row.activity)!.label"
               ></div>
               <div
                 class="g-milestone"
@@ -337,7 +337,7 @@
                 v-if="ghostFor(row.activity)"
                 class="g-bar-ghost"
                 :style="{ left: ghostFor(row.activity)!.x + 'px', width: ghostFor(row.activity)!.w + 'px' }"
-                :title="'Baseline: ' + ghostFor(row.activity)!.label"
+                :title="'Earlier file: ' + ghostFor(row.activity)!.label"
               ></div>
               <div
                 v-if="row.tailW"
@@ -475,10 +475,10 @@ import GanttToolbar, { type WbsAction } from './GanttToolbar.vue'
 import GanttLegend from './GanttLegend.vue'
 import GanttViewBar from './GanttViewBar.vue'
 import GanttFilterBar from './GanttFilterBar.vue'
-import { loadViews, saveViews, completeState, stepView, filterToView, filterFromView, type SavedView as NamedView, type ViewState } from '../utils/views'
+import { loadViews, saveViews, completeState, stepView, filterToView, filterFromView, loadProjectZoom, saveProjectZoom, type SavedView as NamedView, type ViewState } from '../utils/views'
 import { DEFAULT_CALLOUT, SEVERITY_LABELS, type Annotations, type CalloutOffset, type Severity } from '../utils/annotations'
 import { emptyFilter, isFilterSet, matchesFilter, filterChips, emptyFilterHint, type GanttFilter } from '../utils/ganttFilter'
-import { formatDate, formatDateShort, formatHours, formatFloat, formatLag, statusLabel } from '../utils/format'
+import { formatDate, formatDateShort, formatHours, formatFloat, formatLag, statusLabel, isMilestone } from '../utils/format'
 
 import fullscreenMixin from '../mixins/fullscreen'
 import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
@@ -494,7 +494,7 @@ import {
 import {
   type WbsKey, type CriticalBasis, type Rollup, type WbsRow, type ActivityRow, type Row,
   activitiesByWbs, computeRollups, wbsParentMap, allWbsKeys, wbsNodesByLevel, initialExpanded,
-  isBasisCritical, floatClass, buildActivityRow, buildRows, rowIndexByTaskId, buildLinks, progressPoints, type Link,
+  isBasisCritical, classifyActivity, floatClass, buildActivityRow, buildRows, rowIndexByTaskId, buildLinks, progressPoints, type Link,
 } from '../utils/ganttRows'
 import { trackDrag } from '../utils/drag'
 import { visibleRowRange } from '../utils/virtual'
@@ -511,6 +511,8 @@ const LABEL_COL_MIN = 200
 const labelColMax = () => Math.max(700, Math.floor(window.innerWidth * 0.8))
 const HEADER_HEIGHT = 56
 const ROW_HEIGHT = 26
+// The data-date badge in the header ("02 Mar · data date"): its width, to keep month labels clear of it.
+const DD_CHIP_WIDTH = 124
 // 15px safety buffer: tuned against this chart's printed output (see utils/paper.ts).
 const PRINT_BUFFER_PX = 15
 // The title line above each printed sheet's grid: its height plus margin (see .print-title).
@@ -616,15 +618,19 @@ export default defineComponent({
     const end = this.data.project.latest_end ? new Date(this.data.project.latest_end) : new Date()
     const days = Math.max(1, (end.getTime() - start.getTime()) / 86400000)
     const autoZoom: Zoom = days > 300 ? 'month' : days > 100 ? 'week' : 'day'
+    const projZoom = loadProjectZoom(this.data.project.proj_short_name)
 
     const expandedWbs = initialExpanded(this.data.wbs_tree || [])
 
     return {
       HEADER_HEIGHT,
       ROW_HEIGHT,
-      zoom: saved.zoom || autoZoom,
+      // The zoom this project was last seen at; a project opened for the first time is
+      // fitted to the width once mounted (fitOnMount), so it never opens cut off.
+      zoom: (projZoom?.zoom as Zoom) || autoZoom,
       printPaperSize: saved.printPaperSize || 'a4',
-      dayWidthOverride: saved.dayWidthOverride ?? null,
+      dayWidthOverride: projZoom ? projZoom.dayWidthOverride : null,
+      fitOnMount: !projZoom,
       labelColWidth: Math.min(saved.labelColWidth || LABEL_COL_WIDTH_DEFAULT, labelColMax()),
       criticalBasis: (saved.criticalBasis || 'tf0') as CriticalBasis,
       expandedWbs,
@@ -669,6 +675,7 @@ export default defineComponent({
     const ro = new ResizeObserver(() => { this.viewportH = scrollEl.clientHeight || this.viewportH })
     ro.observe(scrollEl)
     drag(this)._resizeObserver = ro
+    if (this.fitOnMount) this.$nextTick(() => requestAnimationFrame(() => this.fitToWidth()))
     // The drawer is a fixed overlay; a click on app chrome outside this component
     // (tab bar, summary toggle, another tab's controls) dismisses it instead of the
     // overlay swallowing the interaction context.
@@ -694,6 +701,13 @@ export default defineComponent({
       this.markup = loadMarkup(this.data.project.proj_short_name)
       this.views = loadViews(this.data.project.proj_short_name)
       this.currentViewId = null
+      const z = loadProjectZoom(this.data.project.proj_short_name)
+      if (z) {
+        this.zoom = z.zoom as Zoom
+        this.dayWidthOverride = z.dayWidthOverride
+      } else {
+        this.$nextTick(() => requestAnimationFrame(() => this.fitToWidth()))
+      }
     },
     zoom() { this.persistView() },
     criticalBasis() { this.persistView() },
@@ -785,7 +799,8 @@ export default defineComponent({
     // The zoom the header ticks follow: the chosen one on screen; on a printed sheet,
     // whose day width is fitted to the paper, the one that suits that width.
     tickZoom(): Zoom {
-      return this.printing ? zoomForDayWidth(this.dayWidth) : this.zoom
+      // A continuous zoom (fitted, wheel or print) labels the header for its actual day width.
+      return this.printing || this.dayWidthOverride ? zoomForDayWidth(this.dayWidth) : this.zoom
     },
     bandTicks(): Tick[] {
       return this.tickZoom === 'day' || this.tickZoom === 'week'
@@ -929,6 +944,17 @@ export default defineComponent({
         activityRow: (a, level) => buildActivityRow(a, level, this.dateToX, this.dayWidth, this.criticalBasis),
       })
     },
+    // The bar states among the activities the filters leave in, for the legend.
+    legendStates(): Set<string> {
+      const out = new Set<string>()
+      const matched = this.matchedTaskIds
+      for (const a of this.data.activities) {
+        if (matched && !matched.has(a.task_id)) continue
+        for (const c of classifyActivity(a, this.criticalBasis).split(' ')) out.add(c)
+        if (isMilestone(a)) out.add('milestone')
+      }
+      return out
+    },
     rowIndexByTaskId(): Map<number, number> {
       return rowIndexByTaskId(this.rows)
     },
@@ -988,6 +1014,21 @@ export default defineComponent({
       const top = pg.from * ROW_HEIGHT
       const bottom = pg.to * ROW_HEIGHT
       return this.progressLinePoints.filter(p => p.y >= top && p.y <= bottom)
+    },
+    // A month (or year) label the data-date badge would cover moves to just after the
+    // badge. Widths are estimates from the fonts' sizes: close enough to clear the text.
+    bandLabelPad(pg: GridPage, t: Tick): number {
+      const dx = this.ddX(pg)
+      const pad = 6
+      if (dx === null) return pad
+      const chipEnd = dx + DD_CHIP_WIDTH
+      const labelStart = t.x + pad
+      const labelEnd = labelStart + t.label.length * 8
+      if (!(dx < labelEnd && chipEnd > labelStart)) return pad
+      // Moved past the badge, unless that runs into the next label: then it is hidden.
+      const moved = Math.max(pad, chipEnd + 6 - t.x)
+      const next = this.bandTicks.find(n => n.x > t.x)
+      return next && t.x + moved + t.label.length * 8 > next.x ? -1 : moved
     },
     ddX(pg: GridPage): number | null {
       return pg.screen ? this.dataDateX : this.printDataDateX
@@ -1338,6 +1379,9 @@ export default defineComponent({
       saveMarkup(this.data.project.proj_short_name, m)
     },
     persistView() {
+      if (!this.printing) {
+        saveProjectZoom(this.data.project.proj_short_name, { zoom: this.zoom, dayWidthOverride: this.dayWidthOverride })
+      }
       saveView({
         zoom: this.zoom,
         criticalBasis: this.criticalBasis,
@@ -1415,7 +1459,8 @@ export default defineComponent({
     },
     fitToWidth() {
       const el = this.$refs.scrollEl as HTMLElement | undefined
-      if (!el) return
+      // Hidden (another tab is open): no width to fit to.
+      if (!el || !el.clientWidth) return
       const availableWidth = Math.max(100, el.clientWidth - this.labelColWidth)
       const totalDays = Math.max(1, (this.rangeEnd.getTime() - this.rangeStart.getTime()) / 86400000)
       this.setDayWidth(availableWidth / totalDays)
