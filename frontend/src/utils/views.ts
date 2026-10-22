@@ -2,9 +2,9 @@
 // expansion, filters, chain trace, overlays, highlight groups), replayed like slides in a
 // review meeting. Kept per project in this browser, like the notes and the markup.
 
-const PREFIX = 'schedule-app:views:'
+import type { WbsKey } from './ganttRows'
 
-export type WbsKey = number | '__unassigned'
+const PREFIX = 'schedule-app:views:'
 
 export interface ViewState {
   zoom: string

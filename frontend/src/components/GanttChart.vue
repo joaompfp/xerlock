@@ -560,17 +560,15 @@
 
 <script lang="ts">
 import { defineComponent, type PropType } from 'vue'
-import type { Activity, Schedule, WbsNode } from '../types/schedule'
+import type { Activity, Schedule } from '../types/schedule'
 import { loadMarkup, saveMarkup, periodSpan, highlightColors, toggleMember, newMarkId, nextColor, MARK_COLORS, type Markup, type MarkColor, type TextBox } from '../utils/markup'
 import GanttMarkupPanel from './GanttMarkupPanel.vue'
 import GanttViewBar from './GanttViewBar.vue'
 import Icon from './Icon.vue'
 import { loadViews, saveViews, completeState, stepView, type SavedView as NamedView, type ViewState } from '../utils/views'
 import { matchesNoteFilter, NOTE_FILTER_LABELS, DEFAULT_CALLOUT, SEVERITY_LABELS, type Annotations, type CalloutOffset, type NoteFilter, type Severity } from '../utils/annotations'
-import { formatDate, formatDateShort, formatHours, isMilestone, formatFloat, formatLag, statusLabel } from '../utils/format'
+import { formatDate, formatDateShort, formatHours, formatFloat, formatLag, statusLabel } from '../utils/format'
 
-const NEAR_CRITICAL_HRS = 80 // 10 working days
-const FLOAT_TAIL_MAX_DAYS = 26
 const STATUS_LABELS: Record<string, string> = { TK_NotStart: 'Not started', TK_Active: 'Active', TK_Complete: 'Complete' }
 import fullscreenMixin from '../mixins/fullscreen'
 import { relTypeLabel, cstrLabel, displayStart, displayEnd, CSTR_LABELS, CONSTRAINT_FILTER_GROUPS, constraintTypesOf, matchesConstraintFilter, constraintFilterLabel } from '../utils/p6'
@@ -583,6 +581,11 @@ import {
   rowsPerPrintPage, printPageRanges, zoomForDayWidth,
   type Tick,
 } from '../utils/ganttGeometry'
+import {
+  type WbsKey, type CriticalBasis, type Rollup, type WbsRow, type ActivityRow, type Row,
+  activitiesByWbs, computeRollups, wbsParentMap, allWbsKeys, wbsNodesByLevel, initialExpanded,
+  isBasisCritical, floatClass, buildActivityRow, buildRows, rowIndexByTaskId, buildLinks, progressPoints,
+} from '../utils/ganttRows'
 import IconChevron from './IconChevron.vue'
 import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
 
@@ -601,7 +604,6 @@ function paperUsableWidthPx(key: string): number {
 }
 const VIEW_STORAGE_KEY = 'schedule-app:gantt-view'
 
-type CriticalBasis = 'tf0' | 'longest'
 type LinksScope = 'critical' | 'all'
 
 /** View settings persisted to localStorage. */
@@ -617,9 +619,6 @@ interface SavedView {
   dayWidthOverride?: number | null
   printPaperSize?: string
 }
-
-/** WBS ids, plus the synthetic group holding activities with no known WBS. */
-type WbsKey = number | '__unassigned'
 
 interface GridPage {
   screen: boolean
@@ -642,38 +641,6 @@ function slipCellOf(d: number, was: string, what: string): SlipCell {
   }
 }
 
-// baseFinish: the latest compared finish of the activities under the node that the
-// compared schedule also has (null without a compared schedule or with none in common).
-interface Rollup { start: Date | null; finish: Date | null; baseFinish: Date | null; count: number }
-
-interface WbsRow {
-  type: 'wbs'
-  key: string
-  wbsId: WbsKey
-  level: number
-  name: string
-  count: number
-  start?: Date | null
-  finish?: Date | null
-  baseFinish?: Date | null
-  index: number
-}
-
-interface ActivityRow {
-  type: 'activity'
-  key: string
-  level: number
-  activity: Activity
-  milestone: boolean
-  x: number
-  w: number
-  tailW: number
-  cls: string
-  index: number
-}
-
-type Row = WbsRow | ActivityRow
-
 interface Callout {
   id: number
   code: string
@@ -685,8 +652,6 @@ interface Callout {
   dx: number
   dy: number
 }
-// Rows before `rows` numbers them.
-type UnindexedRow = Omit<WbsRow, 'index'> | Omit<ActivityRow, 'index'>
 
 /** Drag bookkeeping kept off the reactive state (Vue does not proxy `_`-prefixed data). */
 interface DragState {
@@ -747,12 +712,7 @@ export default defineComponent({
     const days = Math.max(1, (end.getTime() - start.getTime()) / 86400000)
     const autoZoom: Zoom = days > 300 ? 'month' : days > 100 ? 'week' : 'day'
 
-    const expandedWbs = new Set<WbsKey>()
-    const markExpanded = (node: WbsNode, level: number) => {
-      if (level < 1) expandedWbs.add(node.wbs_id)
-      for (const c of node.children || []) markExpanded(c, level + 1)
-    }
-    for (const root of this.data.wbs_tree || []) markExpanded(root, 0)
+    const expandedWbs = initialExpanded(this.data.wbs_tree || [])
 
     return {
       HEADER_HEIGHT,
@@ -869,36 +829,17 @@ export default defineComponent({
       return this.selectedTaskId != null ? this.actLookup.get(this.selectedTaskId) : null
     },
     wbsParentOf(): Map<number, number> {
-      const map = new Map<number, number>()
-      const walk = (node: WbsNode, parentId: number | null) => {
-        if (parentId != null) map.set(node.wbs_id, parentId)
-        for (const c of node.children || []) walk(c, node.wbs_id)
-      }
-      for (const root of this.data.wbs_tree || []) walk(root, null)
-      return map
+      return wbsParentMap(this.data.wbs_tree || [])
     },
     activitiesByWbs(): Map<number, Activity[]> {
-      const map = new Map<number, Activity[]>()
-      for (const a of this.data.activities) {
-        if (!map.has(a.wbs_id)) map.set(a.wbs_id, [])
-        map.get(a.wbs_id)!.push(a)
-      }
-      for (const list of map.values()) {
-        list.sort((a, b) => {
-          const da = displayStart(a) || ''
-          const db = displayStart(b) || ''
-          if (da !== db) return da < db ? -1 : 1
-          return a.task_code < b.task_code ? -1 : a.task_code > b.task_code ? 1 : 0
-        })
-      }
-      return map
+      return activitiesByWbs(this.data.activities)
     },
     rollups(): Map<number, Rollup> {
-      return this.computeRollups(null)
+      return computeRollups(this.data.wbs_tree || [], this.activitiesByWbs, this.baselineByCode, null)
     },
     rollupsFiltered(): Map<number, Rollup> | null {
       const matched = this.matchedTaskIds
-      return matched ? this.computeRollups(a => matched.has(a.task_id)) : null
+      return matched ? computeRollups(this.data.wbs_tree || [], this.activitiesByWbs, this.baselineByCode, a => matched.has(a.task_id)) : null
     },
     activeRollups(): Map<number, Rollup> {
       return this.isFilterActive && this.rollupsFiltered ? this.rollupsFiltered : this.rollups
@@ -1196,108 +1137,34 @@ export default defineComponent({
       return this.matchedTaskIds ? this.matchedTaskIds.size : this.data.activities.length
     },
     rows(): Row[] {
-      const rows: UnindexedRow[] = []
-      const filtering = this.isFilterActive
-      // Non-null whenever `filtering` is true: an active filter always yields a match set.
-      const matched = this.matchedTaskIds as Set<number>
-      const rollups = this.activeRollups
-      const walk = (nodes: WbsNode[], level: number) => {
-        const sorted = [...nodes].sort((a, b) => a.seq_num - b.seq_num)
-        for (const node of sorted) {
-          const roll = rollups.get(node.wbs_id) || { start: null, finish: null, baseFinish: null, count: 0 }
-          if (filtering && roll.count === 0) continue
-          rows.push({
-            type: 'wbs',
-            key: 'w' + node.wbs_id,
-            wbsId: node.wbs_id,
-            level,
-            name: node.wbs_short_name ? `${node.wbs_short_name} ${node.wbs_name}` : node.wbs_name,
-            count: roll.count,
-            start: roll.start,
-            finish: roll.finish,
-            baseFinish: roll.baseFinish,
-          })
-          const expanded = filtering ? !this.filterCollapsed.has(node.wbs_id) : this.expandedWbs.has(node.wbs_id)
-          if (expanded) {
-            walk(node.children || [], level + 1)
-            for (const a of this.activitiesByWbs.get(node.wbs_id) || []) {
-              if (filtering && !matched.has(a.task_id)) continue
-              rows.push(this.buildActivityRow(a, level + 1))
-            }
-          }
-        }
-      }
-      walk(this.data.wbs_tree || [], 0)
-
-      const orphansAll = this.data.activities.filter(a => !this.allWbsIds.has(a.wbs_id))
-      const orphans = filtering ? orphansAll.filter(a => matched.has(a.task_id)) : orphansAll
-      if (orphans.length) {
-        rows.push({ type: 'wbs', key: 'w-unassigned', wbsId: '__unassigned', level: 0, name: '(Unassigned)', count: orphans.length })
-        if (filtering ? !this.filterCollapsed.has('__unassigned') : this.expandedWbs.has('__unassigned')) {
-          for (const a of orphans) rows.push(this.buildActivityRow(a, 1))
-        }
-      }
-
-      rows.forEach((r, i) => { (r as Row).index = i })
-      return rows as Row[]
-    },
-    allWbsIds(): Set<number> {
-      const ids = new Set<number>()
-      const walk = (nodes: WbsNode[]) => {
-        for (const n of nodes) { ids.add(n.wbs_id); walk(n.children || []) }
-      }
-      walk(this.data.wbs_tree || [])
-      return ids
+      return buildRows({
+        tree: this.data.wbs_tree || [],
+        activities: this.data.activities,
+        byWbs: this.activitiesByWbs,
+        rollups: this.activeRollups,
+        // Non-null whenever a filter is active: an active filter always yields a match set.
+        matched: this.isFilterActive ? this.matchedTaskIds : null,
+        isExpanded: id => this._wbsExpanded(id),
+        activityRow: (a, level) => buildActivityRow(a, level, this.dateToX, this.dayWidth, this.criticalBasis),
+      })
     },
     rowIndexByTaskId(): Map<number, number> {
-      const map = new Map<number, number>()
-      this.rows.forEach(r => { if (r.type === 'activity') map.set(r.activity.task_id, r.index) })
-      return map
+      return rowIndexByTaskId(this.rows)
     },
     links(): { id: string; d: string; chain: boolean }[] {
       // Chain tracing draws its links regardless of the Links toggle — they're the point.
       if (!this.showLinks && !this.isolationActive) return []
-      const out: { id: string; d: string; chain: boolean }[] = []
-      const rowByIndex = this.rows
-      for (const row of rowByIndex) {
-        if (row.type !== 'activity') continue
-        // Normal mode: "Critical only" scope draws just critical-to-critical links (per
-        // the selected basis) to keep large schedules legible; "All logic" draws every
-        // relationship. Isolation mode always draws every relationship between traced
-        // activities, with non-critical ones styled as "chain" links.
-        const criticalScope = !this.isolationActive && this.linksScope === 'critical'
-        if (criticalScope && !this.isBasisCritical(row.activity)) continue
-        for (const p of row.activity.predecessors || []) {
-          const predIdx = this.rowIndexByTaskId.get(p.task_id)
-          if (predIdx === undefined) continue
-          const predRow = rowByIndex[predIdx] as ActivityRow // rowIndexByTaskId only indexes activity rows
-          const bothCritical = this.isBasisCritical(row.activity) && this.isBasisCritical(predRow.activity)
-          if (criticalScope && !bothCritical) continue
-          const predX = this.dateToX(displayEnd(predRow.activity))
-          const predY = predIdx * ROW_HEIGHT + ROW_HEIGHT / 2
-          const succX = row.x
-          const succY = row.index * ROW_HEIGHT + ROW_HEIGHT / 2
-          if (predX === null || succX === null) continue
-          const midX = predX + 8
-          out.push({
-            id: `${p.task_id}-${row.activity.task_id}-${p.type}-${out.length}`,
-            d: `M${predX},${predY} L${midX},${predY} L${midX},${succY} L${succX},${succY}`,
-            chain: !bothCritical,
-          })
-        }
-      }
-      return out
+      // Normal mode: "Critical" scope draws just critical-to-critical links (per the
+      // selected basis) to keep large schedules legible; "All" draws every relationship.
+      // Isolation always draws every relationship between traced activities, with
+      // non-critical ones styled as "chain" links.
+      return buildLinks(this.rows, this.rowIndexByTaskId, {
+        criticalOnly: !this.isolationActive && this.linksScope === 'critical',
+        basis: this.criticalBasis, toX: this.dateToX, rowHeight: ROW_HEIGHT,
+      })
     },
     progressLinePoints(): { x: number; y: number }[] {
-      if (!this.showProgressLine) return []
-      const pts: { x: number; y: number }[] = []
-      for (const row of this.rows) {
-        if (row.type !== 'activity' || row.milestone) continue
-        const px = row.x + row.w * (row.activity.pct_complete / 100)
-        const py = row.index * ROW_HEIGHT + ROW_HEIGHT / 2
-        pts.push({ x: px, y: py })
-      }
-      return pts
+      return this.showProgressLine ? progressPoints(this.rows, ROW_HEIGHT) : []
     },
     progressLinePath(): string {
       if (this.progressLinePoints.length < 2) return ''
@@ -1305,83 +1172,15 @@ export default defineComponent({
     },
   },
   methods: {
-    computeRollups(matchFn: ((a: Activity) => boolean) | null): Map<number, Rollup> {
-      const map = new Map<number, Rollup>()
-      const activitiesByWbs = this.activitiesByWbs
-      const baselineByCode = this.baselineByCode
-      const visit = (node: WbsNode): Rollup => {
-        let start: Date | null = null, finish: Date | null = null, baseFinish: Date | null = null, count = 0
-        for (const a of activitiesByWbs.get(node.wbs_id) || []) {
-          if (matchFn && !matchFn(a)) continue
-          count++
-          const b = baselineByCode?.get(a.task_code)
-          const be = b ? displayEnd(b) : null
-          if (be) {
-            const d = new Date(be)
-            if (!baseFinish || d > baseFinish) baseFinish = d
-          }
-          const ds = displayStart(a)
-          const de = displayEnd(a)
-          if (ds) {
-            const d = new Date(ds)
-            if (!start || d < start) start = d
-          }
-          if (de) {
-            const d = new Date(de)
-            if (!finish || d > finish) finish = d
-          }
-        }
-        for (const child of node.children || []) {
-          const r = visit(child)
-          count += r.count
-          if (r.start && (!start || r.start < start)) start = r.start
-          if (r.finish && (!finish || r.finish > finish)) finish = r.finish
-          if (r.baseFinish && (!baseFinish || r.baseFinish > baseFinish)) baseFinish = r.baseFinish
-        }
-        const roll = { start, finish, baseFinish, count }
-        map.set(node.wbs_id, roll)
-        return roll
-      }
-      for (const root of this.data.wbs_tree || []) visit(root)
-      return map
-    },
     dateToX(dateStr: string | null | undefined): number | null {
       return dateToX(dateStr, this.rangeStart, this.dayWidth)
     },
     isBasisCritical(a: Activity): boolean {
-      return this.criticalBasis === 'longest' ? a.is_longest_path : a.is_critical
+      return isBasisCritical(a, this.criticalBasis)
     },
     // The number a reviewer reads most often, now in the grid rather than only in
     // the drawer — same severity bands as the bars.
-    floatCellClass(a: Activity): string {
-      if (a.total_float_hrs == null) return ''
-      if (a.total_float_hrs < 0) return 'fl-neg'
-      if (a.total_float_hrs === 0) return 'fl-crit'
-      if (a.total_float_hrs <= NEAR_CRITICAL_HRS) return 'fl-near'
-      return ''
-    },
-    classifyActivity(a: Activity): string {
-      const base = this.isBasisCritical(a)
-        ? 'critical'
-        : (this.criticalBasis === 'tf0' && a.total_float_hrs != null && a.total_float_hrs > 0 && a.total_float_hrs <= 80 ? 'near' : 'other')
-      // Negative float means the activity is already behind an imposed date — flag it
-      // regardless of critical basis, since that's a property of the activity itself.
-      return a.is_negative_float ? `${base} negative` : base
-    },
-    buildActivityRow(a: Activity, level: number): Omit<ActivityRow, 'index'> {
-      const milestone = isMilestone(a)
-      const x = this.dateToX(displayStart(a))
-      const xEnd = this.dateToX(displayEnd(a))
-      const w = milestone ? 0 : Math.max((xEnd ?? x ?? 0) - (x ?? 0), 3)
-      // Slack drawn as a dashed tail off the bar end: float becomes something you see
-      // in the chart, not a number to look up. Capped so a 200-day tail can't dominate.
-      const tfDays = a.total_float_hrs != null ? a.total_float_hrs / (a.calendar_hrs_per_day || 8) : 0
-      const tailW = tfDays > 0 && tfDays <= FLOAT_TAIL_MAX_DAYS ? Math.round(tfDays * this.dayWidth) : 0
-      return {
-        type: 'activity' as const, key: 'a' + a.task_id, level, activity: a,
-        milestone, x: x ?? 0, w, tailW, cls: this.classifyActivity(a),
-      }
-    },
+    floatCellClass: floatClass,
     wbsBarStyle(row: WbsRow): Record<string, string> {
       if (!row.start || !row.finish) return { display: 'none' }
       const x = this.dateToX(row.start.toISOString())
@@ -1434,29 +1233,12 @@ export default defineComponent({
       else this.expandedWbs.add(wbsId)
       this.expandedWbs = new Set(this.expandedWbs)
     },
-    allWbsIdSet(): Set<WbsKey> {
-      const all = new Set<WbsKey>()
-      const walk = (nodes: WbsNode[]) => {
-        for (const n of nodes) { all.add(n.wbs_id); walk(n.children || []) }
-      }
-      walk(this.data.wbs_tree || [])
-      all.add('__unassigned')
-      return all
-    },
     expandAll() {
       if (this.isFilterActive) {
         this.filterCollapsed = new Set()
         return
       }
-      this.expandedWbs = this.allWbsIdSet()
-    },
-    wbsNodesByLevel(): { id: number; level: number }[] {
-      const out: { id: number; level: number }[] = []
-      const walk = (nodes: WbsNode[], level: number) => {
-        for (const n of nodes) { out.push({ id: n.wbs_id, level }); walk(n.children || [], level + 1) }
-      }
-      walk(this.data.wbs_tree || [], 0)
-      return out
+      this.expandedWbs = allWbsKeys(this.data.wbs_tree || [])
     },
     _wbsExpanded(id: WbsKey): boolean {
       return this.isFilterActive ? !this.filterCollapsed.has(id) : this.expandedWbs.has(id)
@@ -1475,20 +1257,20 @@ export default defineComponent({
     // One level at a time: expand the shallowest collapsed ring / collapse the deepest
     // expanded one — stepping through the hierarchy the way P6's outline levels do.
     expandOneLevel() {
-      const collapsed = this.wbsNodesByLevel().filter(n => !this._wbsExpanded(n.id))
+      const collapsed = wbsNodesByLevel(this.data.wbs_tree || []).filter(n => !this._wbsExpanded(n.id))
       if (!collapsed.length) return
       const lvl = Math.min(...collapsed.map(n => n.level))
       this._setWbsExpanded(collapsed.filter(n => n.level === lvl).map(n => n.id), true)
     },
     collapseOneLevel() {
-      const expanded = this.wbsNodesByLevel().filter(n => this._wbsExpanded(n.id))
+      const expanded = wbsNodesByLevel(this.data.wbs_tree || []).filter(n => this._wbsExpanded(n.id))
       if (!expanded.length) return
       const lvl = Math.max(...expanded.map(n => n.level))
       this._setWbsExpanded(expanded.filter(n => n.level === lvl).map(n => n.id), false)
     },
     collapseAll() {
       if (this.isFilterActive) {
-        this.filterCollapsed = this.allWbsIdSet()
+        this.filterCollapsed = allWbsKeys(this.data.wbs_tree || [])
         return
       }
       this.expandedWbs = new Set()
