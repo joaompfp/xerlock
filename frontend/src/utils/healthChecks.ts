@@ -38,6 +38,8 @@ export type HealthConfig = Record<CheckKey, CheckConfig>
 
 export interface CheckResult {
   count: number
+  /** What a percentage check divides by (the activities or links in its scope). */
+  denom: number
   value: number
   pass: boolean
   display: number | string
@@ -404,6 +406,7 @@ export function runChecks(data: ScheduleCore, cfg: HealthConfig) {
     const pass = def.cmp === 'gte' ? value >= c.target : value <= c.target
     results[def.key] = {
       count: r.count,
+      denom: r.denom,
       value,
       pass,
       display: r.displayOverride !== undefined ? r.displayOverride : r.count,
@@ -432,6 +435,21 @@ export function weightedScore(results: Record<CheckKey, CheckResult>, cfg: Healt
     if (results[d.key].pass) wPass += w
   }
   return wTotal ? Math.round((100 * wPass) / wTotal) : 100
+}
+
+/** What each included check is worth in the score: its weight, its share of 100 points,
+ *  and the points it costs when it fails. The headline score is 100 minus the points
+ *  lost, rounded, so a reviewer can rebuild it from the cards. */
+export interface ScoreShare { key: CheckKey; weight: number; points: number; lost: number }
+
+export function scoreBreakdown(results: Record<CheckKey, CheckResult>, cfg: HealthConfig): ScoreShare[] {
+  const included = CHECK_DEFS.filter(d => results[d.key].included)
+  const wTotal = included.reduce((t, d) => t + Math.max(0, cfg[d.key].weight || 0), 0)
+  return included.map(d => {
+    const weight = Math.max(0, cfg[d.key].weight || 0)
+    const points = wTotal ? (100 * weight) / wTotal : 0
+    return { key: d.key, weight, points, lost: results[d.key].pass ? 0 : points }
+  })
 }
 
 // ── The reviewer's targets and weights, kept in this browser ─────────────────

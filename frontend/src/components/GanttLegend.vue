@@ -5,19 +5,14 @@
     <div class="sb-legend" :class="{ 'legend-inline': inline }">
       <div class="sb-legend-title">Legend</div>
       <div class="legend">
-        <template v-if="basis === 'tf0'">
-          <span class="legend-item"><i class="lg-bar lg-critical"></i>Critical (TF&le;0)</span>
-          <span class="legend-item"><i class="lg-bar lg-near"></i>Near-critical</span>
-          <span class="legend-item"><i class="lg-bar lg-normal"></i>Normal</span>
-        </template>
-        <template v-else>
-          <span class="legend-item"><i class="lg-bar lg-critical"></i>On longest path</span>
-          <span class="legend-item"><i class="lg-bar lg-normal"></i>Normal</span>
-        </template>
-        <span class="legend-item"><i class="lg-bar lg-negative"></i>Negative float</span>
-        <span class="legend-item"><i class="diamond"></i>Milestone</span>
+        <!-- Only the states the chart is showing: a key to this file, not a catalogue. -->
+        <span v-if="states.has('critical')" class="legend-item"><i class="lg-bar lg-critical"></i>{{ basis === 'tf0' ? 'Critical (TF≤0)' : 'On longest path' }}</span>
+        <span v-if="states.has('near')" class="legend-item"><i class="lg-bar lg-near"></i>Near-critical</span>
+        <span v-if="states.has('other')" class="legend-item"><i class="lg-bar lg-normal"></i>Normal</span>
+        <span v-if="states.has('negative')" class="legend-item"><i class="lg-bar lg-negative"></i>Negative float</span>
+        <span v-if="states.has('milestone')" class="legend-item"><i class="diamond"></i>Milestone</span>
         <span class="legend-item"><i class="bar-wbs"></i>WBS rollup</span>
-        <span class="legend-item" v-if="baseline"><i class="lg-bar lg-ghost"></i>Baseline</span>
+        <span class="legend-item" v-if="baseline"><i class="lg-bar lg-ghost"></i>Earlier file</span>
       </div>
     </div>
   </Teleport>
@@ -37,6 +32,8 @@ export default defineComponent({
     basis: { type: String as PropType<CriticalBasis>, required: true },
     /** Compared-schedule bars are drawn. */
     baseline: { type: Boolean, default: false },
+    /** The bar states among the activities shown: critical, near, other, negative, milestone. */
+    states: { type: Object as PropType<Set<string>>, required: true },
   },
 })
 </script>

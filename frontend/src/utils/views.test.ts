@@ -65,3 +65,17 @@ describe('filter ⇄ view', () => {
     expect(filterFromView(s, ['Area', 'Phase'])).toEqual({ ...f, codes: { Area: 'North', Phase: '' } })
   })
 })
+
+describe('project zoom', () => {
+  it('is remembered per project and null for a new one', async () => {
+    const mem = new Map<string, string>()
+    globalThis.localStorage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => { mem.set(k, v) } } as Storage
+    const { loadProjectZoom, saveProjectZoom } = await import('./views')
+    expect(loadProjectZoom('A')).toBeNull()
+    saveProjectZoom('A', { zoom: 'week', dayWidthOverride: 4.2 })
+    expect(loadProjectZoom('A')).toEqual({ zoom: 'week', dayWidthOverride: 4.2 })
+    expect(loadProjectZoom('B')).toBeNull()
+    mem.set('schedule-app:gantt-zoom:C', '{"zoom":3}')
+    expect(loadProjectZoom('C')).toBeNull()
+  })
+})

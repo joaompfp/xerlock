@@ -8,32 +8,39 @@
     </div>
 
     <!-- Headline verdict: the so-what before any table -->
-    <div v-if="finishDelta !== null" class="cmp-verdict" :class="finishDelta > 0 ? 'v-slip' : finishDelta < 0 ? 'v-gain' : 'v-hold'">
+    <!-- Neutral words for the move; green only when the finish came in AND the logic that
+         drove it largely survived. When the programme was re-sequenced, an earlier finish
+         is a re-plan, not recovered time, and the banner says so beside the number. -->
+    <div v-if="finishDelta !== null" class="cmp-verdict" :class="verdictClass">
       <div class="verdict-main">
         <span class="verdict-label">Project finish</span>
         <span class="verdict-dates">{{ formatDate(baseline.project.latest_end) }} <span class="verdict-arrow">→</span> {{ formatDate(current.project.latest_end) }}</span>
         <span class="verdict-delta">{{ finishDelta > 0 ? '+' : '' }}{{ finishDelta }}d</span>
-        <span class="verdict-word">{{ finishDelta > 0 ? 'slipped' : finishDelta < 0 ? 'gained' : 'held' }}</span>
+        <span class="verdict-word">{{ finishDelta > 0 ? 'later' : finishDelta < 0 ? 'earlier' : 'unchanged' }}</span>
+        <span v-for="c in replanChips" :key="c" class="verdict-chip">{{ c }}</span>
       </div>
       <div class="verdict-sub">
-        <template v-if="ddAdvance !== null">Data date advanced {{ ddAdvance }}d ({{ formatDate(baseline.project.data_date) }} → {{ formatDate(current.project.data_date) }}) &middot; </template>
+        <template v-if="ddAdvance === 0">Data date unchanged ({{ formatDate(current.project.data_date) }}) &middot; </template>
+        <template v-else-if="ddAdvance !== null">Data date {{ ddAdvance > 0 ? 'advanced' : 'moved back' }} {{ Math.abs(ddAdvance) }}d ({{ formatDate(baseline.project.data_date) }} → {{ formatDate(current.project.data_date) }}) &middot; </template>
         {{ dateChanges.length }} finish date{{ dateChanges.length === 1 ? '' : 's' }} moved &middot; {{ durationChanges.length }} duration edit{{ durationChanges.length === 1 ? '' : 's' }}
       </div>
     </div>
 
+    <!-- Counts read in a neutral ink; only the longest-path figure carries colour, so the
+         alarm, when there is one, has one place to point. Each card states its rule. -->
     <div class="scorecard">
-      <div class="score-item"><div class="score-count">{{ matched.length }}</div><div class="score-label">Matched</div></div>
-      <div class="score-item" :class="{ fail: added.length > 0 }"><div class="score-count">{{ added.length }}</div><div class="score-label">Added</div></div>
-      <div class="score-item" :class="{ fail: removed.length > 0 }"><div class="score-count">{{ removed.length }}</div><div class="score-label">Removed</div></div>
-      <div class="score-item" :class="stability.pct === 100 ? 'pass' : 'fail'"><div class="score-count">{{ stability.pct }}%</div><div class="score-label">Critical Path Stability</div></div>
-      <div class="score-item" :class="{ fail: durationChanges.length > 0 }"><div class="score-count">{{ durationChanges.length }}</div><div class="score-label">Duration Changes</div></div>
-      <div class="score-item" :class="{ fail: floatErosion.length > 0 }"><div class="score-count">{{ floatErosion.length }}</div><div class="score-label">Float Erosion</div></div>
-      <div class="score-item" :class="{ fail: logicChanges.length > 0 }"><div class="score-count">{{ logicChanges.length }}</div><div class="score-label">Logic Changes</div></div>
+      <div class="score-item" title="Activities present in both files, by activity code"><div class="score-count">{{ matched.length }}</div><div class="score-label">Matched</div></div>
+      <div class="score-item" title="Activity codes only in the current file"><div class="score-count">{{ added.length }}</div><div class="score-label">Added</div></div>
+      <div class="score-item" title="Activity codes only in the earlier file"><div class="score-count">{{ removed.length }}</div><div class="score-label">Removed</div></div>
+      <div class="score-item" :class="stabilityClass" :title="`Of the ${stability.baseCount} activities on the earlier file's longest path, ${stability.retained} are on the current one (both computed the same way, from each file's own flags)`"><div class="score-count">{{ stability.retained }}<small>/{{ stability.baseCount }}</small></div><div class="score-label">Longest path kept</div></div>
+      <div class="score-item" title="Matched activities whose original duration was edited"><div class="score-count">{{ durationChanges.length }}</div><div class="score-label">Duration edits</div></div>
+      <div class="score-item" title="Matched activities whose total float fell by one working day or more (on the activity's own calendar)"><div class="score-count">{{ floatErosion.length }}</div><div class="score-label">Float down ≥ 1d</div></div>
+      <div class="score-item" :title="`Matched activities whose predecessor links changed: ${linkTotals.added} links added, ${linkTotals.removed} removed`"><div class="score-count">{{ logicChanges.length }}</div><div class="score-label">Logic edited <span class="score-sub">+{{ linkTotals.added }} / −{{ linkTotals.removed }} links</span></div></div>
     </div>
     <p class="stability-note">
-      {{ stability.retained }} of {{ stability.baseCount }} longest-path activities retained &middot;
-      {{ stability.newlyCritical }} newly critical &middot; {{ stability.dropped }} dropped from longest path
-      <span v-if="stability.driverChanged"> &middot; the finish-driving activity changed</span>
+      {{ stability.retained }} of the {{ stability.baseCount }} activities on the earlier file's longest path are still on it ({{ stability.pct }}%) &middot;
+      {{ stability.newlyCritical }} joined it &middot; {{ stability.dropped }} left it
+      <span v-if="stability.driverChanged"> &middot; the activity driving the finish changed</span>
     </p>
 
     <div class="cmp-side-by-side">
@@ -41,7 +48,7 @@
     <section class="compare-section" v-if="milestoneMoves.length">
       <button class="section-head" @click="toggle('milestones')">
         <span class="section-title">Milestone Movement <em>({{ milestoneMoves.filter(m => m.delta !== 0).length }})</em></span>
-        <span class="section-hint">Baseline &rarr; current date per milestone — the exhibit that goes in front of the client</span>
+        <span class="section-hint">Earlier &rarr; current date per milestone — the exhibit that goes in front of the client</span>
         <span class="chevron" :class="{ open: expanded.milestones }">&rsaquo;</span>
       </button>
       <div v-if="expanded.milestones" class="section-body">
@@ -50,14 +57,14 @@
             <span class="db-label"><span class="code">{{ m.code }}</span> {{ m.cur.task_name }}</span>
             <div class="db-track">
               <div v-if="m.delta !== 0" class="db-join" :class="m.delta > 0 ? 'db-slip' : 'db-gain'" :style="{ left: Math.min(m.baseX, m.curX) + '%', width: Math.abs(m.curX - m.baseX) + '%' }"></div>
-              <span class="db-dot db-base" :style="{ left: m.baseX + '%' }" :title="'Baseline: ' + formatDate(m.baseDate)"></span>
+              <span class="db-dot db-base" :style="{ left: m.baseX + '%' }" :title="'Earlier file: ' + formatDate(m.baseDate)"></span>
               <span class="db-dot db-cur" :class="m.delta > 0 ? 'db-slip' : m.delta < 0 ? 'db-gain' : 'db-hold'" :style="{ left: m.curX + '%' }" :title="'Current: ' + formatDate(m.curDate)"></span>
             </div>
             <span class="db-delta" :class="m.delta > 0 ? 'lag-neg' : m.delta < 0 ? 'lag-pos' : 'db-zero'">{{ m.delta > 0 ? '+' : '' }}{{ m.delta }}d</span>
           </div>
           <div class="db-axis">
             <span>{{ formatDate(msDomain.min) }}</span>
-            <span class="db-axis-legend"><span class="db-dot db-base db-inline"></span> baseline &nbsp; <span class="db-dot db-cur db-slip db-inline"></span> current</span>
+            <span class="db-axis-legend"><span class="db-dot db-base db-inline"></span> earlier &nbsp; <span class="db-dot db-cur db-slip db-inline"></span> current</span>
             <span>{{ formatDate(msDomain.max) }}</span>
           </div>
         </div>
@@ -95,13 +102,13 @@
     <section class="compare-section">
       <button class="section-head" @click="toggle('dates')">
         <span class="section-title">Date Changes <em>({{ dateChanges.length }})</em></span>
-        <span class="section-hint">Activities whose finish date moved since the baseline</span>
+        <span class="section-hint">Activities whose finish date moved since the earlier file</span>
         <span class="chevron" :class="{ open: expanded.dates }">&rsaquo;</span>
       </button>
       <div v-if="expanded.dates" class="section-body">
         <div v-if="dateChanges.length === 0" class="empty-state">No finish-date changes.</div>
         <table v-else class="compare-table">
-          <thead><tr><th>Code</th><th>Activity</th><th class="num">Baseline Finish</th><th class="num">Current Finish</th><th class="num">Change</th></tr></thead>
+          <thead><tr><th>Code</th><th>Activity</th><th class="num">Earlier Finish</th><th class="num">Current Finish</th><th class="num">Change</th></tr></thead>
           <tbody>
             <tr v-for="d in dateChanges" :key="d.code" class="jump-row" title="Show in Gantt" @click="$emit('jump', d.cur.task_id)">
               <td class="code">{{ d.code }}</td>
@@ -119,13 +126,13 @@
     <section class="compare-section">
       <button class="section-head" @click="toggle('durations')">
         <span class="section-title">Duration Changes <em>({{ durationChanges.length }})</em></span>
-        <span class="section-hint">Activities whose original duration was edited since the baseline</span>
+        <span class="section-hint">Activities whose original duration was edited since the earlier file</span>
         <span class="chevron" :class="{ open: expanded.durations }">&rsaquo;</span>
       </button>
       <div v-if="expanded.durations" class="section-body">
         <div v-if="durationChanges.length === 0" class="empty-state">No duration changes.</div>
         <table v-else class="compare-table">
-          <thead><tr><th>Code</th><th>Activity</th><th class="num">Baseline Dur</th><th class="num">Current Dur</th><th class="num">Change</th></tr></thead>
+          <thead><tr><th>Code</th><th>Activity</th><th class="num">Earlier Dur</th><th class="num">Current Dur</th><th class="num">Change</th></tr></thead>
           <tbody>
             <tr v-for="d in durationChanges" :key="d.code" class="jump-row" title="Show in Gantt" @click="$emit('jump', d.cur.task_id)">
               <td class="code">{{ d.code }}</td>
@@ -143,13 +150,13 @@
     <section class="compare-section">
       <button class="section-head" @click="toggle('actuals')">
         <span class="section-title">Actual Dates Changed <em>({{ actualChanges.length }})</em></span>
-        <span class="section-hint">Actuals reported in the baseline that moved or disappeared — recorded history should not change between updates</span>
+        <span class="section-hint">Actuals reported in the earlier file that moved or disappeared — recorded history should not change between updates</span>
         <span class="chevron" :class="{ open: expanded.actuals }">&rsaquo;</span>
       </button>
       <div v-if="expanded.actuals" class="section-body">
-        <div v-if="actualChanges.length === 0" class="empty-state">✓ Every actual date in the baseline is unchanged.</div>
+        <div v-if="actualChanges.length === 0" class="empty-state">✓ Every actual date in the earlier file is unchanged.</div>
         <table v-else class="compare-table">
-          <thead><tr><th>Code</th><th>Activity</th><th>Field</th><th class="num">Baseline</th><th class="num">Current</th></tr></thead>
+          <thead><tr><th>Code</th><th>Activity</th><th>Field</th><th class="num">Earlier</th><th class="num">Current</th></tr></thead>
           <tbody>
             <template v-for="d in actualChanges" :key="d.code">
               <tr v-for="c in d.changes" :key="d.code + c.label" class="jump-row" title="Show in Gantt" @click="$emit('jump', d.cur.task_id)">
@@ -175,7 +182,7 @@
       <div v-if="expanded.constraints" class="section-body">
         <div v-if="constraintChanges.length === 0" class="empty-state">✓ No constraint changed.</div>
         <table v-else class="compare-table">
-          <thead><tr><th>Code</th><th>Activity</th><th>Baseline</th><th>Current</th></tr></thead>
+          <thead><tr><th>Code</th><th>Activity</th><th>Earlier</th><th>Current</th></tr></thead>
           <tbody>
             <tr v-for="d in constraintChanges" :key="d.code" class="jump-row" title="Show in Gantt" @click="$emit('jump', d.cur.task_id)">
               <td class="code">{{ d.code }}</td>
@@ -192,13 +199,13 @@
     <section class="compare-section">
       <button class="section-head" @click="toggle('float')">
         <span class="section-title">Float Erosion <em>({{ floatErosion.length }})</em></span>
-        <span class="section-hint">Activities where total float got worse since the baseline</span>
+        <span class="section-hint">Activities whose total float fell by one working day or more since the earlier file</span>
         <span class="chevron" :class="{ open: expanded.float }">&rsaquo;</span>
       </button>
       <div v-if="expanded.float" class="section-body">
         <div v-if="floatErosion.length === 0" class="empty-state">No float erosion.</div>
         <table v-else class="compare-table">
-          <thead><tr><th>Code</th><th>Activity</th><th class="num">Baseline Float</th><th class="num">Current Float</th><th class="num">Change</th></tr></thead>
+          <thead><tr><th>Code</th><th>Activity</th><th class="num">Earlier Float</th><th class="num">Current Float</th><th class="num">Change</th></tr></thead>
           <tbody>
             <tr v-for="d in floatErosion" :key="d.code" class="jump-row" title="Show in Gantt" @click="$emit('jump', d.cur.task_id)">
               <td class="code">{{ d.code }}</td>
@@ -252,7 +259,7 @@
     <section class="compare-section">
       <button class="section-head" @click="toggle('logic')">
         <span class="section-title">Logic Changes <em>({{ logicChanges.length }})</em></span>
-        <span class="section-hint">Activities with added or removed predecessor links since the baseline</span>
+        <span class="section-hint">Activities with added or removed predecessor links since the earlier file</span>
         <span class="chevron" :class="{ open: expanded.logic }">&rsaquo;</span>
       </button>
       <div v-if="expanded.logic" class="section-body">
@@ -315,7 +322,7 @@
 import { defineComponent, type PropType } from 'vue'
 import { formatDate, formatFloat, formatHours, formatLag } from '../utils/format'
 import { REL_TYPE_LABELS, cstrLabel, displayStart, displayEnd } from '../utils/p6'
-import { actualDateChanges, constraintChanges, finishSlipDays, type ActualChange, type MatchedPair } from '../utils/compareChecks'
+import { actualDateChanges, constraintChanges, finishSlipDays, finishVerdict, type ActualChange, type FinishVerdict, type MatchedPair } from '../utils/compareChecks'
 import type { Activity, Schedule } from '../types/schedule'
 
 type SectionKey = 'milestones' | 'tornado' | 'dates' | 'durations' | 'actuals' | 'constraints' | 'float' | 'critical' | 'logic' | 'addrem'
@@ -445,7 +452,10 @@ export default defineComponent({
     },
     floatErosion(): (MatchedPair & { delta: number })[] {
       return this.matched
-        .filter(d => d.cur.total_float_hrs != null && d.base.total_float_hrs != null && d.cur.total_float_hrs < d.base.total_float_hrs)
+        // A loss of at least one working day on the activity's calendar: smaller moves are
+        // rounding in the export, not erosion anyone would act on.
+        .filter(d => d.cur.total_float_hrs != null && d.base.total_float_hrs != null
+          && d.base.total_float_hrs - d.cur.total_float_hrs >= (d.cur.calendar_hrs_per_day || 8))
         .map(d => ({ ...d, delta: Math.round((d.cur.total_float_hrs! - d.base.total_float_hrs!) * 10) / 10 }))
         .sort((a, b) => a.delta - b.delta)
     },
@@ -476,6 +486,24 @@ export default defineComponent({
         if (added.length || removed.length) out.push({ ...d, added, removed })
       }
       return out
+    },
+    linkTotals(): { added: number; removed: number } {
+      let added = 0, removed = 0
+      for (const d of this.logicChanges) { added += d.added.length; removed += d.removed.length }
+      return { added, removed }
+    },
+    verdict(): FinishVerdict {
+      return finishVerdict(this.finishDelta ?? 0, this.stability, this.ddAdvance)
+    },
+    replanChips(): string[] {
+      return this.verdict.chips
+    },
+    verdictClass(): string {
+      return this.verdict.cls
+    },
+    stabilityClass(): string {
+      if (!this.stability.baseCount) return ''
+      return this.stability.pct < 50 ? 'fail' : this.stability.pct < 90 ? 'warn' : 'pass'
     },
     stability(): { pct: number; retained: number; baseCount: number; newlyCritical: number; dropped: number; driverChanged: boolean | string | null } {
       const baseLongest = new Set(this.baseline.activities.filter(a => a.is_longest_path).map(a => a.task_code))
@@ -518,6 +546,9 @@ export default defineComponent({
 .score-item { flex: 1; min-width: 110px; background: var(--white); padding: var(--space-3); text-align: center; }
 .score-item.pass .score-count { color: var(--ok); }
 .score-item.fail .score-count { color: var(--crit); }
+.score-item.warn .score-count { color: var(--near); }
+.score-count small { font-size: 14px; font-weight: 600; color: var(--ink-3); }
+.score-sub { display: block; text-transform: none; letter-spacing: 0; font-family: var(--font-mono); color: var(--ink-3); margin-top: 2px; }
 .score-count { font-family: var(--font-mono); font-size: 23px; font-weight: 700; }
 .score-label { font: var(--text-micro); color: var(--gray-700); text-transform: uppercase; letter-spacing: 0.03em; }
 .stability-note { font: var(--text-small); color: var(--gray-700); padding: var(--space-2) var(--space-4); margin: 0; background: var(--gray-100); border-bottom: 1px solid var(--gray-300); }
@@ -559,6 +590,7 @@ export default defineComponent({
 .v-gain .verdict-delta, .v-gain .verdict-word { color: var(--ok); }
 .v-hold .verdict-delta, .v-hold .verdict-word { color: var(--gray-700); }
 .verdict-word { font-weight: 700; }
+.verdict-chip { font: var(--text-small); font-weight: 600; color: var(--ink); background: var(--panel); border: 1px solid var(--gray-300); border-radius: 12px; padding: 1px 9px; }
 .verdict-sub { font: var(--text-small); color: var(--gray-700); margin-top: 2px; }
 
 /* Milestone dumbbells */

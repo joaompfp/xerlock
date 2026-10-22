@@ -101,3 +101,29 @@ export function filterFromView(s: ViewState, codeTypes: string[] | null | undefi
     codes: Object.fromEntries((codeTypes || []).map(t => [t, s.filterCodes[t] || ''])),
   }
 }
+
+// ── The zoom a project was last looked at ───────────────────────────────────
+
+const ZOOM_PREFIX = 'schedule-app:gantt-zoom:'
+
+export interface ProjectZoom { zoom: string; dayWidthOverride: number | null }
+
+/** The zoom this project was last shown at, or null for a project not seen before (the
+ *  chart then fits the whole programme to the width). */
+export function loadProjectZoom(projectKey: string | null | undefined): ProjectZoom | null {
+  try {
+    const raw = localStorage.getItem(ZOOM_PREFIX + (projectKey || 'default'))
+    const z = raw ? JSON.parse(raw) : null
+    return z && typeof z.zoom === 'string' && (z.dayWidthOverride === null || typeof z.dayWidthOverride === 'number') ? z : null
+  } catch {
+    return null
+  }
+}
+
+export function saveProjectZoom(projectKey: string | null | undefined, z: ProjectZoom): void {
+  try {
+    localStorage.setItem(ZOOM_PREFIX + (projectKey || 'default'), JSON.stringify(z))
+  } catch {
+    // Not remembered: the next open fits the programme again.
+  }
+}

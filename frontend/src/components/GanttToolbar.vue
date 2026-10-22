@@ -41,7 +41,7 @@
       <option value="all">All</option>
     </select>
     <button class="tb-chip" :class="{ on: showProgress }" title="Progress line through the data date" @click="$emit('update:showProgress', !showProgress)"><Icon name="progress" :size="13" />Progress</button>
-    <button v-if="hasBaseline" class="tb-chip" :class="{ on: showBaseline }" title="Outlined bars at each activity's position in the compared schedule" @click="$emit('update:showBaseline', !showBaseline)"><Icon name="baseline" :size="13" />Baseline</button>
+    <button v-if="hasBaseline" class="tb-chip" :class="{ on: showBaseline }" title="Outlined bars at each activity's position in the earlier file loaded in Compare" @click="$emit('update:showBaseline', !showBaseline)"><Icon name="baseline" :size="13" />Compared</button>
     <button v-if="hasBaseline && showBaseline" class="tb-chip" :class="{ on: showSlipArrows }" title="An arrow under each moved activity, from its compared finish to its current one" @click="$emit('update:showSlipArrows', !showSlipArrows)"><Icon name="slip" :size="13" />Slip</button>
 
     <span class="tb-div"></span>
@@ -90,7 +90,7 @@ export default defineComponent({
     showLinks: { type: Boolean, required: true },
     linksScope: { type: String, required: true },
     showProgress: { type: Boolean, required: true },
-    /** A compared schedule is loaded: its Baseline and Slip toggles are offered. */
+    /** A compared schedule is loaded: its Compared and Slip toggles are offered. */
     hasBaseline: { type: Boolean, default: false },
     showBaseline: { type: Boolean, default: true },
     showSlipArrows: { type: Boolean, default: false },
