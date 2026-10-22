@@ -4,6 +4,36 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.10.0] - 2026-10-22
+
+The numbers read first, made defensible (council review, batch A).
+
+### Changed
+- Compare's headline reads the finish move as later, earlier or unchanged, and is
+  green only when the finish came in and the logic that drove it largely survived.
+  A new finish driver, less than half the longest path kept, or a data date that did
+  not move show beside the number. The cards are neutral except "Longest path kept"
+  (e.g. 13/96), each card states its rule, float erosion counts losses of a working
+  day or more, and logic edits show links added and removed. The earlier file is no
+  longer called a baseline; the Gantt's chip for its bars reads "Compared".
+- Health check: each failing card shows its rate and what it is of, the target, its
+  weight and the points it costs, sorted by points lost, under a line naming the
+  biggest losses; the score reads "100 − N points lost". CPLI shows the path length
+  and finish float it comes from.
+- The sidebar leads with the longest path; TF ≤ 0 follows, with what inflates it
+  (negative float, ALAP, open ends) in its tooltip; progress reads "3/24 complete".
+- A project opened for the first time fits the width, then keeps its zoom; the header
+  labels follow any zoom; the data-date badge no longer covers a month label; WBS
+  rows read "24 act."; the filter chip reads "Critical only"; the legend lists only
+  the bar states shown.
+- Progress states the basis of each figure; the planned line reads "Planned (this file)".
+
+### Fixed
+- The last file is kept in IndexedDB, so large files are kept too, and a reload comes
+  back to it; when the browser will not keep it, the landing page says so.
+- Dark mode: search boxes and native controls were white.
+- Critical and milestone rows drew their marker on every cell.
+
 ## [1.9.0] - 2026-10-22
 
 Large programmes. Measured on a 5,040-activity schedule, before and after:
