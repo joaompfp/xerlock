@@ -160,6 +160,9 @@ import type { Activity } from '../types/schedule'
 import type { Annotations } from '../utils/annotations'
 
 const NEAR_CRITICAL_THRESHOLD_HRS = 80 // 10 working days
+
+/** A visible activity's column along the logic, and its place within that column. */
+interface RankedNode { id: number; a: Activity; rank: number; order: number }
 const NODE_WIDTH = 236
 const NODE_HEIGHT = 56
 const DAGRE_RANKSEP = 70 // spacing dagre uses internally, only needed to recover rank index from its output
@@ -384,16 +387,14 @@ export default defineComponent({
     selected(): Activity | null | undefined {
       return this.selectedId != null ? this.actLookup.get(this.selectedId) : null
     },
-    // Runs dagre once to get a correct topological rank + crossing-minimized order,
-    // then re-flows that single wide row into wrapped, alternating-direction rows —
-    // like a snake / wrapped paragraph — so long critical chains stay readable
-    // instead of demanding a mile of horizontal scrolling.
-    layout(): GraphLayout {
+    // Each visible activity's rank (column along the logic) and its order within the
+    // rank, crossing-minimised. Independent of the canvas width, so a resize only
+    // re-flows the rows below and never repeats this.
+    ranked(): { raw: RankedNode[]; edgeMeta: EdgeMeta[] } {
       const g = new dagre.graphlib.Graph()
       g.setGraph({ rankdir: 'LR', nodesep: 20, ranksep: DAGRE_RANKSEP, marginx: 20, marginy: 20 })
       g.setDefaultEdgeLabel(() => ({}))
 
-      const crit = this.criticalIds
       const visible = this.visibleIds
 
       for (const id of visible) {
@@ -417,25 +418,34 @@ export default defineComponent({
 
       dagre.layout(g)
 
-      const raw: { id: number; a: Activity; gx: number; gy: number }[] = []
+      const placed: { id: number; a: Activity; gx: number; gy: number }[] = []
       for (const id of visible) {
         const a = this.actLookup.get(id)
         const gn = g.node(String(id))
         if (!a || !gn) continue
-        raw.push({ id, a, gx: gn.x, gy: gn.y })
+        placed.push({ id, a, gx: gn.x, gy: gn.y })
       }
+      const minGx = placed.length ? Math.min(...placed.map(r => r.gx)) : 0
+      const raw: RankedNode[] = placed.map(r => ({
+        id: r.id, a: r.a, rank: Math.round((r.gx - minGx) / (NODE_WIDTH + DAGRE_RANKSEP)), order: r.gy,
+      }))
+      return { raw, edgeMeta }
+    },
+    // Re-flows the ranked graph's single wide row into wrapped, alternating-direction
+    // rows — like a snake / wrapped paragraph — so long critical chains stay readable
+    // instead of demanding a mile of horizontal scrolling.
+    layout(): GraphLayout {
+      const { raw, edgeMeta } = this.ranked
+      const crit = this.criticalIds
+      const visible = this.visibleIds
       if (raw.length === 0) return { nodes: [], edges: [], width: 400, height: 300 }
 
-      const minGx = Math.min(...raw.map(r => r.gx))
-      const rankOf = (r: { gx: number }) => Math.round((r.gx - minGx) / (NODE_WIDTH + DAGRE_RANKSEP))
-
-      const rankGroups = new Map<number, typeof raw>()
+      const rankGroups = new Map<number, RankedNode[]>()
       for (const r of raw) {
-        const rk = rankOf(r)
-        if (!rankGroups.has(rk)) rankGroups.set(rk, [])
-        rankGroups.get(rk)!.push(r)
+        if (!rankGroups.has(r.rank)) rankGroups.set(r.rank, [])
+        rankGroups.get(r.rank)!.push(r)
       }
-      for (const group of rankGroups.values()) group.sort((x, y) => x.gy - y.gy)
+      for (const group of rankGroups.values()) group.sort((x, y) => x.order - y.order)
 
       const maxRank = Math.max(...rankGroups.keys())
       const ranksPerRow = Math.max(
