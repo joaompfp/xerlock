@@ -3,6 +3,8 @@
 // review meeting. Kept per project in this browser, like the notes and the markup.
 
 import type { WbsKey } from './ganttRows'
+import type { GanttFilter } from './ganttFilter'
+import type { NoteFilter } from './annotations'
 
 const PREFIX = 'schedule-app:views:'
 
@@ -80,4 +82,22 @@ export function stepView(views: SavedView[], currentId: string | null, dir: 1 | 
   const i = views.findIndex(v => v.id === currentId)
   if (i < 0) return views[0]
   return views[i + dir] ?? null
+}
+
+/** The filter as a view stores it (flat fields, kept as they were first saved). */
+export function filterToView(f: GanttFilter): Pick<ViewState, 'filterText' | 'filterStatus' | 'filterConstraint' | 'filterNotes' | 'filterCriticalOnly' | 'filterFrom' | 'filterTo' | 'filterCodes'> {
+  return {
+    filterText: f.text, filterStatus: f.status, filterConstraint: f.constraint, filterNotes: f.notes,
+    filterCriticalOnly: f.criticalOnly, filterFrom: f.from, filterTo: f.to, filterCodes: { ...f.codes },
+  }
+}
+
+/** A view's filter on this file: only its code categories, so one the file no longer
+ *  has is dropped and every category it does have gets an entry. */
+export function filterFromView(s: ViewState, codeTypes: string[] | null | undefined): GanttFilter {
+  return {
+    text: s.filterText, status: s.filterStatus, constraint: s.filterConstraint, notes: s.filterNotes as NoteFilter,
+    criticalOnly: s.filterCriticalOnly, from: s.filterFrom, to: s.filterTo,
+    codes: Object.fromEntries((codeTypes || []).map(t => [t, s.filterCodes[t] || ''])),
+  }
 }

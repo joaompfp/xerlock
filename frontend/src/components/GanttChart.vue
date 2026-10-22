@@ -470,13 +470,13 @@
 <script lang="ts">
 import { defineComponent, type PropType } from 'vue'
 import type { Activity, Schedule } from '../types/schedule'
-import { loadMarkup, saveMarkup, periodSpan, highlightColors, toggleMember, newMarkId, nextColor, MARK_COLORS, type Markup, type MarkColor, type TextBox } from '../utils/markup'
+import { loadMarkup, saveMarkup, highlightColors, toggleMember, newMarkId, nextColor, MARK_COLORS, type Markup, type MarkColor, type TextBox } from '../utils/markup'
 import GanttToolbar, { type WbsAction } from './GanttToolbar.vue'
 import GanttLegend from './GanttLegend.vue'
 import GanttViewBar from './GanttViewBar.vue'
 import GanttFilterBar from './GanttFilterBar.vue'
-import { loadViews, saveViews, completeState, stepView, type SavedView as NamedView, type ViewState } from '../utils/views'
-import { DEFAULT_CALLOUT, SEVERITY_LABELS, type Annotations, type CalloutOffset, type NoteFilter, type Severity } from '../utils/annotations'
+import { loadViews, saveViews, completeState, stepView, filterToView, filterFromView, type SavedView as NamedView, type ViewState } from '../utils/views'
+import { DEFAULT_CALLOUT, SEVERITY_LABELS, type Annotations, type CalloutOffset, type Severity } from '../utils/annotations'
 import { emptyFilter, isFilterSet, matchesFilter, filterChips, emptyFilterHint, type GanttFilter } from '../utils/ganttFilter'
 import { formatDate, formatDateShort, formatHours, formatFloat, formatLag, statusLabel } from '../utils/format'
 
@@ -497,6 +497,10 @@ import {
   isBasisCritical, floatClass, buildActivityRow, buildRows, rowIndexByTaskId, buildLinks, progressPoints,
 } from '../utils/ganttRows'
 import { trackDrag } from '../utils/drag'
+import {
+  keyDateMarks, periodBands, placedTextBoxes, calloutAnchorX, slipArrows, callouts,
+  type KeyDateMark, type PeriodBand, type SlipArrow, type Callout, type CalloutDrag, type TextDrag,
+} from '../utils/ganttOverlays'
 import IconChevron from './IconChevron.vue'
 import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
 
@@ -550,18 +554,6 @@ function slipCellOf(d: number, was: string, what: string): SlipCell {
     cls: d > 0 ? 'slip-late' : d < 0 ? 'slip-early' : '',
     title: d === 0 ? `${what} unchanged (${was})` : `${what} ${d > 0 ? 'later' : 'earlier'} by ${Math.abs(d)} calendar day${Math.abs(d) === 1 ? '' : 's'} (was ${was})`,
   }
-}
-
-interface Callout {
-  id: number
-  code: string
-  note: string
-  severity: Severity | null
-  /** The bar's finish end, in timeline coordinates (row centre). */
-  ax: number
-  ay: number
-  dx: number
-  dy: number
 }
 
 /** Drag bookkeeping kept off the reactive state (Vue does not proxy `_`-prefixed data). */
@@ -647,7 +639,7 @@ export default defineComponent({
       // The view last applied or saved; the select shows it, and ‹ › step from it.
       currentViewId: null as string | null,
       editingTextId: null as string | null,
-      textDrag: null as { id: string; x0: number; y0: number; x: number; y: number } | null,
+      textDrag: null as TextDrag | null,
       selectedTaskId: null as number | null,
       filter: emptyFilter(this.data.project.activity_code_types) as GanttFilter,
       // Chain tracing: null = off; a Set of task_ids = show ONLY these activities.
@@ -659,7 +651,7 @@ export default defineComponent({
       panning: false,
       resizing: false,
       // The callout being dragged, with its offset live until the drop saves it.
-      calloutDrag: null as { id: number; dx0: number; dy0: number; dx: number; dy: number } | null,
+      calloutDrag: null as CalloutDrag | null,
     }
   },
   mounted() {
@@ -850,14 +842,7 @@ export default defineComponent({
       return this.markup.keyDates.length + this.markup.periods.length + this.markup.groups.length + this.markup.texts.length > 0
     },
     textBoxes(): (TextBox & { x: number })[] {
-      const out = []
-      for (const t of this.markup.texts) {
-        const live = this.textDrag?.id === t.id ? this.textDrag : null
-        const x = live ? live.x : this.dateToX(t.at)
-        if (x === null) continue
-        out.push({ ...t, x, y: live ? live.y : t.y })
-      }
-      return out
+      return placedTextBoxes(this.markup.texts, this.dateToX, this.textDrag)
     },
     // Activity code → highlight colour; empty (nothing dimmed) unless a group is on.
     hlColors(): Map<string, MarkColor> {
@@ -872,32 +857,11 @@ export default defineComponent({
       const t = new Date()
       return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
     },
-    // Days are local midnights: a key date's line sits at the start of its day, and a
-    // period's band runs to the end of its last day.
-    markupKeyDates(): { id: string; x: number; label: string; color: MarkColor; title: string }[] {
-      const out = []
-      for (const k of this.markup.keyDates) {
-        const x = this.dateToX(k.date + 'T00:00:00')
-        if (x === null || x < 0 || x > this.totalWidth) continue
-        out.push({ id: k.id, x, label: k.label, color: k.color, title: `${k.label || 'Key date'} — ${formatDate(k.date + 'T00:00:00')}` })
-      }
-      return out
+    markupKeyDates(): KeyDateMark[] {
+      return keyDateMarks(this.markup, this.dateToX, this.totalWidth)
     },
-    markupPeriods(): { id: string; x: number; w: number; label: string; color: MarkColor; title: string }[] {
-      const out = []
-      for (const p of this.markup.periods) {
-        const { from, to } = periodSpan(p)
-        const x0 = this.dateToX(from + 'T00:00:00')
-        const xTo = this.dateToX(to + 'T00:00:00')
-        if (x0 === null || xTo === null) continue
-        const x1 = xTo + this.dayWidth
-        const x = Math.max(0, x0)
-        const w = Math.min(this.totalWidth, x1) - x
-        if (w <= 0) continue
-        out.push({ id: p.id, x, w, label: p.label, color: p.color,
-          title: `${p.label || 'Period'} — ${formatDate(from + 'T00:00:00')} to ${formatDate(to + 'T00:00:00')}` })
-      }
-      return out
+    markupPeriods(): PeriodBand[] {
+      return periodBands(this.markup, this.dateToX, this.dayWidth, this.totalWidth)
     },
     codeTypesAvailable(): string[] {
       return this.data.project.has_activity_codes ? this.data.project.activity_code_types : []
@@ -1228,9 +1192,7 @@ export default defineComponent({
         zoom: this.zoom, dayWidthOverride: this.dayWidthOverride, criticalBasis: this.criticalBasis,
         showLinks: this.showLinks, linksScope: this.linksScope, showProgressLine: this.showProgressLine,
         showBaseline: this.showBaseline, showMarkup: this.showMarkup, showSlipArrows: this.showSlipArrows,
-        filterText: this.filter.text, filterStatus: this.filter.status, filterConstraint: this.filter.constraint,
-        filterNotes: this.filter.notes, filterCriticalOnly: this.filter.criticalOnly,
-        filterFrom: this.filter.from, filterTo: this.filter.to, filterCodes: { ...this.filter.codes },
+        ...filterToView(this.filter),
         isolatedCodes: this.isolatedIds ? [...this.isolatedIds].map(codeOf).filter((c): c is string => !!c) : null,
         expandedWbs: [...this.expandedWbs], filterCollapsed: [...this.filterCollapsed],
         groupsOn: this.markup.groups.filter(g => g.on).map(g => g.id),
@@ -1251,12 +1213,7 @@ export default defineComponent({
       this.showBaseline = s.showBaseline
       this.showMarkup = s.showMarkup
       this.showSlipArrows = s.showSlipArrows
-      this.filter = {
-        text: s.filterText, status: s.filterStatus, constraint: s.filterConstraint, notes: s.filterNotes as NoteFilter,
-        criticalOnly: s.filterCriticalOnly, from: s.filterFrom, to: s.filterTo,
-        // Only this file's code categories: a category that no longer exists is dropped.
-        codes: Object.fromEntries((this.data.project.activity_code_types || []).map(t => [t, s.filterCodes[t] || ''])),
-      }
+      this.filter = filterFromView(s, this.data.project.activity_code_types)
       if (s.isolatedCodes) {
         const want = new Set(s.isolatedCodes)
         this.isolatedIds = new Set(this.data.activities.filter(a => want.has(a.task_code)).map(a => a.task_id))
@@ -1462,41 +1419,14 @@ export default defineComponent({
       this.scrollTopPx = target.scrollTop
     },
     // ── Note callouts ────────────────────────────────────────────────────
-    calloutAnchorX(row: ActivityRow): number {
-      return row.milestone ? row.x + 7 : row.x + row.w
-    },
-    // Finish movement against the compared schedule, drawn just under the bar. Only rows
-    // that moved by at least a calendar day, so a steady programme draws nothing.
-    slipArrowsOf(pg: GridPage): { id: number; x1: number; x2: number; y: number; late: boolean }[] {
+    calloutAnchorX,
+    slipArrowsOf(pg: GridPage): SlipArrow[] {
       if (!this.showSlip || !this.showSlipArrows || !this.baselineByCode) return []
-      const out = []
-      for (const row of pg.rows) {
-        if (row.type !== 'activity') continue
-        const b = this.baselineByCode.get(row.activity.task_code)
-        const d = b ? finishSlipDays(row.activity, b) : null
-        if (!b || !d) continue
-        const x1 = this.dateToX(displayEnd(b))
-        const x2 = this.dateToX(displayEnd(row.activity))
-        if (x1 === null || x2 === null) continue
-        out.push({ id: row.activity.task_id, x1, x2, y: row.index * ROW_HEIGHT + 24, late: d > 0 })
-      }
-      return out
+      return slipArrows(pg.rows, this.baselineByCode, this.dateToX, ROW_HEIGHT)
     },
+    // Callouts are screen-only: on paper a note is a numbered marker (printNotes).
     calloutsOf(pg: GridPage): Callout[] {
-      const out: Callout[] = []
-      if (!pg.screen) return out
-      for (const row of pg.rows) {
-        if (row.type !== 'activity') continue
-        const a = this.annotations[row.activity.task_id]
-        if (!a?.callout) continue
-        const live = this.calloutDrag?.id === row.activity.task_id ? this.calloutDrag : a.callout
-        out.push({
-          id: row.activity.task_id, code: row.activity.task_code, note: a.note, severity: a.severity,
-          ax: this.calloutAnchorX(row) + 7, ay: row.index * ROW_HEIGHT + ROW_HEIGHT / 2,
-          dx: live.dx, dy: live.dy,
-        })
-      }
-      return out
+      return pg.screen ? callouts(pg.rows, this.annotations, this.calloutDrag, ROW_HEIGHT) : []
     },
     toggleCallout(taskId: number) {
       const open = !!this.annotations[taskId]?.callout

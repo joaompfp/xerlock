@@ -56,3 +56,12 @@ describe('stepView', () => {
     expect(stepView([], null, 1)).toBeNull()
   })
 })
+
+describe('filter ⇄ view', () => {
+  it('round-trips and keeps only the file\'s code categories', async () => {
+    const { filterToView, filterFromView } = await import('./views')
+    const f = { text: 'EW', status: 'TK_Active', constraint: 'hard', notes: 'any' as const, criticalOnly: true, from: '2026-01-01', to: '', codes: { Area: 'North' } }
+    const s = state({ ...filterToView(f), filterCodes: { Area: 'North', Gone: 'x' } })
+    expect(filterFromView(s, ['Area', 'Phase'])).toEqual({ ...f, codes: { Area: 'North', Phase: '' } })
+  })
+})
