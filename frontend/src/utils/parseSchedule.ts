@@ -15,12 +15,13 @@ export const PARSER_MODE: ParserMode = import.meta.env.VITE_PARSER === 'local' ?
 /** Progress text for the loading state, when the parser can report it. */
 export type OnStage = (message: string) => void
 
-export async function parseSchedule(file: File, onStage?: OnStage): Promise<Schedule> {
+/** `project`: which project of a multi-project .xer to read (by default the largest). */
+export async function parseSchedule(file: File, onStage?: OnStage, project?: number): Promise<Schedule> {
   if (PARSER_MODE === 'local') {
     const { parseLocally } = await import('./localParser')
-    return parseLocally(file, onStage)
+    return parseLocally(file, onStage, project)
   }
-  return parseOnServer(file, onStage)
+  return parseOnServer(file, onStage, project)
 }
 
 /** In standalone mode, begin loading the in-browser parser before a file is chosen. */
@@ -30,10 +31,11 @@ export function prepareParser(): void {
 
 // XMLHttpRequest rather than fetch: it reports upload progress, so a large file on a
 // slow link shows how far it has got before the server starts reading it.
-function parseOnServer(file: File, onStage?: OnStage): Promise<Schedule> {
+function parseOnServer(file: File, onStage?: OnStage, project?: number): Promise<Schedule> {
   return new Promise((resolve, reject) => {
     const form = new FormData()
     form.append('file', file)
+    if (project != null) form.append('project', String(project))
     const xhr = new XMLHttpRequest()
     xhr.open('POST', '/api/upload')
     xhr.responseType = 'json'

@@ -258,9 +258,10 @@ def safe_float_or(val, default=999.0):
 
 
 
-def read_xer(filepath: str) -> dict:
+def read_xer(filepath: str, project_id: Optional[int] = None) -> dict:
     """Read a .xer into the neutral intermediate (analysis.build documents its keys):
-    the file's own activities, links, WBS, calendars and options, with nothing derived."""
+    the file's own activities, links, WBS, calendars and options, with nothing derived.
+    `project_id` picks one project of a multi-project file; by default the largest."""
     # One pass over the file: decode as UTF-8 with a Windows-1252 fallback (P6's usual
     # export encoding), split it into its tables, and read everything from those.
     raw_bytes = Path(filepath).read_bytes()
@@ -288,7 +289,13 @@ def read_xer(filepath: str) -> dict:
     # closed phase); taking projects[0] on such a file showed an empty schedule while
     # the real programme sat further down the list.
     counts = [(p, len(tasks_by_proj.get(_int(p.get("proj_id")), []))) for p in projects]
-    project, chosen_count = max(counts, key=lambda pc: pc[1])
+    if project_id is None:
+        project, chosen_count = max(counts, key=lambda pc: pc[1])
+    else:
+        chosen = [(p, n) for p, n in counts if _int(p.get("proj_id")) == project_id]
+        if not chosen:
+            raise ValueError(f"This file has no project with id {project_id}.")
+        project, chosen_count = chosen[0]
     proj_id = _int(project.get("proj_id"))
     proj_short_name = _str(project.get("proj_short_name"))
     warnings = []
@@ -296,9 +303,10 @@ def read_xer(filepath: str) -> dict:
         others = ", ".join(
             f"{_str(p.get('proj_short_name')) or '?'} ({n})" for p, n in counts if p is not project
         )
+        which = "the largest " if project_id is None else ""
         warnings.append(
             f"This file contains {len(projects)} projects — showing "
-            f"'{proj_short_name}', the largest with {chosen_count} activities "
+            f"'{proj_short_name}', {which}with {chosen_count} activities "
             f"(also present: {others})."
         )
 
@@ -452,6 +460,13 @@ def read_xer(filepath: str) -> dict:
         "project": {
             "proj_short_name": proj_short_name,
             "data_date": (project.get("last_recalc_date") or "").strip() or None,
+            "proj_id": proj_id,
+            # Every project in the file, so the reader can switch to another (an embedded
+            # baseline is often one): id, short name, activity count, in file order.
+            "projects_in_file": [
+                {"proj_id": _int(p.get("proj_id")), "proj_short_name": _str(p.get("proj_short_name")) or "?", "activities": n}
+                for p, n in counts
+            ],
             "schedule_options": sched_options,
             "source_format": "xer",
         },
@@ -468,7 +483,7 @@ def read_xer(filepath: str) -> dict:
     }
 
 
-def parse_xer(filepath: str) -> dict:
+def parse_xer(filepath: str, project_id: Optional[int] = None) -> dict:
     """Parse a .xer into the schedule structure the API serves (see main.ScheduleData and
-    frontend/src/types/schedule.ts)."""
-    return analysis.build(read_xer(filepath))
+    frontend/src/types/schedule.ts); `project_id` as in read_xer."""
+    return analysis.build(read_xer(filepath, project_id))

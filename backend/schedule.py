@@ -10,6 +10,7 @@ when such a file arrives).
 """
 
 from pathlib import Path
+from typing import Optional
 
 from backend import mspdi, xer
 
@@ -39,9 +40,10 @@ def detect_format(head: bytes) -> str:
     return "xer"
 
 
-def parse_schedule(filepath: str) -> dict:
+def parse_schedule(filepath: str, project_id: Optional[int] = None) -> dict:
     """Parse a schedule file of any supported format into the structure the API serves.
-    Raises ValueError, with a message meant for the user, when the file is not one."""
+    Raises ValueError, with a message meant for the user, when the file is not one.
+    `project_id` picks a project of a multi-project .xer (other formats hold one)."""
     path = Path(filepath)
     with path.open("rb") as fh:
         head = fh.read(4096)
@@ -54,4 +56,4 @@ def parse_schedule(filepath: str) -> dict:
         except ImportError:
             raise ValueError(MPP_NEEDS_XML)
         return mspdi.parse_mspdi(mpp.to_mspdi(filepath), source_format="mpp")
-    return xer.parse_xer(filepath)
+    return xer.parse_xer(filepath, project_id)

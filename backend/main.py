@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -131,6 +131,9 @@ class ProjectSummary(BaseModel):
     critical_path_test: Optional[dict] = None
     # Which tool wrote the file: xer | mspdi | mpp. The UI names the tool from it.
     source_format: Optional[str] = None
+    # .xer only: this project's id, and every project in the file with its activity count.
+    proj_id: Optional[int] = None
+    projects_in_file: Optional[list] = None
     # Microsoft Project files only (backend/mspdi.py): inactive tasks left out of every
     # population, relationships on summary tasks, Project's own scheduling settings.
     inactive_activities: Optional[int] = None
@@ -169,7 +172,7 @@ def health():
 
 
 @app.post("/api/upload", response_model=ScheduleData)
-async def upload_schedule(file: UploadFile = File(...)):
+async def upload_schedule(file: UploadFile = File(...), project: Optional[int] = Form(None)):
     if not file.filename or not file.filename.lower().endswith(EXTENSIONS):
         if file.filename and file.filename.lower().endswith(".pp"):
             raise HTTPException(400, "Asta Powerproject (.pp) files can't be read. In Powerproject, export the "
@@ -192,7 +195,7 @@ async def upload_schedule(file: UploadFile = File(...)):
     try:
         # In a child process with a time limit (backend/isolate.py), waited for off the
         # event loop, so one upload can neither freeze nor take down the server.
-        data = ScheduleData(**await run_in_threadpool(parse_isolated, tmp_path))
+        data = ScheduleData(**await run_in_threadpool(parse_isolated, tmp_path, project))
     except ValueError as e:
         # The readers' refusals (e.g. "no projects") are written for the user.
         raise HTTPException(422, str(e))

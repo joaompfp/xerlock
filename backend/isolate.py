@@ -67,9 +67,9 @@ def _stage(tb) -> str:
     return stage
 
 
-def _child(conn, fn, arg):
+def _child(conn, fn, args):
     try:
-        conn.send(("ok", fn(arg)))
+        conn.send(("ok", fn(*args)))
     except ValueError as e:
         # The readers' own refusals, written for the user.
         conn.send(("refused", str(e)))
@@ -79,13 +79,15 @@ def _child(conn, fn, arg):
         conn.close()
 
 
-def parse_isolated(path: str, timeout: float = PARSE_TIMEOUT_S, fn=parse_schedule) -> dict:
-    """`fn(path)` (the schedule parser) in a child process. Raises ValueError with the
+def parse_isolated(path: str, project_id=None, timeout: float = PARSE_TIMEOUT_S, fn=parse_schedule) -> dict:
+    """`fn(path, project_id)` (the schedule parser) in a child process; project_id is
+    passed only when given. Raises ValueError with the
     reader's message when the file is refused or the time runs out, and ParseFailed
     when the parse crashes or the child dies."""
     with _slots:
         receive, send = _ctx.Pipe(duplex=False)
-        child = _ctx.Process(target=_child, args=(send, fn, path), daemon=True)
+        args = (path,) if project_id is None else (path, project_id)
+        child = _ctx.Process(target=_child, args=(send, fn, args), daemon=True)
         child.start()
         send.close()
         try:

@@ -212,6 +212,10 @@ export interface ProjectSummary {
   critical_path_test?: CriticalPathTest | null
   /** Normally a SourceFormat; kept open as JSON fixtures and snapshots widen it to string. */
   source_format?: SourceFormat | string
+  /** .xer only: this project's id, and every project in the file (an embedded baseline
+   *  is often one), so another can be opened from the same file. */
+  proj_id?: number | null
+  projects_in_file?: ProjectInFile[] | null
   /** Microsoft Project only: inactive tasks, left out of every population. */
   inactive_activities?: number | null
   summary_links?: SummaryLink[] | null
@@ -266,3 +270,10 @@ export interface Schedule {
 
 /** What the analysis utilities need: the activities and the project summary. */
 export type ScheduleCore = Pick<Schedule, 'project' | 'activities'>
+
+/** One project of a multi-project .xer. */
+export interface ProjectInFile {
+  proj_id: number
+  proj_short_name: string
+  activities: number
+}

@@ -155,6 +155,22 @@
         <div class="views">
       <!-- Parse warnings (multi-project file, suspect encoding, …) — a reviewer must never
            discover these by accident, so they persist until explicitly dismissed. -->
+      <!-- A file with several projects (an embedded baseline, usually): any of them can be
+           opened, from the same file, without choosing it again. -->
+      <div v-if="otherProjects.length" class="project-switch">
+        <span class="project-switch__label">Projects in this file</span>
+        <button
+          v-for="p in data.project.projects_in_file!"
+          :key="p.proj_id"
+          class="btn-tiny-light"
+          :class="{ active: p.proj_id === data.project.proj_id }"
+          :disabled="!currentFile || loading || p.proj_id === data.project.proj_id"
+          :title="currentFile ? `Open ${p.proj_short_name} from this file` : 'Load the file again to switch project'"
+          @click="openProject(p.proj_id)"
+        >{{ p.proj_short_name }} <span class="project-switch__n">{{ p.activities }}</span></button>
+        <span v-if="!currentFile" class="project-switch__hint">Reopened from this browser: load the file again to switch.</span>
+      </div>
+
       <div v-if="visibleWarnings.length" class="parse-warnings">
         <div v-for="(w, i) in visibleWarnings" :key="i" class="parse-warning">
           <span>{{ w }}</span>
@@ -293,6 +309,12 @@
             <p class="subtitle">Diff this file against an earlier export of the same project — slipped dates, duration edits, float erosion, logic changes and critical-path movement. The current file stays loaded; the snapshot is only used for the diff.</p>
           </header>
 
+          <div v-if="otherProjects.length && currentFile" class="compare-in-file">
+            <h3>Other projects in this file</h3>
+            <p class="compare-upload__note">An export often carries a baseline as a second project: compare against it directly.</p>
+            <button v-for="p in otherProjects" :key="p.proj_id" class="btn-outline" :disabled="compareLoading" @click="compareProject(p)">Compare with {{ p.proj_short_name }} ({{ p.activities }} activities)</button>
+          </div>
+
           <div class="compare-entry__cols">
           <!-- Snapshot register: monthly-cycle reviews shouldn't require carrying old
                .xer files around — save this month's parse now, diff against it next month. -->
@@ -376,7 +398,7 @@ import { loadAnnotations, saveAnnotation, removeAnnotation, setCallout, type Ann
 import { listSnapshots, saveSnapshot, getSnapshotData, deleteSnapshot, type SnapshotMeta } from './utils/snapshots'
 import { displayStart, displayEnd } from './utils/p6'
 import { buildWbsRollups, type WbsRollup } from './utils/wbs'
-import type { Activity } from './types/schedule'
+import type { Activity, ProjectInFile } from './types/schedule'
 import { parseSchedule, prepareParser, PARSER_MODE } from './utils/parseSchedule'
 import { ACCEPT, DROP_PROMPT, unsupportedFileMessage } from './utils/source'
 
@@ -424,6 +446,9 @@ export default defineComponent({
       // False when this browser would not keep the last file: the landing page then
       // says it can't be reopened rather than promising it.
       lastFileKept: true,
+      // The file the current schedule came from, to read another of its projects; null
+      // when the schedule was reopened from this browser.
+      currentFile: null as File | null,
       pendingJump: null as number | null,
       annotations: {} as Annotations,
       compareData: null as StoredSchedule | null,
@@ -518,6 +543,11 @@ export default defineComponent({
       if (!this.data) return null
       const cfg = loadHealthConfig()
       return weightedScore(runChecks(this.data, cfg).results, cfg)
+    },
+    // The file's other projects, when it has more than one.
+    otherProjects(): ProjectInFile[] {
+      const all = this.data?.project.projects_in_file || []
+      return all.length > 1 ? all.filter(p => p.proj_id !== this.data!.project.proj_id) : []
     },
     completeCount(): number {
       return this.data ? this.data.activities.filter(a => a.status === 'TK_Complete').length : 0
@@ -638,7 +668,7 @@ export default defineComponent({
         this.compareLoading = false
       }
     },
-    async uploadFile(file: File) {
+    async uploadFile(file: File, project?: number) {
       const refused = unsupportedFileMessage(file.name)
       if (refused) {
         alert(refused)
@@ -650,9 +680,10 @@ export default defineComponent({
       this.parsingNote = ''
       const stageTimer = setInterval(() => { this.parsingStage++ }, 800)
       try {
-        const parsed = await parseSchedule(file, msg => { this.parsingNote = msg })
+        const parsed = await parseSchedule(file, msg => { this.parsingNote = msg }, project)
         this.activateData(parsed)
         this.currentFilename = file.name
+        this.currentFile = file
         const kept = await saveLastFile(file.name, parsed)
         this.lastFileKept = !!kept
         if (kept) this.lastFile = kept
@@ -689,7 +720,24 @@ export default defineComponent({
       this.compareFilename = ''
       listSnapshots().then(list => { this.snapshots = list })
     },
+    async openProject(projId: number) {
+      if (this.currentFile) await this.uploadFile(this.currentFile, projId)
+    },
+    async compareProject(p: ProjectInFile) {
+      if (!this.currentFile) return
+      this.compareLoading = true
+      this.parsingNote = ''
+      try {
+        this.compareData = await parseSchedule(this.currentFile, msg => { this.parsingNote = msg }, p.proj_id)
+        this.compareFilename = `${this.currentFilename} · ${p.proj_short_name}`
+      } catch (e) {
+        alert('Failed to parse: ' + (e as Error).message)
+      } finally {
+        this.compareLoading = false
+      }
+    },
     reopenLastFile() {
+      this.currentFile = null
       if (!this.lastFile) return
       this.activateData(this.lastFile.data)
       this.currentFilename = this.lastFile.filename
@@ -1035,6 +1083,14 @@ th.num { text-align: right !important; }
 .header-right { display: flex; gap: var(--space-2); align-items: center; }
 
 /* Metrics strip — one band with dividers, not seven separate cards */
+.project-switch { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: var(--space-2) var(--space-3); margin-bottom: var(--space-3); background: var(--panel); border: 1px solid var(--gray-300); border-radius: var(--radius-md); font: var(--text-small); }
+.project-switch__label { font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-right: 4px; }
+.project-switch .btn-tiny-light.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; opacity: 1; }
+.project-switch__n { font-family: var(--font-mono); color: var(--ink-3); }
+.project-switch__hint { color: var(--ink-3); }
+.compare-in-file { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-bottom: var(--space-5); }
+.compare-in-file h3 { width: 100%; margin: 0; }
+.compare-in-file .compare-upload__note { width: 100%; margin: 0 0 var(--space-1); }
 .parse-warnings { margin-bottom: var(--space-4); display: flex; flex-direction: column; gap: 6px; }
 .parse-warning { display: flex; align-items: baseline; gap: var(--space-3); background: var(--near-tint); border: 1px solid var(--near); border-radius: var(--radius-sm); padding: 8px 12px; font: var(--text-small); color: var(--ink-soft); }
 .parse-warning span { flex: 1; }

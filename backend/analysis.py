@@ -26,7 +26,7 @@ DRIVING_TOLERANCE_HRS = 1 / 60
 # Contract fields a reader may add beyond the P6 set (frontend/src/types/schedule.ts
 # marks them optional). They are emitted only when the reader supplies them, so a P6
 # file's output does not change.
-OPTIONAL_PROJECT_FIELDS = ("source_format", "inactive_activities", "summary_links", "msp_options")
+OPTIONAL_PROJECT_FIELDS = ("source_format", "inactive_activities", "summary_links", "msp_options", "proj_id", "projects_in_file")
 OPTIONAL_ACTIVITY_FIELDS = ("manual", "deadline")
 OPTIONAL_LINK_FIELDS = ("lag_elapsed", "lag_pct")
 
