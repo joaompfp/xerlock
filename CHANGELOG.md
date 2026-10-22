@@ -4,6 +4,14 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.15.0] - 2026-10-22
+
+### Added
+- Compare: "What drives the finish" lists the current longest path with what changed
+  on each activity since the earlier file (new, joined the path, duration edited,
+  start moved, logic edited, constraint changed), the activities that left it, and a
+  first reading of the finish move from duration edits and new work on the path.
+
 ## [1.14.0] - 2026-10-22
 
 ### Added

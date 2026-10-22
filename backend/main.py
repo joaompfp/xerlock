@@ -23,7 +23,7 @@ MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 app = FastAPI(
     title="XERlock",
-    version="1.14.0",
+    version="1.15.0",
     description="Parses Primavera P6 .xer exports and Microsoft Project files (XML, .mpp) in "
     "memory and returns the full schedule (activities, WBS tree, project stats, longest-path "
     "trace) as JSON. Nothing is persisted.",
