@@ -7,10 +7,10 @@
       </div>
       <p v-if="!markup.keyDates.length" class="mk-empty">A thin line with its label in the header — client access, energisation, contract completion…</p>
       <div v-for="k in markup.keyDates" :key="k.id" class="mk-row">
-        <button class="mk-swatch" :class="'mk-' + k.color" :title="'Colour: ' + k.color + ' (click to change)'" @click="patchKeyDate(k.id, { color: nextColor(k.color) })"></button>
+        <button :aria-label="'Colour: ' + k.color + ' (click to change)'" class="mk-swatch" :class="'mk-' + k.color" :title="'Colour: ' + k.color + ' (click to change)'" @click="patchKeyDate(k.id, { color: nextColor(k.color) })"></button>
         <input class="mk-label" :value="k.label" placeholder="Label" maxlength="40" @input="patchKeyDate(k.id, { label: inputValue($event) })" />
         <input type="date" class="filter-date" :value="k.date" aria-label="Date" @change="setKeyDateDate(k.id, $event)" />
-        <button class="mk-x" title="Remove" @click="removeKeyDate(k.id)">&times;</button>
+        <button aria-label="Remove" class="mk-x" title="Remove" @click="removeKeyDate(k.id)">&times;</button>
       </div>
     </section>
     <section>
@@ -20,12 +20,12 @@
       </div>
       <p v-if="!markup.periods.length" class="mk-empty">A faint band behind the bars — a shutdown, a permit window, a holiday…</p>
       <div v-for="p in markup.periods" :key="p.id" class="mk-row">
-        <button class="mk-swatch" :class="'mk-' + p.color" :title="'Colour: ' + p.color + ' (click to change)'" @click="patchPeriod(p.id, { color: nextColor(p.color) })"></button>
+        <button :aria-label="'Colour: ' + p.color + ' (click to change)'" class="mk-swatch" :class="'mk-' + p.color" :title="'Colour: ' + p.color + ' (click to change)'" @click="patchPeriod(p.id, { color: nextColor(p.color) })"></button>
         <input class="mk-label" :value="p.label" placeholder="Label" maxlength="40" @input="patchPeriod(p.id, { label: inputValue($event) })" />
         <input type="date" class="filter-date" :value="p.from" aria-label="From" @change="setPeriodDate(p.id, 'from', $event)" />
         <span class="mk-dash">–</span>
         <input type="date" class="filter-date" :value="p.to" aria-label="To" @change="setPeriodDate(p.id, 'to', $event)" />
-        <button class="mk-x" title="Remove" @click="removePeriod(p.id)">&times;</button>
+        <button aria-label="Remove" class="mk-x" title="Remove" @click="removePeriod(p.id)">&times;</button>
       </div>
     </section>
     <section>
@@ -35,10 +35,10 @@
       <p v-if="!markup.groups.length" class="mk-empty">A named set of activities in one colour; while it is on, everything else is dimmed. Start one from an activity's details (Highlight), or save a chain trace.</p>
       <div v-for="g in markup.groups" :key="g.id" class="mk-row">
         <input type="checkbox" :checked="g.on" :title="g.on ? 'Shown — click to hide' : 'Hidden — click to show'" @change="patchGroup(g.id, { on: !g.on })" />
-        <button class="mk-swatch" :class="'mk-' + g.color" :title="'Colour: ' + g.color + ' (click to change)'" @click="patchGroup(g.id, { color: nextColor(g.color) })"></button>
+        <button :aria-label="'Colour: ' + g.color + ' (click to change)'" class="mk-swatch" :class="'mk-' + g.color" :title="'Colour: ' + g.color + ' (click to change)'" @click="patchGroup(g.id, { color: nextColor(g.color) })"></button>
         <input class="mk-label" :value="g.label" placeholder="Label" maxlength="40" @input="patchGroup(g.id, { label: inputValue($event) })" />
         <span class="mk-count">{{ g.codes.length }} {{ g.codes.length === 1 ? 'activity' : 'activities' }}</span>
-        <button class="mk-x" title="Remove" @click="removeGroup(g.id)">&times;</button>
+        <button aria-label="Remove" class="mk-x" title="Remove" @click="removeGroup(g.id)">&times;</button>
       </div>
     </section>
     <p class="mk-foot">Saved in this browser for this project.</p>

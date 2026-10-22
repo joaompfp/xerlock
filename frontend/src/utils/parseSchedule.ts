@@ -20,7 +20,7 @@ export async function parseSchedule(file: File, onStage?: OnStage): Promise<Sche
     const { parseLocally } = await import('./localParser')
     return parseLocally(file, onStage)
   }
-  return parseOnServer(file)
+  return parseOnServer(file, onStage)
 }
 
 /** In standalone mode, begin loading the in-browser parser before a file is chosen. */
@@ -28,14 +28,25 @@ export function prepareParser(): void {
   if (PARSER_MODE === 'local') void import('./localParser').then(m => m.warmUp())
 }
 
-async function parseOnServer(file: File): Promise<Schedule> {
-  const form = new FormData()
-  form.append('file', file)
-  const res = await fetch('/api/upload', { method: 'POST', body: form })
-  if (!res.ok) {
-    let msg = 'Could not parse this file.'
-    try { msg = ((await res.json()) as { detail?: string }).detail || msg } catch { /* non-JSON error body */ }
-    throw new Error(msg)
-  }
-  return (await res.json()) as Schedule
+// XMLHttpRequest rather than fetch: it reports upload progress, so a large file on a
+// slow link shows how far it has got before the server starts reading it.
+function parseOnServer(file: File, onStage?: OnStage): Promise<Schedule> {
+  return new Promise((resolve, reject) => {
+    const form = new FormData()
+    form.append('file', file)
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/upload')
+    xhr.responseType = 'json'
+    xhr.upload.onprogress = e => {
+      if (onStage && e.lengthComputable) onStage(`Uploading… ${Math.round((100 * e.loaded) / e.total)}%`)
+    }
+    xhr.upload.onload = () => onStage?.('Reading the schedule on the server…')
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300 && xhr.response) return resolve(xhr.response as Schedule)
+      const detail = (xhr.response as { detail?: string } | null)?.detail
+      reject(new Error(typeof detail === 'string' ? detail : 'Could not parse this file.'))
+    }
+    xhr.onerror = () => reject(new Error('The server could not be reached.'))
+    xhr.send(form)
+  })
 }

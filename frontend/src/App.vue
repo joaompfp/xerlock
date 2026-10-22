@@ -17,7 +17,7 @@
           </div>
           <div class="reopen-actions">
             <button class="btn-outline" @click="reopenLastFile">Reopen</button>
-            <button class="btn-forget" title="Forget this file" @click="forgetLastFile">&times;</button>
+            <button aria-label="Forget this file" class="btn-forget" title="Forget this file" @click="forgetLastFile">&times;</button>
           </div>
         </div>
 
@@ -158,7 +158,7 @@
       <div v-if="visibleWarnings.length" class="parse-warnings">
         <div v-for="(w, i) in visibleWarnings" :key="i" class="parse-warning">
           <span>{{ w }}</span>
-          <button class="warning-dismiss" @click="dismissWarning(w)" title="Dismiss">&times;</button>
+          <button aria-label="Dismiss" class="warning-dismiss" @click="dismissWarning(w)" title="Dismiss">&times;</button>
         </div>
       </div>
 
@@ -320,7 +320,7 @@
                   <td class="snap-actions-cell">
                     <div class="snap-actions">
                       <button class="btn-outline" @click="compareAgainstSnapshot(snap)">Compare</button>
-                      <button class="btn-forget" title="Delete snapshot" @click="removeSnapshot(snap)">&times;</button>
+                      <button aria-label="Delete snapshot" class="btn-forget" title="Delete snapshot" @click="removeSnapshot(snap)">&times;</button>
                     </div>
                   </td>
                 </tr>
@@ -342,10 +342,10 @@
                 <path d="M12 5v14M5 12h14" />
               </svg>
               <span v-if="!compareLoading">{{ dropPrompt }}</span>
-              <span v-else class="loading">Parsing schedule...</span>
+              <span v-else class="loading">{{ parsingNote || 'Parsing schedule…' }}</span>
             </label>
           </div>
-          <p class="compare-upload__note">Nothing is uploaded anywhere — the snapshot is parsed in memory for the diff.</p>
+          <p class="compare-upload__note">{{ parserMode === 'local' ? 'Parsed on this computer: nothing is uploaded.' : 'Parsed in memory on the server and discarded: nothing is stored.' }}</p>
           </div>
           </div>
         </div>
@@ -613,6 +613,7 @@ export default defineComponent({
       this.compareFilename = `${snap.filename} (snapshot, ${snap.dataDate ? formatDate(snap.dataDate) : 'no data date'})`
     },
     async removeSnapshot(snap: SnapshotMeta) {
+      if (!confirm(`Delete the snapshot of ${snap.filename}? It can't be recovered.`)) return
       await deleteSnapshot(snap.id)
       this.snapshots = await listSnapshots()
     },
@@ -627,8 +628,9 @@ export default defineComponent({
         return
       }
       this.compareLoading = true
+      this.parsingNote = ''
       try {
-        this.compareData = await parseSchedule(file)
+        this.compareData = await parseSchedule(file, msg => { this.parsingNote = msg })
         this.compareFilename = file.name
       } catch (e) {
         alert('Failed to parse: ' + (e as Error).message)
@@ -1149,10 +1151,10 @@ th.num { text-align: right !important; }
    P6 export name down the page one letter per line. */
 .snap-table { width: 100%; table-layout: fixed; border-collapse: collapse; font: var(--text-small); margin-top: var(--space-3); }
 .snap-table col.c-proj { width: 20%; }
-.snap-table col.c-file { width: 34%; }
+.snap-table col.c-file { width: 30%; }
 .snap-table col.c-date { width: 15%; }
 .snap-table col.c-acts { width: 9%; }
-.snap-table col.c-saved { width: 12%; }
+.snap-table col.c-saved { width: 16%; }
 .snap-table col.c-act { width: 10%; }
 .snap-table th { text-align: left; font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); border-bottom: 2px solid var(--gray-300); padding: var(--space-1) var(--space-2); }
 .snap-table th.num { text-align: right; }

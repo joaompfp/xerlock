@@ -296,7 +296,7 @@
             </template>
             <template v-else>
               <span v-if="!pg.screen && noteNumbers.has(row.activity.task_id)" class="g-note-num">{{ noteNumbers.get(row.activity.task_id) }}</span>
-              <button v-else-if="annotations[row.activity.task_id]" class="annotation-hit" :title="(annotations[row.activity.task_id].callout ? 'Hide' : 'Show') + ' note on the chart: ' + annotations[row.activity.task_id].note" @click.stop="toggleCallout(row.activity.task_id)"><i class="annotation-flag" :class="'sev-' + annotations[row.activity.task_id].severity"></i></button>
+              <button :aria-label="(annotations[row.activity.task_id].callout ? 'Hide' : 'Show') + ' note on the chart: ' + annotations[row.activity.task_id].note" v-else-if="annotations[row.activity.task_id]" class="annotation-hit" :title="(annotations[row.activity.task_id].callout ? 'Hide' : 'Show') + ' note on the chart: ' + annotations[row.activity.task_id].note" @click.stop="toggleCallout(row.activity.task_id)"><i class="annotation-flag" :class="'sev-' + annotations[row.activity.task_id].severity"></i></button>
               <span class="g-act-code">{{ row.activity.task_code }}</span>
               <span class="g-act-name">{{ row.activity.task_name }}</span>
               <span class="g-col-dur">{{ formatHours(row.activity.duration_hrs, row.activity.calendar_hrs_per_day) }}</span>
@@ -385,7 +385,7 @@
           <div class="g-callout-head">
             <span class="g-callout-code">{{ c.code }}</span>
             <span v-if="c.severity" class="g-callout-sev">{{ severityLabel(c.severity) }}</span>
-            <button class="g-callout-x" title="Hide note" @mousedown.stop @click.stop="toggleCallout(c.id)">&times;</button>
+            <button aria-label="Hide note" class="g-callout-x" title="Hide note" @mousedown.stop @click.stop="toggleCallout(c.id)">&times;</button>
           </div>
           <div class="g-callout-text">{{ c.note }}</div>
         </div>
@@ -403,8 +403,8 @@
             @dblclick.stop="editingTextId = t.id"
           >
             <div class="g-callout-head">
-              <button class="mk-swatch-sm" title="Change colour" @mousedown.stop @click.stop="patchText(t.id, { color: nextColor(t.color) })"></button>
-              <button class="g-callout-x" title="Remove" @mousedown.stop @click.stop="removeText(t.id)">&times;</button>
+              <button aria-label="Change colour" class="mk-swatch-sm" title="Change colour" @mousedown.stop @click.stop="patchText(t.id, { color: nextColor(t.color) })"></button>
+              <button aria-label="Remove" class="g-callout-x" title="Remove" @mousedown.stop @click.stop="removeText(t.id)">&times;</button>
             </div>
             <textarea
               v-if="editingTextId === t.id"
@@ -506,7 +506,12 @@ import IconChevron from './IconChevron.vue'
 import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
 
 const LABEL_COL_WIDTH_DEFAULT = 428
+// On a phone the activity column holds code and name only (the date and float cells are
+// hidden), at about two fifths of the width, so the timeline beside it is visible.
+const NARROW_MAX = 700
+const isNarrow = () => window.innerWidth <= NARROW_MAX
 const LABEL_COL_MIN = 200
+const labelColMin = () => (isNarrow() ? 110 : LABEL_COL_MIN)
 // Long activity names need room; the cap leaves a fifth of the window for the bars.
 const labelColMax = () => Math.max(700, Math.floor(window.innerWidth * 0.8))
 const HEADER_HEIGHT = 56
@@ -631,7 +636,9 @@ export default defineComponent({
       printPaperSize: saved.printPaperSize || 'a4',
       dayWidthOverride: projZoom ? projZoom.dayWidthOverride : null,
       fitOnMount: !projZoom,
-      labelColWidth: Math.min(saved.labelColWidth || LABEL_COL_WIDTH_DEFAULT, labelColMax()),
+      labelColWidth: isNarrow()
+        ? Math.round(window.innerWidth * 0.4)
+        : Math.min(saved.labelColWidth || LABEL_COL_WIDTH_DEFAULT, labelColMax()),
       criticalBasis: (saved.criticalBasis || 'tf0') as CriticalBasis,
       expandedWbs,
       // WBS ids collapsed while a filter is active. Filtering auto-expands everything so
@@ -1165,6 +1172,19 @@ export default defineComponent({
       } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !typing) {
         e.preventDefault()
         this.moveSelection(e.key === 'ArrowDown' ? 1 : -1)
+      } else if (typing || e.ctrlKey || e.metaKey || e.altKey) {
+        // Typing, or a browser shortcut: not the chart's.
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        // Pan without a mouse: a fifth of the view, the whole view with Shift.
+        e.preventDefault()
+        const el = this.$refs.scrollEl as HTMLElement | undefined
+        if (el) el.scrollLeft += (e.key === 'ArrowRight' ? 1 : -1) * el.clientWidth * (e.shiftKey ? 0.9 : 0.2)
+      } else if (e.key === '+' || e.key === '=') {
+        e.preventDefault()
+        this.zoomIn()
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault()
+        this.zoomOut()
       }
     },
     // ↑/↓ walk the visible activity rows (skipping WBS headers); the drawer follows.
@@ -1390,7 +1410,8 @@ export default defineComponent({
         showProgressLine: this.showProgressLine,
         showMarkup: this.showMarkup,
         showSlipArrows: this.showSlipArrows,
-        labelColWidth: this.labelColWidth,
+        // The phone width is the screen's, not a preference: keep the one saved before.
+        labelColWidth: isNarrow() ? loadSavedView().labelColWidth : this.labelColWidth,
         dayWidthOverride: this.dayWidthOverride,
         printPaperSize: this.printPaperSize,
       })
@@ -1557,7 +1578,7 @@ export default defineComponent({
       this.resizing = true
       const w0 = this.labelColWidth
       this.startDrag(e, dx => {
-        this.labelColWidth = Math.min(labelColMax(), Math.max(LABEL_COL_MIN, w0 + dx))
+        this.labelColWidth = Math.min(labelColMax(), Math.max(labelColMin(), w0 + dx))
       }, () => {
         this.resizing = false
         this.persistView()
@@ -1576,7 +1597,7 @@ export default defineComponent({
         ctx.font = getComputedStyle(n).font
         slack = Math.max(slack, Math.ceil(ctx.measureText(n.textContent || '').width) - n.clientWidth)
       }
-      this.labelColWidth = Math.min(labelColMax(), Math.max(LABEL_COL_MIN, this.labelColWidth + slack + 2))
+      this.labelColWidth = Math.min(labelColMax(), Math.max(labelColMin(), this.labelColWidth + slack + 2))
       this.persistView()
     },
   },
@@ -1614,6 +1635,9 @@ export default defineComponent({
 .gantt-scroll { flex: 1; min-width: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; height: calc(100dvh - 288px); min-height: 320px; position: relative; cursor: grab; }
 .gantt-scroll.panning { cursor: grabbing; }
 /* Controls + filter bar wrap taller on narrow screens — leave more room above the grid */
+@media (max-width: 700px) {
+  .g-col-dur, .g-col-date, .g-col-float, .g-col-slip, .g-wbs-count { display: none; }
+}
 @media (max-width: 900px) {
   .gantt-scroll { height: calc(100dvh - 400px); min-height: 320px; }
 }
