@@ -496,6 +496,7 @@ import {
   activitiesByWbs, computeRollups, wbsParentMap, allWbsKeys, wbsNodesByLevel, initialExpanded,
   isBasisCritical, floatClass, buildActivityRow, buildRows, rowIndexByTaskId, buildLinks, progressPoints,
 } from '../utils/ganttRows'
+import { trackDrag } from '../utils/drag'
 import IconChevron from './IconChevron.vue'
 import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
 
@@ -566,12 +567,8 @@ interface Callout {
 /** Drag bookkeeping kept off the reactive state (Vue does not proxy `_`-prefixed data). */
 interface DragState {
   _onDocMousedown: (e: MouseEvent) => void
-  _panStartX: number
-  _panStartY: number
-  _panScrollLeft: number
-  _panScrollTop: number
-  _resizeStartX: number
-  _resizeStartWidth: number
+  /** Ends the drag in progress, if any (see utils/drag). */
+  _stopDrag: (() => void) | null
 }
 function drag(vm: object): DragState {
   return vm as DragState
@@ -650,7 +647,7 @@ export default defineComponent({
       // The view last applied or saved; the select shows it, and ‹ › step from it.
       currentViewId: null as string | null,
       editingTextId: null as string | null,
-      textDrag: null as { id: string; startX: number; startY: number; x0: number; y0: number; x: number; y: number } | null,
+      textDrag: null as { id: string; x0: number; y0: number; x: number; y: number } | null,
       selectedTaskId: null as number | null,
       filter: emptyFilter(this.data.project.activity_code_types) as GanttFilter,
       // Chain tracing: null = off; a Set of task_ids = show ONLY these activities.
@@ -662,7 +659,7 @@ export default defineComponent({
       panning: false,
       resizing: false,
       // The callout being dragged, with its offset live until the drop saves it.
-      calloutDrag: null as { id: number; startX: number; startY: number; dx0: number; dy0: number; dx: number; dy: number } | null,
+      calloutDrag: null as { id: number; dx0: number; dy0: number; dx: number; dy: number } | null,
     }
   },
   mounted() {
@@ -681,14 +678,7 @@ export default defineComponent({
   beforeUnmount() {
     document.removeEventListener('mousedown', drag(this)._onDocMousedown)
     window.removeEventListener('keydown', this.onKeydown)
-    window.removeEventListener('mousemove', this.onPanMove)
-    window.removeEventListener('mouseup', this.onPanEnd)
-    window.removeEventListener('mousemove', this.onResizeMove)
-    window.removeEventListener('mouseup', this.onResizeEnd)
-    window.removeEventListener('mousemove', this.onCalloutDragMove)
-    window.removeEventListener('mouseup', this.onCalloutDragEnd)
-    window.removeEventListener('mousemove', this.onTextDragMove)
-    window.removeEventListener('mouseup', this.onTextDragEnd)
+    drag(this)._stopDrag?.()
   },
   watch: {
     // The component survives file swaps (tabs use v-show), so reseed the per-category
@@ -1342,22 +1332,15 @@ export default defineComponent({
     onTextDragStart(e: MouseEvent, t: TextBox & { x: number }) {
       if (e.button !== 0 || this.editingTextId === t.id) return
       e.preventDefault()
-      this.textDrag = { id: t.id, startX: e.clientX, startY: e.clientY, x0: t.x, y0: t.y, x: t.x, y: t.y }
-      window.addEventListener('mousemove', this.onTextDragMove)
-      window.addEventListener('mouseup', this.onTextDragEnd)
-    },
-    onTextDragMove(e: MouseEvent) {
+      this.textDrag = { id: t.id, x0: t.x, y0: t.y, x: t.x, y: t.y }
       const d = this.textDrag
-      if (!d) return
-      d.x = d.x0 + e.clientX - d.startX
-      d.y = Math.max(0, d.y0 + e.clientY - d.startY)
-    },
-    onTextDragEnd() {
-      const d = this.textDrag
-      window.removeEventListener('mousemove', this.onTextDragMove)
-      window.removeEventListener('mouseup', this.onTextDragEnd)
-      if (d && (d.x !== d.x0 || d.y !== d.y0)) this.patchText(d.id, { at: this.xToIso(d.x), y: Math.round(d.y) })
-      this.textDrag = null
+      this.startDrag(e, (dx, dy) => {
+        d.x = d.x0 + dx
+        d.y = Math.max(0, d.y0 + dy)
+      }, () => {
+        if (d.x !== d.x0 || d.y !== d.y0) this.patchText(d.id, { at: this.xToIso(d.x), y: Math.round(d.y) })
+        this.textDrag = null
+      })
     },
     nextColor,
     setMarkup(m: Markup) {
@@ -1522,25 +1505,27 @@ export default defineComponent({
     onCalloutDragStart(e: MouseEvent, c: Callout) {
       if (e.button !== 0) return
       e.preventDefault()
-      this.calloutDrag = { id: c.id, startX: e.clientX, startY: e.clientY, dx0: c.dx, dy0: c.dy, dx: c.dx, dy: c.dy }
-      window.addEventListener('mousemove', this.onCalloutDragMove)
-      window.addEventListener('mouseup', this.onCalloutDragEnd)
-    },
-    onCalloutDragMove(e: MouseEvent) {
+      this.calloutDrag = { id: c.id, dx0: c.dx, dy0: c.dy, dx: c.dx, dy: c.dy }
       const d = this.calloutDrag
-      if (!d) return
-      d.dx = d.dx0 + e.clientX - d.startX
-      d.dy = d.dy0 + e.clientY - d.startY
+      this.startDrag(e, (mx, my) => {
+        d.dx = d.dx0 + mx
+        d.dy = d.dy0 + my
+      }, () => {
+        if (d.dx !== d.dx0 || d.dy !== d.dy0) {
+          const moved: CalloutOffset = { dx: d.dx, dy: d.dy }
+          this.$emit('callout', d.id, moved)
+        }
+        this.calloutDrag = null
+      })
     },
-    onCalloutDragEnd() {
-      const d = this.calloutDrag
-      window.removeEventListener('mousemove', this.onCalloutDragMove)
-      window.removeEventListener('mouseup', this.onCalloutDragEnd)
-      if (d && (d.dx !== d.dx0 || d.dy !== d.dy0)) {
-        const moved: CalloutOffset = { dx: d.dx, dy: d.dy }
-        this.$emit('callout', d.id, moved)
-      }
-      this.calloutDrag = null
+
+    // One drag at a time, followed on the window until release (utils/drag).
+    startDrag(e: MouseEvent, onMove: (dx: number, dy: number) => void, onEnd: () => void) {
+      drag(this)._stopDrag?.()
+      drag(this)._stopDrag = trackDrag(e, onMove, () => {
+        drag(this)._stopDrag = null
+        onEnd()
+      })
     },
 
     onPanStart(e: MouseEvent) {
@@ -1548,43 +1533,27 @@ export default defineComponent({
       const target = e.target as Element
       if (target.closest('.g-label') || target.closest('.g-resize-handle')) return
       this.panning = true
-      const st = drag(this)
       // The handler is bound on the scroll element itself, so the ref is mounted.
-      const scrollEl = this.$refs.scrollEl as HTMLElement
-      st._panStartX = e.clientX
-      st._panStartY = e.clientY
-      st._panScrollLeft = scrollEl.scrollLeft
-      st._panScrollTop = scrollEl.scrollTop
-      window.addEventListener('mousemove', this.onPanMove)
-      window.addEventListener('mouseup', this.onPanEnd)
-    },
-    onPanMove(e: MouseEvent) {
-      const el = this.$refs.scrollEl as HTMLElement | undefined
-      if (!this.panning || !el) return
-      const st = drag(this)
-      el.scrollLeft = st._panScrollLeft - (e.clientX - st._panStartX)
-      el.scrollTop = st._panScrollTop - (e.clientY - st._panStartY)
-    },
-    onPanEnd() {
-      this.panning = false
-      window.removeEventListener('mousemove', this.onPanMove)
-      window.removeEventListener('mouseup', this.onPanEnd)
+      const el = this.$refs.scrollEl as HTMLElement
+      const left0 = el.scrollLeft
+      const top0 = el.scrollTop
+      this.startDrag(e, (dx, dy) => {
+        el.scrollLeft = left0 - dx
+        el.scrollTop = top0 - dy
+      }, () => { this.panning = false })
     },
 
     // ── Resizable label column ───────────────────────────────────────────
     onResizeStart(e: MouseEvent) {
       e.preventDefault()
       this.resizing = true
-      drag(this)._resizeStartX = e.clientX
-      drag(this)._resizeStartWidth = this.labelColWidth
-      window.addEventListener('mousemove', this.onResizeMove)
-      window.addEventListener('mouseup', this.onResizeEnd)
-    },
-    onResizeMove(e: MouseEvent) {
-      if (!this.resizing) return
-      const st = drag(this)
-      const dx = e.clientX - st._resizeStartX
-      this.labelColWidth = Math.min(labelColMax(), Math.max(LABEL_COL_MIN, st._resizeStartWidth + dx))
+      const w0 = this.labelColWidth
+      this.startDrag(e, dx => {
+        this.labelColWidth = Math.min(labelColMax(), Math.max(LABEL_COL_MIN, w0 + dx))
+      }, () => {
+        this.resizing = false
+        this.persistView()
+      })
     },
     // Double-click on the column edge: widen (or narrow) it to the longest name on screen.
     fitLabelColumn() {
@@ -1600,13 +1569,6 @@ export default defineComponent({
         slack = Math.max(slack, Math.ceil(ctx.measureText(n.textContent || '').width) - n.clientWidth)
       }
       this.labelColWidth = Math.min(labelColMax(), Math.max(LABEL_COL_MIN, this.labelColWidth + slack + 2))
-      this.persistView()
-    },
-    onResizeEnd() {
-      if (!this.resizing) return
-      this.resizing = false
-      window.removeEventListener('mousemove', this.onResizeMove)
-      window.removeEventListener('mouseup', this.onResizeEnd)
       this.persistView()
     },
   },
