@@ -4,6 +4,21 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.13.0] - 2026-10-22
+
+### Added
+- Primavera P6 XML exports are read, in both builds. The XML is mapped onto the same
+  tables a .xer carries, so every view and check, the recalculation and the Critical
+  Path Test work identically: a P6 XML twin of the sample reads exactly as the .xer.
+  Embedded baselines open or compare like any other project of the file; the raw-table
+  inspector shows the XML's own elements; an export without total float gets it from
+  each activity's early and late finish, and says so.
+
+### Fixed
+- Start milestones stored as TT_Mile (older P6 versions) were treated as ordinary
+  activities by the open-ends check: flagged for a missing successor-side tie, and the
+  project start milestone was not exempted.
+
 ## [1.12.0] - 2026-10-22
 
 ### Added
