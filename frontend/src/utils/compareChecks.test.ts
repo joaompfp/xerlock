@@ -65,3 +65,30 @@ describe('finishVerdict', () => {
     expect(finishVerdict(0, kept, 0)).toEqual({ cls: 'v-hold', chips: [] })
   })
 })
+
+describe('finishDrivers', () => {
+  const mk = (id: number, code: string, over: Partial<Activity> = {}): Activity => ({
+    task_id: id, task_code: code, task_name: code, duration_hrs: 40, calendar_hrs_per_day: 8, is_longest_path: true,
+    early_start: '2026-03-02T08:00:00', act_start: null, predecessors: [], successors: [], cstr_type: null, cstr_date: null,
+    cstr_type2: null, cstr_date2: null, ...over,
+  } as unknown as Activity)
+  const sched = (acts: Activity[]) => ({ project: {}, activities: acts } as unknown as import('../types/schedule').Schedule)
+
+  it('marks what changed on each activity of the current longest path', async () => {
+    const { finishDrivers } = await import('./compareChecks')
+    const base = sched([mk(1, 'A'), mk(2, 'B', { early_start: '2026-03-09T08:00:00' }), mk(3, 'C')])
+    const cur = sched([
+      mk(1, 'A'),
+      mk(2, 'B', { duration_hrs: 80, early_start: '2026-03-16T08:00:00', predecessors: [{ task_id: 1, type: 'PR_FS', lag_hrs: 0 }] as Activity['predecessors'] }),
+      mk(4, 'D', { duration_hrs: 24, early_start: '2026-03-20T08:00:00' }),
+      mk(3, 'C', { is_longest_path: false }),
+    ])
+    const d = finishDrivers(base, cur)
+    expect(d.path.map(p => p.code)).toEqual(['A', 'B', 'D'])
+    expect(d.path[1]).toMatchObject({ durationDays: 5, startDays: 7, logicEdited: true, added: false })
+    expect(d.path[2]).toMatchObject({ added: true })
+    expect(d.left).toEqual([{ code: 'C', name: 'C', removed: false }])
+    expect(d.durationEditDays).toBe(5)
+    expect(d.addedDays).toBe(3)
+  })
+})

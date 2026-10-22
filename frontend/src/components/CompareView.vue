@@ -50,6 +50,49 @@
       <span v-if="stability.driverChanged"> &middot; the activity driving the finish changed</span>
     </p>
 
+    <!-- What drives the finish now, against the earlier file: the longest path with
+         what changed on each activity, and what left it. Indicative, not forensic. -->
+    <section class="compare-section" v-if="drivers.path.length">
+      <button class="section-head" @click="toggle('drivers')">
+        <span class="section-title">What drives the finish <em>({{ drivers.path.length }})</em></span>
+        <span class="section-hint">The current longest path and what changed on it since the earlier file</span>
+        <span class="chevron" :class="{ open: expanded.drivers }">&rsaquo;</span>
+      </button>
+      <div v-if="expanded.drivers" class="section-body">
+        <p class="drivers-summary">
+          On this path, duration edits add <b>{{ signed(drivers.durationEditDays) }}d</b> and activities new to the file <b>{{ drivers.addedDays }}d</b> of work;
+          {{ drivers.path.filter(p => p.joined || p.added).length }} activities joined the path and {{ drivers.left.length }} left it.
+          A first reading of the finish move, not a forensic analysis: float, calendars and progress move it too.
+        </p>
+        <p v-if="!driverRows.length && !showUnchanged" class="drivers-summary">Nothing on the longest path changed. <button class="btn-tiny-light" @click="showUnchanged = true">Show the path</button></p>
+        <table v-else class="compare-table">
+          <thead><tr><th>Code</th><th>Activity</th><th>What changed</th></tr></thead>
+          <tbody>
+            <tr v-for="p in driverRows.slice(0, rowLimit('drivers'))" :key="p.code" class="jump-row" title="Show in Gantt" @click="jumpTo(p.code)">
+              <td class="code">{{ p.code }}</td>
+              <td class="name-cell">{{ p.name }}</td>
+              <td><div class="drv-tags">
+                <span v-if="p.added" class="drv-tag drv-bad">new activity</span>
+                <span v-else-if="p.joined" class="drv-tag">joined the path</span>
+                <span v-if="p.durationDays" class="drv-tag" :class="{ 'drv-bad': p.durationDays > 0 }">duration {{ signed(p.durationDays) }}d</span>
+                <span v-if="p.startDays" class="drv-tag">start {{ signed(p.startDays) }}d</span>
+                <span v-if="p.logicEdited" class="drv-tag">logic edited</span>
+                <span v-if="p.constraintChanged" class="drv-tag">constraint changed</span>
+                <span v-if="!changed(p)" class="drv-none">unchanged</span>
+              </div></td>
+            </tr>
+            <tr v-if="driverRows.length > rowLimit('drivers')" class="more-row"><td colspan="3"><button class="btn-tiny-light" @click.stop="showAllRows('drivers')">Show all {{ driverRows.length }}</button></td></tr>
+            <tr v-if="unchangedOnPath && !showUnchanged" class="more-row"><td colspan="3"><button class="btn-tiny-light" @click.stop="showUnchanged = true">Show the {{ unchangedOnPath }} unchanged {{ unchangedOnPath === 1 ? 'activity' : 'activities' }} too</button></td></tr>
+          </tbody>
+        </table>
+        <p v-if="drivers.left.length" class="drivers-left">
+          Left the longest path:
+          <span v-for="l in drivers.left.slice(0, 30)" :key="l.code" class="drv-left" :title="l.name">{{ l.code }}<template v-if="l.removed"> (removed)</template></span>
+          <template v-if="drivers.left.length > 30">and {{ drivers.left.length - 30 }} more</template>
+        </p>
+      </div>
+    </section>
+
     <div class="cmp-side-by-side">
     <!-- Milestone movement (dumbbells) -->
     <section class="compare-section" v-if="milestoneMoves.length">
@@ -327,12 +370,13 @@
 
 <script lang="ts">
 import { defineComponent, type PropType } from 'vue'
+import rowLimitMixin from '../mixins/rowLimit'
 import { formatDate, formatFloat, formatHours, formatLag } from '../utils/format'
 import { REL_TYPE_LABELS, cstrLabel, displayStart, displayEnd } from '../utils/p6'
-import { actualDateChanges, constraintChanges, finishSlipDays, finishVerdict, longestPathStability, type ActualChange, type FinishVerdict, type MatchedPair, type Stability } from '../utils/compareChecks'
+import { actualDateChanges, constraintChanges, finishSlipDays, finishVerdict, finishDrivers, longestPathStability, type ActualChange, type FinishDrivers, type PathChange, type FinishVerdict, type MatchedPair, type Stability } from '../utils/compareChecks'
 import type { Activity, Schedule } from '../types/schedule'
 
-type SectionKey = 'milestones' | 'tornado' | 'dates' | 'durations' | 'actuals' | 'constraints' | 'float' | 'critical' | 'logic' | 'addrem'
+type SectionKey = 'drivers' | 'milestones' | 'tornado' | 'dates' | 'durations' | 'actuals' | 'constraints' | 'float' | 'critical' | 'logic' | 'addrem'
 type Delta = MatchedPair & { deltaDays: number }
 interface MilestoneMove extends MatchedPair {
   curDate: string | null
@@ -346,6 +390,7 @@ const days = (a: string | number | Date, b: string | number | Date) => new Date(
 
 export default defineComponent({
   name: 'CompareView',
+  mixins: [rowLimitMixin],
   props: {
     // Either side may be a snapshot saved by an older version; see types/schedule.ts.
     current: { type: Object as PropType<Schedule>, required: true },
@@ -355,7 +400,8 @@ export default defineComponent({
   emits: ['jump', 'reset'],
   data() {
     return {
-      expanded: { milestones: true, tornado: true, dates: false, durations: true, actuals: true, constraints: true, float: true, critical: true, logic: false, addrem: false } as Record<SectionKey, boolean>,
+      showUnchanged: false,
+      expanded: { drivers: true, milestones: true, tornado: true, dates: false, durations: true, actuals: true, constraints: true, float: true, critical: true, logic: false, addrem: false } as Record<SectionKey, boolean>,
     }
   },
   computed: {
@@ -517,11 +563,31 @@ export default defineComponent({
       if (!this.stability.baseCount) return ''
       return this.stability.pct < 50 ? 'fail' : this.stability.pct < 90 ? 'warn' : 'pass'
     },
+    drivers(): FinishDrivers {
+      return finishDrivers(this.baseline, this.current)
+    },
+    // The changed activities on the path first-class; the unchanged ones on request.
+    driverRows(): PathChange[] {
+      return this.showUnchanged ? this.drivers.path : this.drivers.path.filter(this.changed)
+    },
+    unchangedOnPath(): number {
+      return this.drivers.path.filter(p => !this.changed(p)).length
+    },
     stability(): Stability {
       return longestPathStability(this.baseline, this.current)
     },
   },
   methods: {
+    changed(p: PathChange): boolean {
+      return p.added || p.joined || !!p.durationDays || !!p.startDays || p.logicEdited || p.constraintChanged
+    },
+    signed(n: number): string {
+      return (n > 0 ? '+' : '') + n
+    },
+    jumpTo(code: string) {
+      const a = this.current.activities.find(x => x.task_code === code)
+      if (a) this.$emit('jump', a.task_id)
+    },
     formatDate,
     formatFloat,
     formatHours,
@@ -573,6 +639,13 @@ export default defineComponent({
 .name-cell { color: var(--ink-soft); }
 .num-cell { font-family: var(--font-mono); text-align: right; white-space: nowrap; }
 /* Verdict banner */
+.drivers-summary { margin: 0 0 var(--space-3); font: var(--text-small); color: var(--ink-2); }
+.drv-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.drv-tag { font: var(--text-micro); font-weight: 600; border: 1px solid var(--gray-300); border-radius: 10px; padding: 0 7px; color: var(--ink-2); white-space: nowrap; }
+.drv-tag.drv-bad { color: var(--crit); border-color: var(--crit); }
+.drv-none { font: var(--text-micro); color: var(--ink-3); }
+.drivers-left { margin: var(--space-3) 0 0; font: var(--text-small); color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.drv-left { font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); }
 .cmp-mismatch { padding: var(--space-3) var(--space-4); background: var(--near-tint); color: var(--ink); border-bottom: 1px solid var(--near); font: var(--text-small); font-weight: 600; }
 .cmp-verdict { padding: var(--space-4); border-bottom: 1px solid var(--gray-300); }
 .cmp-verdict.v-slip { background: var(--crit-tint); }
