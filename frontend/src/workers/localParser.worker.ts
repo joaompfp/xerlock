@@ -2,8 +2,8 @@
 // Runs XERlock's Python parsing core (backend/schedule.py and the readers it dispatches
 // to) in the browser under Pyodide.
 // Lives in a worker so a large file never freezes the page. Every asset (the Python
-// runtime, the PyP6XER wheel, the parser source) is served from this app's own origin
-// under py/, prepared by scripts/prepare-local-parser.mjs: no CDN, nothing for a
+// runtime and the parser source) is served from this app's own origin under py/,
+// prepared by scripts/prepare-standalone.mjs: no CDN, nothing for a
 // corporate proxy to block, and no request leaves the site once it is loaded.
 
 import type { PyodideInterface } from 'pyodide'
@@ -15,7 +15,7 @@ export type ParseResponse =
   | { id: number; ok: true; json: string }
   | { id: number; ok: false; error: string }
 
-interface Manifest { wheel: string; python: string[] }
+interface Manifest { python: string[] }
 
 const ASSETS = new URL(import.meta.env.BASE_URL + 'py/', self.location.origin).href
 const post = (msg: ParseResponse) => self.postMessage(msg)
@@ -27,8 +27,6 @@ async function boot(stage: (s: string) => void): Promise<PyodideInterface> {
   const manifest = (await (await fetch(ASSETS + 'manifest.json')).json()) as Manifest
   const { loadPyodide } = (await import(/* @vite-ignore */ ASSETS + 'pyodide.mjs')) as typeof import('pyodide')
   const py = await loadPyodide({ indexURL: ASSETS })
-  // PyP6XER is pure Python with no dependencies: unpacking its wheel installs it.
-  py.unpackArchive(await (await fetch(ASSETS + manifest.wheel)).arrayBuffer(), 'wheel')
   py.FS.mkdirTree('/xerlock/backend')
   for (const name of manifest.python) {
     py.FS.writeFile(`/xerlock/backend/${name}`, await (await fetch(ASSETS + 'backend/' + name)).text())

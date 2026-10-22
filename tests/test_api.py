@@ -90,13 +90,14 @@ def test_oversized_upload_is_refused_with_413():
     assert "limit" in r.json()["detail"].lower()
 
 
-def test_non_utf8_file_warns_about_dropped_characters(sample_bytes):
-    """P6 commonly exports cp1252/latin-1 and PyP6XER drops the undecodable bytes
-    silently — the user must be told their activity names may be mangled."""
-    latin1 = sample_bytes.replace(b"Chiller procurement", b"Chiller pr\xf3curement")
-    r = post("latin1.xer", latin1)
+def test_non_utf8_file_is_read_as_windows_1252(sample_bytes):
+    """P6 commonly exports Windows-1252: the accented name must come through intact,
+    and the user is told which encoding the file was read in."""
+    cp1252 = sample_bytes.replace(b"Chiller procurement", b"Chiller pr\xf3curement")
+    r = post("cp1252.xer", cp1252)
     assert r.status_code == 200
-    assert any("UTF-8" in w for w in r.json()["warnings"])
+    assert any("Windows-1252" in w for w in r.json()["warnings"])
+    assert any(a["task_name"].startswith("Chiller prócurement") for a in r.json()["activities"])
 
 
 def test_nothing_is_persisted_server_side(sample_bytes):

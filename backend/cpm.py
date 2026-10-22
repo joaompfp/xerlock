@@ -1,7 +1,7 @@
 """
 CPM scheduling engine reproducing Primavera P6's forward and backward passes.
 
-Everything here is a pure function over plain data: no FastAPI, no PyP6XER. Input is
+Everything here is a pure function over plain data: no FastAPI, no file reader. Input is
 the file's own logic, remaining durations, calendars, constraints, progress and
 scheduling options; output is early/late dates, total and free float, and which
 predecessor links drive. P6 is the reference for every rule, and each one says which

@@ -24,4 +24,4 @@ The app has **no authentication of its own**. It is meant to run on your own inf
 
 In scope: the FastAPI backend, the Vue frontend and the Docker image built from this repository. For example, a crafted `.xer` that executes script in the browser, reads files on the server, survives the request on disk, or exhausts the server despite the upload cap.
 
-Out of scope: deployments exposed to the internet without the authentication layer recommended above, problems that need an already-malicious operator, and vulnerabilities in third-party software (such as PyP6XER) that only affect XERlock through a version you did not get from this repository. Report those upstream.
+Out of scope: deployments exposed to the internet without the authentication layer recommended above, problems that need an already-malicious operator, and vulnerabilities in third-party software (such as MPXJ) that only affect XERlock through a version you did not get from this repository. Report those upstream.
