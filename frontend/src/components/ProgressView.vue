@@ -103,27 +103,18 @@
 
 <script lang="ts">
 import { defineComponent, type PropType } from 'vue'
-import { formatDate, formatHours, formatFloat, isMilestone, dateFormat } from '../utils/format'
-import { displayEnd } from '../utils/p6'
+import { formatDate, formatHours, formatFloat, dateFormat } from '../utils/format'
 import { durationSCurve, type SCurve, type SCurvePoint } from '../utils/sCurve'
 import type { Activity, Schedule } from '../types/schedule'
 import { isProjectFile } from '../utils/source'
 import rowLimitMixin from '../mixins/rowLimit'
+import { milestoneTracker, MILESTONE_STATUS_LABELS, type Milestone } from '../utils/milestones'
 
 const fmtMonthYear = dateFormat({ month: 'short', year: '2-digit' })
 
-type MilestoneStatus = 'achieved' | 'on-track' | 'watch' | 'at-risk' | 'unknown'
 type CurveSeries = 'planned' | 'actual' | 'forecast'
 
-interface Milestone extends Activity {
-  forecast: string | null
-  target: string | null
-  varianceDays: number | null
-  achieved: boolean
-  status: MilestoneStatus
-}
-
-const STATUS_LABELS: Record<MilestoneStatus, string> = { achieved: 'Achieved', 'on-track': 'On track', watch: 'Watch', 'at-risk': 'At risk', unknown: 'Unknown' }
+const STATUS_LABELS = MILESTONE_STATUS_LABELS
 
 export default defineComponent({
   name: 'ProgressView',
@@ -153,25 +144,7 @@ export default defineComponent({
       return this.data.project.data_date ? new Date(this.data.project.data_date) : null
     },
     milestoneList(): Milestone[] {
-      return this.data.activities
-        .filter(isMilestone)
-        .map(a => {
-          const forecast = displayEnd(a) || a.act_start || a.early_start
-          const target = a.target_end || a.target_start
-          const achieved = a.status === 'TK_Complete' || !!a.act_end || !!a.act_start
-          let varianceDays: number | null = null
-          if (forecast && target) {
-            varianceDays = Math.round((new Date(forecast).getTime() - new Date(target).getTime()) / 86400000)
-          }
-          let status: MilestoneStatus
-          if (achieved) status = 'achieved'
-          else if (varianceDays == null) status = 'unknown'
-          else if (varianceDays <= 0) status = 'on-track'
-          else if (varianceDays <= 10) status = 'watch'
-          else status = 'at-risk'
-          return { ...a, forecast, target, varianceDays, achieved, status }
-        })
-        .sort((x, y) => new Date(x.forecast || 0).getTime() - new Date(y.forecast || 0).getTime())
+      return milestoneTracker(this.data.activities)
     },
     lookaheadList(): Activity[] {
       const start = this.dataDateObj
