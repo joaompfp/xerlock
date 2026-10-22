@@ -488,7 +488,7 @@ import {
   type Zoom,
   timelineRange, unionRange, dayWidthFor, clampDayWidth, totalWidth,
   dateToX, yearTicks, monthTicks, monthBandTicks, weekTicks, dayTicks, weekendRects,
-  rowsPerPrintPage, printPageRanges, zoomForDayWidth, visibleRowRange,
+  rowsPerPrintPage, printPageRanges, zoomForDayWidth,
   type Tick,
 } from '../utils/ganttGeometry'
 import {
@@ -497,6 +497,7 @@ import {
   isBasisCritical, floatClass, buildActivityRow, buildRows, rowIndexByTaskId, buildLinks, progressPoints, type Link,
 } from '../utils/ganttRows'
 import { trackDrag } from '../utils/drag'
+import { visibleRowRange } from '../utils/virtual'
 import {
   keyDateMarks, periodBands, placedTextBoxes, calloutAnchorX, slipArrows, callouts,
   type KeyDateMark, type PeriodBand, type SlipArrow, type Callout, type CalloutDrag, type TextDrag,
