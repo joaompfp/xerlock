@@ -199,9 +199,12 @@ evidence for each decision.
   for `.mpp`. `backend/analysis.py` derives what both formats share (driving links, Longest
   Path, CPLI, WBS roll-ups) and returns the full schedule as JSON - activities with
   float/constraints/actuals/codes, the WBS tree, and project stats. **Nothing is persisted
-  server-side**; files are parsed and discarded.
+  server-side**; files are parsed and discarded. Each upload is parsed in its own child process
+  with a time limit (`backend/isolate.py`), so a file that hangs or crashes a reader ends
+  that process, not the server.
 - **Frontend** (`frontend/`): Vue 3 (Options API) + Vite, in strict TypeScript; `src/types/schedule.ts` declares the API contract, and the build fails if it drifts from what the backend returns. No UI framework - hand-rolled CSS on a
-  design-token system. [dagre](https://github.com/dagrejs/dagre) computes the network layout;
+  design-token system. The network diagram's layered layout is XERlock's own
+  (`src/utils/networkLayout.ts`, linear time);
   [ExcelJS](https://github.com/exceljs/exceljs) (lazy-loaded) generates the Excel exports.
   Annotations and the last-opened file live in `localStorage` only.
 - In production, FastAPI serves the built frontend from `frontend/dist/` - a single container
@@ -325,7 +328,7 @@ under the same licence. Commercial licences without these conditions are availab
 Versions published before 12 October 2026 remain available under MIT.
 
 Depends on [MPXJ](https://www.mpxj.org) (LGPL-2.1, server only, for `.mpp`; used as an
-unmodified library), dagre, ExcelJS, Vue, and IBM Plex fonts (OFL, bundled via Fontsource - the app makes no third-party requests).
+unmodified library), ExcelJS, Vue, and IBM Plex fonts (OFL, bundled via Fontsource - the app makes no third-party requests).
 
 Primavera and P6 are trademarks of Oracle. This project is not affiliated with or endorsed by
 Oracle; it merely reads the documented `.xer` interchange format.
