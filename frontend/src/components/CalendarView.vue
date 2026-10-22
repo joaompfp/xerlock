@@ -36,9 +36,9 @@
       <!-- Month browser -->
       <div v-if="selected" class="cal-detail">
         <div class="cal-nav">
-          <button class="cal-nav-btn" @click="shiftMonth(-1)" title="Previous month">&lsaquo;</button>
+          <button aria-label="Previous month" class="cal-nav-btn" @click="shiftMonth(-1)" title="Previous month">&lsaquo;</button>
           <span class="cal-month-label">{{ monthLabel }}</span>
-          <button class="cal-nav-btn" @click="shiftMonth(1)" title="Next month">&rsaquo;</button>
+          <button aria-label="Next month" class="cal-nav-btn" @click="shiftMonth(1)" title="Next month">&rsaquo;</button>
           <button v-if="dataDate" class="cal-jump" @click="goToDataDate">Data date</button>
           <span class="cal-pattern-sum">{{ patternSummary }}</span>
         </div>

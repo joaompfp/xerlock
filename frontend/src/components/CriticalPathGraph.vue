@@ -38,7 +38,7 @@
           <button class="zbtn" @click="resetView">Fit</button>
           <button class="zbtn" @click="zoomBy(1.3)">+</button>
         </div>
-        <span class="gesture-hint">Scroll to zoom &middot; drag to pan &middot; Esc closes</span>
+        <span class="gesture-hint">Scroll or +/− to zoom &middot; drag or arrows to pan &middot; Esc closes</span>
       </div>
     </div>
 
@@ -294,9 +294,28 @@ export default defineComponent({
   mounted() {
     const priv = internals(this)
     window.addEventListener('keydown', priv._onKeydown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || !this.$el || this.$el.offsetParent === null) return
-      if (this.selectedId != null) { this.selectedId = null; return }
-      if (this.isolationActive) this.exitIsolation()
+      if (!this.$el || this.$el.offsetParent === null) return
+      if (e.key === 'Escape') {
+        if (this.selectedId != null) { this.selectedId = null; return }
+        if (this.isolationActive) this.exitIsolation()
+        return
+      }
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')
+      if (typing || e.ctrlKey || e.metaKey || e.altKey) return
+      // Arrows pan, + and − zoom: the diagram without a mouse.
+      const step = e.shiftKey ? 400 : 120
+      const pan: Record<string, [number, number]> = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] }
+      if (pan[e.key]) {
+        e.preventDefault()
+        this.tx += pan[e.key][0]
+        this.ty += pan[e.key][1]
+      } else if (e.key === '+' || e.key === '=') {
+        e.preventDefault()
+        this.zoomBy(1.3)
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault()
+        this.zoomBy(1 / 1.3)
+      }
     })
     // Clicks on app chrome outside this component dismiss the fixed drawer overlay.
     document.addEventListener('mousedown', priv._onDocMousedown = (e: MouseEvent) => {

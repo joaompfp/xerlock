@@ -4,6 +4,25 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.11.0] - 2026-10-22
+
+States, keyboard and phone (council review, batch B).
+
+### Added
+- Keyboard: arrows pan and + / − zoom the Gantt (↑ ↓ still move the selection) and
+  the network diagram; every icon-only button has an accessible name.
+- On a phone the Gantt shows its timeline: the activity column narrows to code and
+  name beside it (at 390 px the timeline used to be blank).
+- Uploads report their progress, then that the server is reading the file.
+
+### Changed
+- Compare warns when few activity codes match: the files look like different
+  projects. Deleting a snapshot asks first.
+
+### Fixed
+- Compare's upload note said nothing was uploaded on the server build; it now says
+  what happens in each build. The snapshot list's Saved column no longer truncates.
+
 ## [1.10.0] - 2026-10-22
 
 The numbers read first, made defensible (council review, batch A).

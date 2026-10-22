@@ -1,12 +1,12 @@
 <template>
   <div class="vw" ref="root">
     <template v-if="views.length">
-      <button class="vw-step" title="Previous view" :disabled="!canStep(-1)" @click="$emit('step', -1)">&lsaquo;</button>
+      <button aria-label="Previous view" class="vw-step" title="Previous view" :disabled="!canStep(-1)" @click="$emit('step', -1)">&lsaquo;</button>
       <select class="vw-select" :value="currentId || ''" title="Saved views" @change="pick">
         <option value="" disabled>Views ({{ views.length }})</option>
         <option v-for="(v, i) in views" :key="v.id" :value="v.id">{{ i + 1 }}. {{ v.name }}</option>
       </select>
-      <button class="vw-step" title="Next view" :disabled="!canStep(1)" @click="$emit('step', 1)">&rsaquo;</button>
+      <button aria-label="Next view" class="vw-step" title="Next view" :disabled="!canStep(1)" @click="$emit('step', 1)">&rsaquo;</button>
     </template>
     <div class="vw-pop">
       <button class="vw-open" :class="{ active: open }" :title="views.length ? 'Save or manage views' : 'Save this chart as a view'" @click="open = !open"><Icon name="bookmark" :size="14" /><span v-if="!views.length">Save view</span></button>
@@ -20,7 +20,7 @@
           <span class="vw-n">{{ i + 1 }}</span>
           <input class="vw-name" :value="v.name" maxlength="50" @change="$emit('rename', v.id, ($event.target as HTMLInputElement).value)" />
           <button class="btn-tiny-light" title="Replace this view with the chart as it is now" @click="$emit('update', v.id)">Update</button>
-          <button class="vw-x" title="Remove" @click="$emit('remove', v.id)">&times;</button>
+          <button aria-label="Remove" class="vw-x" title="Remove" @click="$emit('remove', v.id)">&times;</button>
         </div>
         <p class="vw-hint">Saved in this browser for this project.</p>
       </div>

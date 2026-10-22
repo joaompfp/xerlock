@@ -8,6 +8,13 @@
     </div>
 
     <!-- Headline verdict: the so-what before any table -->
+    <!-- Activities are matched by code: when few codes match, the two files are not two
+         versions of one programme, and every figure below would mislead. -->
+    <div v-if="mismatched" class="cmp-mismatch">
+      Only {{ matched.length }} of {{ Math.max(current.activities.length, baseline.activities.length) }} activity codes appear in both files:
+      these look like different projects, so the comparison below says little.
+    </div>
+
     <!-- Neutral words for the move; green only when the finish came in AND the logic that
          drove it largely survived. When the programme was re-sequenced, an earlier finish
          is a re-plan, not recovered time, and the banner says so beside the number. -->
@@ -492,6 +499,11 @@ export default defineComponent({
       for (const d of this.logicChanges) { added += d.added.length; removed += d.removed.length }
       return { added, removed }
     },
+    // Under a fifth of the larger file's codes in common.
+    mismatched(): boolean {
+      const n = Math.max(this.current.activities.length, this.baseline.activities.length)
+      return n > 0 && this.matched.length < 0.2 * n
+    },
     verdict(): FinishVerdict {
       return finishVerdict(this.finishDelta ?? 0, this.stability, this.ddAdvance)
     },
@@ -577,6 +589,7 @@ export default defineComponent({
 .name-cell { color: var(--ink-soft); }
 .num-cell { font-family: var(--font-mono); text-align: right; white-space: nowrap; }
 /* Verdict banner */
+.cmp-mismatch { padding: var(--space-3) var(--space-4); background: var(--near-tint); color: var(--ink); border-bottom: 1px solid var(--near); font: var(--text-small); font-weight: 600; }
 .cmp-verdict { padding: var(--space-4); border-bottom: 1px solid var(--gray-300); }
 .cmp-verdict.v-slip { background: var(--crit-tint); }
 .cmp-verdict.v-gain { background: var(--ok-tint); }

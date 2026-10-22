@@ -13,18 +13,18 @@
       >{{ zoomLabel(z).charAt(0) }}</button>
     </div>
     <div class="seg" role="group" aria-label="Zoom">
-      <button title="Zoom out" @click="$emit('zoom-out')"><Icon name="zoom-out" /></button>
-      <button title="Fit to the available width" @click="$emit('fit')"><Icon name="fit" /></button>
-      <button title="Zoom in" @click="$emit('zoom-in')"><Icon name="zoom-in" /></button>
+      <button aria-label="Zoom out" title="Zoom out" @click="$emit('zoom-out')"><Icon name="zoom-out" /></button>
+      <button aria-label="Fit to the available width" title="Fit to the available width" @click="$emit('fit')"><Icon name="fit" /></button>
+      <button aria-label="Zoom in" title="Zoom in" @click="$emit('zoom-in')"><Icon name="zoom-in" /></button>
     </div>
 
     <span class="tb-div"></span>
 
     <div class="seg" role="group" aria-label="WBS">
-      <button title="Collapse all WBS" @click="$emit('wbs', 'collapse-all')"><Icon name="collapse-all" /></button>
-      <button title="Collapse the deepest expanded WBS level" @click="$emit('wbs', 'collapse-level')"><Icon name="level-up" /></button>
-      <button title="Expand one more WBS level" @click="$emit('wbs', 'expand-level')"><Icon name="level-down" /></button>
-      <button title="Expand all WBS" @click="$emit('wbs', 'expand-all')"><Icon name="expand-all" /></button>
+      <button aria-label="Collapse all WBS" title="Collapse all WBS" @click="$emit('wbs', 'collapse-all')"><Icon name="collapse-all" /></button>
+      <button aria-label="Collapse the deepest expanded WBS level" title="Collapse the deepest expanded WBS level" @click="$emit('wbs', 'collapse-level')"><Icon name="level-up" /></button>
+      <button aria-label="Expand one more WBS level" title="Expand one more WBS level" @click="$emit('wbs', 'expand-level')"><Icon name="level-down" /></button>
+      <button aria-label="Expand all WBS" title="Expand all WBS" @click="$emit('wbs', 'expand-all')"><Icon name="expand-all" /></button>
     </div>
 
     <div class="tb-group basis-group" title="Critical basis: total float ≤ 0, or the longest path">
@@ -48,18 +48,18 @@
 
     <div class="tb-pop tb-markup">
       <button class="tb-chip" :class="{ on: showMarkup && hasMarkup }" :title="hasMarkup ? 'Show or hide your key dates, periods, highlights and text boxes' : 'Add key dates, periods and highlights'" @click="hasMarkup ? $emit('update:showMarkup', !showMarkup) : (markupOpen = !markupOpen)"><Icon name="flag" :size="13" />Key dates</button>
-      <button class="tb-icon" :class="{ active: markupOpen }" title="Edit key dates, periods and highlights" @click="markupOpen = !markupOpen"><Icon name="pencil" :size="14" /></button>
-      <button class="tb-icon" title="Add a text box to the chart" @click="$emit('add-text')"><Icon name="text" :size="14" /></button>
+      <button aria-label="Edit key dates, periods and highlights" class="tb-icon" :class="{ active: markupOpen }" title="Edit key dates, periods and highlights" @click="markupOpen = !markupOpen"><Icon name="pencil" :size="14" /></button>
+      <button aria-label="Add a text box to the chart" class="tb-icon" title="Add a text box to the chart" @click="$emit('add-text')"><Icon name="text" :size="14" /></button>
       <div v-if="markupOpen" class="tb-panel">
         <GanttMarkupPanel :markup="markup" :default-date="markupDefaultDate" @change="m => $emit('markup', m)" />
       </div>
     </div>
 
     <div class="tb-right">
-      <button class="tb-icon" :disabled="!canScrollToToday" title="Scroll to today" @click="$emit('today')"><Icon name="today" :size="14" /></button>
-      <button class="tb-icon" :class="{ active: fullscreen }" :title="fullscreen ? 'Exit fullscreen' : 'Fullscreen'" @click="$emit('fullscreen')"><Icon name="fullscreen" :size="14" /></button>
+      <button aria-label="Scroll to today" class="tb-icon" :disabled="!canScrollToToday" title="Scroll to today" @click="$emit('today')"><Icon name="today" :size="14" /></button>
+      <button :aria-label="fullscreen ? 'Exit fullscreen' : 'Fullscreen'" class="tb-icon" :class="{ active: fullscreen }" :title="fullscreen ? 'Exit fullscreen' : 'Fullscreen'" @click="$emit('fullscreen')"><Icon name="fullscreen" :size="14" /></button>
       <span class="tb-print">
-        <button class="tb-icon" title="Print the chart as it is, fitted to the paper width" @click="$emit('print')"><Icon name="print" :size="14" /></button>
+        <button aria-label="Print the chart as it is, fitted to the paper width" class="tb-icon" title="Print the chart as it is, fitted to the paper width" @click="$emit('print')"><Icon name="print" :size="14" /></button>
         <select :value="paper" class="tb-select tb-paper" title="Paper" @change="$emit('update:paper', ($event.target as HTMLSelectElement).value)">
           <option v-for="key in Object.keys(PAPER_SIZES)" :key="key" :value="key">{{ key.toUpperCase() }}</option>
         </select>
