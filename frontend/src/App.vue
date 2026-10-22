@@ -1326,7 +1326,7 @@ th.num { text-align: right !important; }
   background: var(--nav); color: var(--nav-ink);
   display: flex; flex-direction: column; overflow-y: auto;
 }
-.sb-brand { display: flex; align-items: center; gap: var(--space-2); padding: 18px var(--space-4) var(--space-3); }
+.sb-brand { display: flex; align-items: center; gap: var(--space-2); padding: 14px var(--space-4) var(--space-3); }
 .sb-logo { display: flex; align-items: center; gap: var(--space-2); color: var(--nav-ink); text-decoration: none; font-size: 16px; font-weight: 700; }
 .sb-logo svg { color: var(--nav-ink); flex: none; }
 .sb-readonly { margin-left: auto; font-family: var(--font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--nav-ink-3); border: 1px solid var(--nav-line); border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
@@ -1355,9 +1355,9 @@ th.num { text-align: right !important; }
 .sb-load:disabled { opacity: 0.5; cursor: default; }
 .sb-rail { position: fixed; left: 0; top: 0; bottom: 0; width: 18px; z-index: 30; display: flex; align-items: flex-start; justify-content: center; padding-top: 18px; border: none; background: var(--nav); color: var(--nav-ink-3); cursor: pointer; }
 .sb-rail:hover { color: var(--nav-ink); background: var(--nav-2); }
-.sb-nav { flex: 1; padding: var(--space-3) var(--space-2); }
-.sb-group { font-family: var(--font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--nav-ink-3); padding: var(--space-3) var(--space-2) 5px; }
-.sb-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; text-align: left; background: none; border: none; border-radius: var(--radius-sm); padding: 7px 8px; cursor: pointer; font-size: 13px; color: var(--nav-ink-2); }
+.sb-nav { flex: 1; padding: var(--space-2) var(--space-2); }
+.sb-group { font-family: var(--font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--nav-ink-3); padding: 10px var(--space-2) 4px; }
+.sb-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; text-align: left; background: none; border: none; border-radius: var(--radius-sm); padding: 6px 8px; cursor: pointer; font-size: 13px; color: var(--nav-ink-2); }
 .sb-item:hover { background: var(--nav-2); color: var(--nav-ink); }
 /* Active state is background + weight, not a left rail — one highlight convention. */
 .sb-item.active { background: var(--nav-2); color: var(--nav-ink); font-weight: 600; }
@@ -1371,7 +1371,7 @@ th.num { text-align: right !important; }
 .sb-score.is-crit { color: var(--crit-bright); }
 .sb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
 
-.sb-footer { padding: var(--space-3) var(--space-3) var(--space-4); border-top: 1px solid var(--nav-line); }
+.sb-footer { padding: var(--space-3) var(--space-3); border-top: 1px solid var(--nav-line); }
 .sb-legal { margin: var(--space-3) 0 0; font: var(--text-micro); color: var(--nav-ink-3); text-align: center; line-height: 1.5; }
 .sb-legal a { color: inherit; text-decoration: underline; }
 .sb-theme { display: flex; background: var(--nav-2); border-radius: var(--radius-sm); padding: 2px; margin-bottom: var(--space-2); }
