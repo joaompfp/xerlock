@@ -4,6 +4,12 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.15.1] - 2026-10-22
+
+### Changed
+- The landing page states the licence plainly: the code behind every figure can be
+  read, and a modified copy offered as a service must publish its source.
+
 ## [1.15.0] - 2026-10-22
 
 ### Added
