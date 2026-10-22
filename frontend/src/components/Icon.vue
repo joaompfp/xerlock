@@ -18,7 +18,7 @@ const PATHS = {
   'level-down': 'M7 9l5 5 5-5',
   'level-up': 'M7 15l5-5 5 5',
   link: 'M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.2 1.2M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2',
-  progress: 'M12 3v5l-4 4 4 4v5',
+  progress: 'M12 3v4l-5 4 7 3-2 3v4',
   baseline: 'M4 6h11v4H4zM9 14h11v4H9z',
   slip: 'M4 8v8M4 12h15M15 8l4 4-4 4',
   flag: 'M5 21V4M5 4h12l-2.5 4L17 12H5',

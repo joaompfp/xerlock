@@ -4,6 +4,17 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.8.3] - 2026-10-22
+
+### Changed
+- The Gantt toolbar is one compact row with every control on it; the ⋯ menu is gone.
+  Scale is D W M Q, zoom, fit and the WBS controls are icons, the basis reads
+  "TF ≤ 0 | Longest", and Links, Progress, Baseline, Slip and Key dates are chips.
+  Key dates has an edit button (the key dates, periods and highlights editor) and an add
+  text box button beside it. Today, fullscreen, print and the paper size sit at the
+  right. Every icon has a tooltip. It fits on one row at 1500 px with a baseline loaded,
+  and at 1366 px without one.
+
 ## [1.8.2] - 2026-10-22
 
 ### Added
