@@ -1,95 +1,34 @@
 <template>
   <div class="gantt-wrap" :class="{ 'is-fullscreen': isFullscreen }" ref="wrapEl">
-    <!-- The bar encoding, stated once: in the sidebar beneath the navigation while the
-         Gantt is open, and here in place when the chart is fullscreen. -->
-    <Teleport v-if="active" to="#sb-legend" defer :disabled="isFullscreen">
-      <div class="sb-legend" :class="{ 'legend-inline': isFullscreen }">
-        <div class="sb-legend-title">Legend</div>
-        <div class="legend">
-          <template v-if="criticalBasis === 'tf0'">
-            <span class="legend-item"><i class="lg-bar lg-critical"></i>Critical (TF&le;0)</span>
-            <span class="legend-item"><i class="lg-bar lg-near"></i>Near-critical</span>
-            <span class="legend-item"><i class="lg-bar lg-normal"></i>Normal</span>
-          </template>
-          <template v-else>
-            <span class="legend-item"><i class="lg-bar lg-critical"></i>On longest path</span>
-            <span class="legend-item"><i class="lg-bar lg-normal"></i>Normal</span>
-          </template>
-          <span class="legend-item"><i class="lg-bar lg-negative"></i>Negative float</span>
-          <span class="legend-item"><i class="diamond"></i>Milestone</span>
-          <span class="legend-item"><i class="bar-wbs"></i>WBS rollup</span>
-          <span class="legend-item" v-if="baseline && showBaseline"><i class="lg-bar lg-ghost"></i>Baseline</span>
-        </div>
-      </div>
-    </Teleport>
+    <GanttLegend :active="active" :inline="isFullscreen" :basis="criticalBasis" :baseline="!!baseline && showBaseline" />
 
-    <!-- One compact toolbar row, every control in sight: icons where the meaning is
-         plain, a short word where it isn't. Grouped left to right as scale, structure,
-         basis, overlays, markup, then the once-a-session actions. -->
-    <div class="gantt-toolbar">
-      <div class="seg" role="group" aria-label="Scale">
-        <button
-          v-for="z in zoomLevels"
-          :key="z"
-          :class="{ active: !dayWidthOverride && zoom === z }"
-          :title="zoomLabel(z)"
-          @click="selectZoomPreset(z)"
-        >{{ zoomLabel(z).charAt(0) }}</button>
-      </div>
-      <div class="seg" role="group" aria-label="Zoom">
-        <button title="Zoom out" @click="zoomOut"><Icon name="zoom-out" /></button>
-        <button title="Fit to the available width" @click="fitToWidth"><Icon name="fit" /></button>
-        <button title="Zoom in" @click="zoomIn"><Icon name="zoom-in" /></button>
-      </div>
-
-      <span class="tb-div"></span>
-
-      <div class="seg" role="group" aria-label="WBS">
-        <button title="Collapse all WBS" @click="collapseAll"><Icon name="collapse-all" /></button>
-        <button title="Collapse the deepest expanded WBS level" @click="collapseOneLevel"><Icon name="level-up" /></button>
-        <button title="Expand one more WBS level" @click="expandOneLevel"><Icon name="level-down" /></button>
-        <button title="Expand all WBS" @click="expandAll"><Icon name="expand-all" /></button>
-      </div>
-
-      <div class="tb-group basis-group" title="Critical basis: total float ≤ 0, or the longest path">
-        <button :class="{ active: criticalBasis === 'tf0' }" @click="criticalBasis = 'tf0'">TF &le; 0</button>
-        <button :class="{ active: criticalBasis === 'longest' }" @click="criticalBasis = 'longest'">Longest</button>
-      </div>
-
-      <span class="tb-div"></span>
-
-      <!-- Overlay chips: solid and in the accent colour when on, dashed when off. -->
-      <button class="tb-chip" :class="{ on: showLinks }" title="Relationship lines" @click="showLinks = !showLinks"><Icon name="link" :size="13" />Links</button>
-      <select v-if="showLinks" v-model="linksScope" class="tb-select" title="Which relationships to draw">
-        <option value="critical">Critical</option>
-        <option value="all">All</option>
-      </select>
-      <button class="tb-chip" :class="{ on: showProgressLine }" title="Progress line through the data date" @click="showProgressLine = !showProgressLine"><Icon name="progress" :size="13" />Progress</button>
-      <button v-if="baseline" class="tb-chip" :class="{ on: showBaseline }" title="Outlined bars at each activity's position in the compared schedule" @click="showBaseline = !showBaseline"><Icon name="baseline" :size="13" />Baseline</button>
-      <button v-if="showSlip" class="tb-chip" :class="{ on: showSlipArrows }" title="An arrow under each moved activity, from its compared finish to its current one" @click="showSlipArrows = !showSlipArrows"><Icon name="slip" :size="13" />Slip</button>
-
-      <span class="tb-div"></span>
-
-      <div class="tb-pop tb-markup">
-        <button class="tb-chip" :class="{ on: markupShown }" :title="hasMarkup ? 'Show or hide your key dates, periods, highlights and text boxes' : 'Add key dates, periods and highlights'" @click="hasMarkup ? (showMarkup = !showMarkup) : (markupOpen = !markupOpen)"><Icon name="flag" :size="13" />Key dates</button>
-        <button class="tb-icon" :class="{ active: markupOpen }" title="Edit key dates, periods and highlights" @click="markupOpen = !markupOpen"><Icon name="pencil" :size="14" /></button>
-        <button class="tb-icon" title="Add a text box to the chart" @click="addTextBox"><Icon name="text" :size="14" /></button>
-        <div v-if="markupOpen" class="tb-panel">
-          <GanttMarkupPanel :markup="markup" :default-date="markupDefaultDate" @change="setMarkup" />
-        </div>
-      </div>
-
-      <div class="tb-right">
-        <button class="tb-icon" :disabled="todayX === null" title="Scroll to today" @click="scrollToToday"><Icon name="today" :size="14" /></button>
-        <button class="tb-icon" :class="{ active: isFullscreen }" :title="isFullscreen ? 'Exit fullscreen' : 'Fullscreen'" @click="toggleFullscreen"><Icon name="fullscreen" :size="14" /></button>
-        <span class="tb-print">
-          <button class="tb-icon" title="Print the chart as it is, fitted to the paper width" @click="printGantt"><Icon name="print" :size="14" /></button>
-          <select v-model="printPaperSize" class="tb-select tb-paper" title="Paper">
-            <option v-for="key in Object.keys(paperSizes)" :key="key" :value="key">{{ key.toUpperCase() }}</option>
-          </select>
-        </span>
-      </div>
-    </div>
+    <GanttToolbar
+      :zoom="zoom"
+      :zoom-overridden="!!dayWidthOverride"
+      v-model:basis="criticalBasis"
+      v-model:show-links="showLinks"
+      v-model:links-scope="linksScope"
+      v-model:show-progress="showProgressLine"
+      :has-baseline="!!baseline"
+      v-model:show-baseline="showBaseline"
+      v-model:show-slip-arrows="showSlipArrows"
+      :markup="markup"
+      v-model:show-markup="showMarkup"
+      :markup-default-date="markupDefaultDate"
+      :can-scroll-to-today="todayX !== null"
+      :fullscreen="isFullscreen"
+      v-model:paper="printPaperSize"
+      @zoom-preset="selectZoomPreset"
+      @zoom-in="zoomIn"
+      @zoom-out="zoomOut"
+      @fit="fitToWidth"
+      @wbs="onWbsAction"
+      @add-text="addTextBox"
+      @markup="setMarkup"
+      @today="scrollToToday"
+      @fullscreen="toggleFullscreen"
+      @print="printGantt"
+    />
 
     <GanttFilterBar
       v-model:filter="filter"
@@ -532,10 +471,10 @@
 import { defineComponent, type PropType } from 'vue'
 import type { Activity, Schedule } from '../types/schedule'
 import { loadMarkup, saveMarkup, periodSpan, highlightColors, toggleMember, newMarkId, nextColor, MARK_COLORS, type Markup, type MarkColor, type TextBox } from '../utils/markup'
-import GanttMarkupPanel from './GanttMarkupPanel.vue'
+import GanttToolbar, { type WbsAction } from './GanttToolbar.vue'
+import GanttLegend from './GanttLegend.vue'
 import GanttViewBar from './GanttViewBar.vue'
 import GanttFilterBar from './GanttFilterBar.vue'
-import Icon from './Icon.vue'
 import { loadViews, saveViews, completeState, stepView, type SavedView as NamedView, type ViewState } from '../utils/views'
 import { DEFAULT_CALLOUT, SEVERITY_LABELS, type Annotations, type CalloutOffset, type NoteFilter, type Severity } from '../utils/annotations'
 import { emptyFilter, isFilterSet, matchesFilter, filterChips, emptyFilterHint, type GanttFilter } from '../utils/ganttFilter'
@@ -544,7 +483,7 @@ import { formatDate, formatDateShort, formatHours, formatFloat, formatLag, statu
 import fullscreenMixin from '../mixins/fullscreen'
 import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
 import { dateSlipDays, finishSlipDays } from '../utils/compareChecks'
-import { PAPER_SIZES, paperOrDefault, usableWidthPx, usableHeightPx } from '../utils/paper'
+import { paperOrDefault, usableWidthPx, usableHeightPx } from '../utils/paper'
 import {
   type Zoom,
   timelineRange, unionRange, dayWidthFor, clampDayWidth, totalWidth,
@@ -658,7 +597,7 @@ function saveView(view: SavedView): void {
 export default defineComponent({
   name: 'GanttChart',
   mixins: [fullscreenMixin],
-  components: { IconChevron, ActivityDetailDrawer, GanttMarkupPanel, GanttViewBar, GanttFilterBar, Icon },
+  components: { IconChevron, ActivityDetailDrawer, GanttToolbar, GanttLegend, GanttViewBar, GanttFilterBar },
   directives: { focus: { mounted: (el: HTMLElement) => el.focus() } },
   props: {
     data: { type: Object as PropType<Schedule>, required: true },
@@ -689,9 +628,7 @@ export default defineComponent({
       HEADER_HEIGHT,
       ROW_HEIGHT,
       zoom: saved.zoom || autoZoom,
-      zoomLevels: ['day', 'week', 'month', 'quarter'] as Zoom[],
       printPaperSize: saved.printPaperSize || 'a4',
-      paperSizes: PAPER_SIZES,
       dayWidthOverride: saved.dayWidthOverride ?? null,
       labelColWidth: Math.min(saved.labelColWidth || LABEL_COL_WIDTH_DEFAULT, labelColMax()),
       criticalBasis: (saved.criticalBasis || 'tf0') as CriticalBasis,
@@ -708,7 +645,6 @@ export default defineComponent({
       showProgressLine: saved.showProgressLine ?? false,
       showMarkup: saved.showMarkup ?? true,
       showSlipArrows: saved.showSlipArrows ?? false,
-      markupOpen: false,
       markup: loadMarkup(this.data.project.proj_short_name) as Markup,
       views: loadViews(this.data.project.proj_short_name) as NamedView[],
       // The view last applied or saved; the select shows it, and ‹ › step from it.
@@ -736,9 +672,6 @@ export default defineComponent({
     // overlay swallowing the interaction context.
     drag(this)._onDocMousedown = (e: MouseEvent) => {
       const target = e.target as Element
-      if (this.markupOpen && !target.closest('.tb-pop')) {
-        this.markupOpen = false
-      }
       if (this.selectedTaskId && this.$el.offsetParent !== null && !this.$el.contains(target)) {
         this.selectedTaskId = null
       }
@@ -1147,6 +1080,12 @@ export default defineComponent({
       const lvl = Math.max(...expanded.map(n => n.level))
       this._setWbsExpanded(expanded.filter(n => n.level === lvl).map(n => n.id), false)
     },
+    onWbsAction(action: WbsAction) {
+      if (action === 'collapse-all') this.collapseAll()
+      else if (action === 'collapse-level') this.collapseOneLevel()
+      else if (action === 'expand-level') this.expandOneLevel()
+      else this.expandAll()
+    },
     collapseAll() {
       if (this.isFilterActive) {
         this.filterCollapsed = allWbsKeys(this.data.wbs_tree || [])
@@ -1439,9 +1378,6 @@ export default defineComponent({
         printPaperSize: this.printPaperSize,
       })
     },
-    zoomLabel(z: string): string {
-      return z.charAt(0).toUpperCase() + z.slice(1)
-    },
     barTitle(a: Activity): string {
       return `${a.task_code} — ${a.task_name}\n${formatDate(displayStart(a))} → ${formatDate(displayEnd(a))}\n` +
         `Duration: ${formatHours(a.duration_hrs, a.calendar_hrs_per_day)} · Float: ${formatFloat(a.total_float_hrs, a.calendar_hrs_per_day)} · ${a.pct_complete}% complete`
@@ -1681,33 +1617,6 @@ export default defineComponent({
 .gantt-wrap { border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; background: var(--white); margin-bottom: var(--space-6); box-shadow: 0 1px 3px rgba(28,25,23,0.06); font-family: var(--font-ui); }
 .gantt-wrap.is-fullscreen { border-radius: 0; display: flex; flex-direction: column; height: 100vh; }
 .gantt-wrap.is-fullscreen .gantt-body { flex: 1; min-height: 0; display: flex; }
-/* ── Toolbar: one row ─────────────────────────────────────────────────────── */
-.gantt-toolbar { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding: 7px var(--space-4); background: var(--panel); border-bottom: 1px solid var(--line); }
-.tb-div { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }
-.tb-group { display: flex; align-items: center; gap: 4px; }
-.tb-group-label { font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-right: 2px; }
-.tb-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
-
-/* Popovers: filters and overflow */
-.tb-pop { position: relative; }
-.tb-markup { display: flex; align-items: center; gap: 2px; }
-/* Segmented groups: one bordered strip of equal, compact buttons. */
-.seg { display: flex; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); overflow: hidden; flex-shrink: 0; }
-.seg button { height: 26px; min-width: 26px; padding: 0 7px; border: none; border-right: 1px solid var(--gray-300); background: var(--white); color: var(--gray-700); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font: var(--text-small); font-weight: 600; }
-.seg button:last-child { border-right: none; }
-.seg button:hover:not(.active) { background: var(--gray-150); color: var(--ink); }
-.seg button.active { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
-/* Icon-only actions: borderless until hovered, so a row of them stays quiet. */
-.tb-icon { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: var(--radius-sm); background: none; color: var(--ink-2); cursor: pointer; padding: 0; }
-.tb-icon:hover:not(:disabled) { border-color: var(--gray-300); background: var(--panel); color: var(--ink); }
-.tb-icon.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-.tb-icon:disabled { opacity: 0.35; cursor: default; }
-.tb-select { height: 26px; padding: 0 3px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); color: var(--ink-2); }
-.tb-print { display: inline-flex; align-items: center; gap: 2px; }
-.tb-paper { width: 50px; }
-.gantt-toolbar .tb-chip { padding: 4px 7px; }
-.tb-panel { position: absolute; right: 0; top: calc(100% + 5px); min-width: 250px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: 0 10px 30px -12px rgba(0,0,0,0.35); padding: var(--space-3); z-index: 12; display: flex; flex-direction: column; gap: 7px; }
-
 
 
 .gantt-wrap.is-fullscreen .gantt-scroll { flex: 1; height: auto; max-height: none; }
@@ -1718,37 +1627,6 @@ export default defineComponent({
 
 /* Thin ink strip: title + the one highest-value toggle. Everything else lives in the
    light control row below, so there's no large dark panel to justify visually. */
-
-.basis-group { display: flex; align-items: center; gap: 6px; border: 1px solid var(--ink-soft); border-radius: var(--radius-sm); padding: 2px; flex-shrink: 0; }
-.basis-group button { padding: 4px 8px; border: none; border-radius: 3px; background: none; cursor: pointer; font: var(--text-small); color: var(--ink-2); }
-.basis-group button.active { background: var(--crit); color: var(--on-solid); font-weight: 700; }
-.basis-group button:hover:not(.active) { background: var(--ink-soft); }
-
-/* Light control row: legend + every interactive control, directly adjoining the light
-   timeline header below — no light/dark/light seam. */
-.legend { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; align-items: center; }
-.legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; line-height: 1.3; color: var(--nav-ink-2); white-space: nowrap; }
-.sb-legend .lg-bar { width: 16px; }
-.sb-legend { padding: 0 2px var(--space-3); margin-bottom: var(--space-3); border-bottom: 1px solid var(--nav-line); }
-.sb-legend-title { font-family: var(--font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--nav-ink-3); margin-bottom: 7px; }
-.sb-legend .bar-wbs { background: var(--nav-ink-3); }
-/* Fullscreen hides the sidebar, so the legend comes back as a row above the toolbar. */
-.legend-inline { display: flex; align-items: center; gap: var(--space-3); padding: 6px var(--space-4); margin: 0; background: var(--panel-2); border-bottom: 1px solid var(--line); }
-.legend-inline .sb-legend-title { margin: 0; color: var(--ink-3); }
-.legend-inline .legend { display: flex; flex-wrap: wrap; gap: 14px; }
-.legend-inline .legend-item { color: var(--gray-700); font: var(--text-small); }
-.legend-inline .bar-wbs { background: var(--gray-700); }
-/* Legend swatches ARE miniature bars — same fills and borders as the chart itself, so
-   the legend teaches the encoding instead of adding a second one to decode. */
-.lg-bar { width: 20px; height: 10px; border-radius: 3px; display: inline-block; box-sizing: border-box; border: 1.5px solid; }
-.lg-critical { background: var(--crit-tint); border-color: var(--crit); }
-.lg-near { background: var(--near-tint); border-color: var(--near); }
-.lg-normal { background: var(--accent-soft); border-color: var(--accent); }
-.lg-negative { background: repeating-linear-gradient(135deg, rgba(255,255,255,0.45) 0 2px, transparent 2px 5px), var(--crit); border-color: var(--crit-deep); }
-.diamond { width: 8px; height: 8px; background: var(--milestone); display: inline-block; transform: rotate(45deg); }
-.bar-wbs { width: 16px; height: 7px; border-radius: 3px; background: var(--gray-700); display: inline-block; }
-.progress-swatch { width: 14px; height: 2px; background: var(--milestone); display: inline-block; }
-
 
 .filter-select { padding: 6px 8px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); }
 .filter-check { font: var(--text-small); color: var(--gray-700); display: flex; align-items: center; gap: 4px; cursor: pointer; }
@@ -1890,7 +1768,6 @@ export default defineComponent({
 .g-float-tail { position: absolute; top: 13px; height: 0; border-top: 1px dashed var(--float-tail); pointer-events: auto; }
 .g-bar-ghost { position: absolute; top: 20px; height: 4px; border-radius: 2px; background: transparent; border: 1.5px solid var(--gray-500); box-sizing: border-box; pointer-events: auto; }
 .g-milestone-ghost { position: absolute; top: 16px; width: 7px; height: 7px; transform: translateX(-4px) rotate(45deg); border: 1.5px solid var(--gray-500); background: transparent; box-sizing: border-box; }
-.lg-ghost { background: transparent !important; border-color: var(--gray-500) !important; height: 5px !important; }
 .g-bar { position: absolute; top: 7px; height: 12px; border-radius: var(--radius-sm); overflow: hidden; background: var(--accent-soft); border: 1.5px solid var(--accent); box-sizing: border-box; box-shadow: 0 1px 2px rgba(28,25,23,0.15); }
 .g-bar.critical { background: var(--crit-tint); border-color: var(--crit); }
 .g-bar.near { background: var(--near-tint); border-color: var(--near); }
