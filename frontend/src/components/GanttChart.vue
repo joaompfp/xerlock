@@ -1,36 +1,27 @@
 <template>
   <div class="gantt-wrap" :class="{ 'is-fullscreen': isFullscreen }" ref="wrapEl">
-    <div class="view-bar">
-      <div class="strip-title">
-        <span class="strip-sub">{{ data.project.total_activities }} activities</span>
+    <!-- The bar encoding, stated once: in the sidebar beneath the navigation while the
+         Gantt is open, and here in place when the chart is fullscreen. -->
+    <Teleport v-if="active" to="#sb-legend" defer :disabled="isFullscreen">
+      <div class="sb-legend" :class="{ 'legend-inline': isFullscreen }">
+        <div class="sb-legend-title">Legend</div>
+        <div class="legend">
+          <template v-if="criticalBasis === 'tf0'">
+            <span class="legend-item"><i class="lg-bar lg-critical"></i>Critical (TF&le;0)</span>
+            <span class="legend-item"><i class="lg-bar lg-near"></i>Near-critical</span>
+            <span class="legend-item"><i class="lg-bar lg-normal"></i>Normal</span>
+          </template>
+          <template v-else>
+            <span class="legend-item"><i class="lg-bar lg-critical"></i>On longest path</span>
+            <span class="legend-item"><i class="lg-bar lg-normal"></i>Normal</span>
+          </template>
+          <span class="legend-item"><i class="lg-bar lg-negative"></i>Negative float</span>
+          <span class="legend-item"><i class="diamond"></i>Milestone</span>
+          <span class="legend-item"><i class="bar-wbs"></i>WBS rollup</span>
+          <span class="legend-item" v-if="baseline && showBaseline"><i class="lg-bar lg-ghost"></i>Baseline</span>
+        </div>
       </div>
-      <!-- The bar encoding is stated once, here, rather than in the toolbar. -->
-      <div class="legend">
-        <template v-if="criticalBasis === 'tf0'">
-          <span class="legend-item"><i class="lg-bar lg-critical"></i>Critical (TF&le;0)</span>
-          <span class="legend-item"><i class="lg-bar lg-near"></i>Near-critical</span>
-          <span class="legend-item"><i class="lg-bar lg-normal"></i>Normal</span>
-        </template>
-        <template v-else>
-          <span class="legend-item"><i class="lg-bar lg-critical"></i>On longest path</span>
-          <span class="legend-item"><i class="lg-bar lg-normal"></i>Normal</span>
-        </template>
-        <span class="legend-item"><i class="lg-bar lg-negative"></i>Negative float</span>
-        <span class="legend-item"><i class="diamond"></i>Milestone</span>
-        <span class="legend-item"><i class="bar-wbs"></i>WBS rollup</span>
-        <span class="legend-item" v-if="baseline && showBaseline"><i class="lg-bar lg-ghost"></i>Baseline</span>
-      </div>
-      <GanttViewBar
-        :views="views"
-        :current-id="currentViewId"
-        @apply="applyView"
-        @step="stepViews"
-        @save="saveNamedView"
-        @update="updateView"
-        @rename="renameView"
-        @remove="removeView"
-      />
-    </div>
+    </Teleport>
 
     <!-- One compact toolbar row, every control in sight: icons where the meaning is
          plain, a short word where it isn't. Grouped left to right as scale, structure,
@@ -103,7 +94,6 @@
     <!-- Every filter sits on this one row, and a control that is narrowing the view is
          drawn in the accent colour, so a filtered chart can't be read as the whole programme. -->
     <div class="filter-strip">
-      <span class="fs-label">FILTER</span>
       <input type="text" v-model="filterText" class="filter-input fb-search" :class="{ set: filterText.trim() }" placeholder="Search…" title="Search activity code, name or WBS path" />
       <select v-model="filterStatus" class="fb-select" :class="{ set: filterStatus }" title="Status">
         <option value="">Status</option>
@@ -145,6 +135,16 @@
         <button class="isolation-exit isolation-save" title="Keep this chain as a named highlight group" @click="saveTraceAsGroup">Save as highlight</button>
         <button class="isolation-exit" @click="exitIsolation">Show all</button>
       </span>
+      <GanttViewBar
+        :views="views"
+        :current-id="currentViewId"
+        @apply="applyView"
+        @step="stepViews"
+        @save="saveNamedView"
+        @update="updateView"
+        @rename="renameView"
+        @remove="removeView"
+      />
       <span class="filter-count" title="Activities shown">{{ matchCount }} of {{ data.activities.length }}</span>
     </div>
 
@@ -730,6 +730,8 @@ export default defineComponent({
     jumpTo: { type: Number as PropType<number | null>, default: null },
     annotations: { type: Object as PropType<Annotations>, default: () => ({}) },
     returnTab: { type: String, default: '' },
+    // Whether the Gantt is the open view: its legend then shows in the sidebar.
+    active: { type: Boolean, default: false },
     // Parsed baseline schedule (from the Compare tab's snapshot/upload). When present,
     // activities matched by code can draw a ghost bar at their baseline position.
     baseline: { type: Object as PropType<Schedule | null>, default: null },
@@ -2101,19 +2103,18 @@ export default defineComponent({
 
 /* ── Active-filter strip ──────────────────────────────────────────────────── */
 .filter-strip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 34px; padding: 5px var(--space-4); background: var(--panel-2); border-bottom: 1px solid var(--line); }
-.fs-label { font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em; color: var(--ink-3); }
 .fs-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); border-radius: 14px; padding: 2px 5px 2px 10px; cursor: pointer; font: var(--text-small); font-weight: 600; }
 .fs-chip:hover { background: var(--panel); }
 .fs-x { font-size: 14px; line-height: 1; opacity: 0.75; }
-.filter-strip .fb-search { width: 140px; padding: 3px 8px; }
-.filter-strip .fb-select { height: 26px; padding: 0 4px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); color: var(--ink-2); max-width: 128px; }
+.filter-strip .fb-search { width: 124px; padding: 3px 8px; }
+.filter-strip .fb-select { height: 26px; padding: 0 4px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); color: var(--ink-2); max-width: 118px; }
 .filter-strip .fb-select.set { max-width: 180px; }
 .filter-strip .tb-chip { padding: 3px 9px; }
 .fb-dates { display: inline-flex; align-items: center; gap: 2px; }
-.filter-strip .fb-dates .filter-date { height: 26px; box-sizing: border-box; padding: 0 3px; width: 122px; }
+.filter-strip .fb-dates .filter-date { height: 26px; box-sizing: border-box; padding: 0 2px; width: 108px; font-size: 11px; }
 .fb-dash { color: var(--ink-3); }
 .filter-strip .set, .fb-dates.set .filter-date { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.filter-strip .filter-count { margin-left: auto; white-space: nowrap; font: var(--text-small); color: var(--ink-3); font-family: var(--font-mono); }
+.filter-strip .filter-count { margin-left: 4px; white-space: nowrap; font: var(--text-small); color: var(--ink-3); font-family: var(--font-mono); }
 
 
 .gantt-wrap.is-fullscreen .gantt-scroll { flex: 1; height: auto; max-height: none; }
@@ -2132,8 +2133,18 @@ export default defineComponent({
 
 /* Light control row: legend + every interactive control, directly adjoining the light
    timeline header below — no light/dark/light seam. */
-.legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
-.legend-item { display: flex; align-items: center; gap: 5px; font: var(--text-small); color: var(--gray-700); }
+.legend { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; align-items: center; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; line-height: 1.3; color: var(--nav-ink-2); white-space: nowrap; }
+.sb-legend .lg-bar { width: 16px; }
+.sb-legend { padding: 0 2px var(--space-3); margin-bottom: var(--space-3); border-bottom: 1px solid var(--nav-line); }
+.sb-legend-title { font-family: var(--font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--nav-ink-3); margin-bottom: 7px; }
+.sb-legend .bar-wbs { background: var(--nav-ink-3); }
+/* Fullscreen hides the sidebar, so the legend comes back as a row above the toolbar. */
+.legend-inline { display: flex; align-items: center; gap: var(--space-3); padding: 6px var(--space-4); margin: 0; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.legend-inline .sb-legend-title { margin: 0; color: var(--ink-3); }
+.legend-inline .legend { display: flex; flex-wrap: wrap; gap: 14px; }
+.legend-inline .legend-item { color: var(--gray-700); font: var(--text-small); }
+.legend-inline .bar-wbs { background: var(--gray-700); }
 /* Legend swatches ARE miniature bars — same fills and borders as the chart itself, so
    the legend teaches the encoding instead of adding a second one to decode. */
 .lg-bar { width: 20px; height: 10px; border-radius: 3px; display: inline-block; box-sizing: border-box; border: 1.5px solid; }
@@ -2148,6 +2159,7 @@ export default defineComponent({
 
 .filter-input { padding: 6px 12px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); width: 240px; }
 .filter-date { border: 1px solid var(--gray-300); border-radius: var(--radius-sm); padding: 4px 6px; background: var(--white); font-family: var(--font-mono); font-size: 12px; color: var(--ink); }
+.filter-strip .la-btn { padding: 3px 7px; }
 .la-btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 700; }
 .filter-select { padding: 6px 8px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); }
 .filter-check { font: var(--text-small); color: var(--gray-700); display: flex; align-items: center; gap: 4px; cursor: pointer; }

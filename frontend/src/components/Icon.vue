@@ -27,6 +27,7 @@ const PATHS = {
   today: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM12 2v4M12 18v4M2 12h4M18 12h4',
   fullscreen: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
   print: 'M7 9V3h10v6M7 17H4v-7h16v7h-3M7 14h10v7H7z',
+  bookmark: 'M6 3h12v18l-6-4-6 4z',
 } as const
 
 export type IconName = keyof typeof PATHS
