@@ -623,7 +623,7 @@
 import { defineComponent, type PropType } from 'vue'
 import { formatDate, formatHours, formatFloat, formatLag } from '../utils/format'
 import { REL_TYPE_LABELS, CSTR_LABELS, displayStart, displayEnd } from '../utils/p6'
-import { CHECK_DEFS, CFG_VERSION, defaultConfig, runChecks, weightedScore } from '../utils/healthChecks'
+import { CHECK_DEFS, defaultConfig, runChecks, weightedScore, loadHealthConfig, saveHealthConfig } from '../utils/healthChecks'
 import type { CheckDef, CheckKey, CheckResult, HealthConfig } from '../utils/healthChecks'
 import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
 import type { Activity, MspOptions, Schedule, ScheduleOptions } from '../types/schedule'
@@ -645,22 +645,6 @@ interface ScorecardItem {
   state: 'excluded' | 'pass' | 'fail'
   targetText: string
   tip: string
-}
-
-const CFG_KEY = 'schedule-app:health-config'
-
-function loadConfig(): HealthConfig {
-  const cfg = defaultConfig()
-  try {
-    const raw = localStorage.getItem(CFG_KEY)
-    if (!raw) return cfg
-    const saved = JSON.parse(raw) as { version?: number; cfg?: Partial<HealthConfig> }
-    if (saved.version !== CFG_VERSION) return cfg
-    for (const key of Object.keys(cfg) as CheckKey[]) {
-      if (saved.cfg?.[key]) Object.assign(cfg[key], saved.cfg[key])
-    }
-  } catch { /* corrupted config — fall back to defaults */ }
-  return cfg
 }
 
 export default defineComponent({
@@ -694,7 +678,7 @@ export default defineComponent({
       } as Record<SectionKey, boolean>,
       showConfig: false,
       selectedTaskId: null as number | null,
-      cfg: loadConfig(),
+      cfg: loadHealthConfig(),
       checkDefs: CHECK_DEFS,
       cstrLabels: CSTR_LABELS,
       relTypeLabels: REL_TYPE_LABELS,
@@ -709,11 +693,7 @@ export default defineComponent({
     weightedScore: { immediate: true, handler(v: number) { this.$emit('score', v) } },
     cfg: {
       deep: true,
-      handler(v: HealthConfig) {
-        try {
-          localStorage.setItem(CFG_KEY, JSON.stringify({ version: CFG_VERSION, cfg: v }))
-        } catch { /* storage unavailable */ }
-      },
+      handler(v: HealthConfig) { saveHealthConfig(v) },
     },
   },
   computed: {
