@@ -17,7 +17,7 @@
         <table v-else class="progress-table">
           <thead><tr><th>Code</th><th>Milestone</th><th class="num">Target</th><th class="num">Forecast</th><th class="num">Variance</th><th>Status</th></tr></thead>
           <tbody>
-            <tr v-for="m in milestoneList" :key="m.task_id" class="jump-row" title="Show in Gantt" @click="$emit('jump', m.task_id)">
+            <tr v-for="m in milestoneList.slice(0, rowLimit('milestoneList'))" :key="m.task_id" class="jump-row" title="Show in Gantt" @click="$emit('jump', m.task_id)">
               <td class="code">{{ m.task_code }}</td>
               <td class="name-cell">{{ m.task_name }}</td>
               <td class="num-cell">{{ m.target ? formatDate(m.target) : '—' }}</td>
@@ -25,6 +25,7 @@
               <td class="num-cell" :class="varianceClass(m)">{{ m.varianceDays == null ? '—' : (m.varianceDays > 0 ? '+' : '') + m.varianceDays + 'd' }}</td>
               <td><span class="status-chip" :class="'status-' + m.status">{{ statusLabels[m.status] }}</span></td>
             </tr>
+            <tr v-if="milestoneList.length > rowLimit('milestoneList')" class="more-row"><td colspan="6"><button class="btn-tiny-light" @click.stop="showAllRows('milestoneList')">Show all {{ milestoneList.length }}</button></td></tr>
           </tbody>
         </table>
       </div>
@@ -46,7 +47,7 @@
         <table v-else class="progress-table">
           <thead><tr><th>Code</th><th>Activity</th><th class="num">Start</th><th class="num">Finish</th><th class="num">Float</th><th class="num">% Complete</th><th class="num">Remaining / Original</th></tr></thead>
           <tbody>
-            <tr v-for="a in lookaheadList" :key="a.task_id" class="jump-row" title="Show in Gantt" @click="$emit('jump', a.task_id)" :class="{ critical: a.is_critical }">
+            <tr v-for="a in lookaheadList.slice(0, rowLimit('lookaheadList'))" :key="a.task_id" class="jump-row" title="Show in Gantt" @click="$emit('jump', a.task_id)" :class="{ critical: a.is_critical }">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
               <td class="num-cell">{{ formatDate(a.early_start) }}</td>
@@ -55,6 +56,7 @@
               <td class="num-cell">{{ a.pct_complete }}%</td>
               <td class="num-cell">{{ formatHours(a.remain_duration_hrs, a.calendar_hrs_per_day) }} / {{ formatHours(a.duration_hrs, a.calendar_hrs_per_day) }}</td>
             </tr>
+            <tr v-if="lookaheadList.length > rowLimit('lookaheadList')" class="more-row"><td colspan="7"><button class="btn-tiny-light" @click.stop="showAllRows('lookaheadList')">Show all {{ lookaheadList.length }}</button></td></tr>
           </tbody>
         </table>
       </div>
@@ -106,6 +108,7 @@ import { displayEnd } from '../utils/p6'
 import { durationSCurve, type SCurve, type SCurvePoint } from '../utils/sCurve'
 import type { Activity, Schedule } from '../types/schedule'
 import { isProjectFile } from '../utils/source'
+import rowLimitMixin from '../mixins/rowLimit'
 
 const fmtMonthYear = dateFormat({ month: 'short', year: '2-digit' })
 
@@ -124,6 +127,7 @@ const STATUS_LABELS: Record<MilestoneStatus, string> = { achieved: 'Achieved', '
 
 export default defineComponent({
   name: 'ProgressView',
+  mixins: [rowLimitMixin],
   props: {
     data: { type: Object as PropType<Schedule>, required: true },
   },
