@@ -638,6 +638,7 @@ import { REL_TYPE_LABELS, CSTR_LABELS, displayStart, displayEnd } from '../utils
 import { CHECK_DEFS, defaultConfig, runChecks, weightedScore, loadHealthConfig, saveHealthConfig } from '../utils/healthChecks'
 import type { CheckDef, CheckKey, CheckResult, HealthConfig } from '../utils/healthChecks'
 import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
+import rowLimitMixin from '../mixins/rowLimit'
 import type { Activity, MspOptions, Schedule, ScheduleOptions } from '../types/schedule'
 import type { Annotations } from '../utils/annotations'
 
@@ -659,12 +660,9 @@ interface ScorecardItem {
   tip: string
 }
 
-// Rows an offender list shows before its "Show all": every list in full is all of a
-// large file's activities, on a page nobody scrolls that far.
-const ROW_LIMIT = 100
-
 export default defineComponent({
   name: 'HealthCheck',
+  mixins: [rowLimitMixin],
   components: { ActivityDetailDrawer },
   props: {
     data: { type: Object as PropType<Schedule>, required: true },
@@ -693,9 +691,6 @@ export default defineComponent({
         summarylogic: true,
       } as Record<SectionKey, boolean>,
       showConfig: false,
-      // Lists shown in full after "Show all"; the others stop at ROW_LIMIT rows, so a
-      // file with thousands of offenders doesn't draw them all before anyone asks.
-      fullLists: [] as string[],
       selectedTaskId: null as number | null,
       cfg: loadHealthConfig(),
       checkDefs: CHECK_DEFS,
@@ -863,12 +858,6 @@ export default defineComponent({
     document.removeEventListener('mousedown', this.onDocMousedown)
   },
   methods: {
-    rowLimit(list: string): number {
-      return this.fullLists.includes(list) ? Infinity : ROW_LIMIT
-    },
-    showAllRows(list: string) {
-      this.fullLists.push(list)
-    },
     formatDate,
     formatHours,
     formatFloat,
