@@ -118,3 +118,78 @@ def test_snapping_on_a_24_hour_calendar_is_the_identity():
     assert ALL_HOURS.next_work_start(t) == t
     assert ALL_HOURS.prev_work_finish(t) == t
     assert ALL_HOURS.prev_work_finish(dt(2026, 3, 7)) == dt(2026, 3, 7)
+
+
+# ── The running totals give exactly what walking day by day gives ──────────────────
+# The reference is the original day-by-day walk; the calendar arithmetic skips whole
+# days in bulk (see WorkCalendar._cover), and must not change a single answer.
+
+import random
+from datetime import date, datetime, timedelta
+
+
+def _ref_between(cal, t0, t1):
+    if t1 < t0:
+        return -_ref_between(cal, t1, t0)
+    total, d = 0, t0.date()
+    while d <= t1.date():
+        day0 = datetime.combine(d, datetime.min.time())
+        lo = (t0 - day0).total_seconds() / 60 if d == t0.date() else 0
+        hi = (t1 - day0).total_seconds() / 60 if d == t1.date() else 1440
+        for s, f in cal.spans_on(d):
+            total += max(0, min(f, hi) - max(s, lo))
+        d += timedelta(days=1)
+    return total / 60
+
+
+def _ref_add(cal, t, hours):
+    if hours == 0:
+        return t
+    remaining, forward, d = abs(hours) * 60, hours > 0, t.date()
+    for _ in range(366 * 30):
+        day0 = datetime.combine(d, datetime.min.time())
+        here = (t - day0).total_seconds() / 60 if d == t.date() else (0 if forward else 1440)
+        spans = cal.spans_on(d)
+        for s, f in (spans if forward else reversed(spans)):
+            if forward:
+                s = max(s, here)
+                if s >= f:
+                    continue
+                if f - s >= remaining:
+                    return day0 + timedelta(minutes=s + remaining)
+            else:
+                f = min(f, here)
+                if f <= s:
+                    continue
+                if f - s >= remaining:
+                    return day0 + timedelta(minutes=f - remaining)
+            remaining -= f - s
+        d += timedelta(days=1 if forward else -1)
+    return t
+
+
+def _calendars():
+    split = {str(d): [] for d in range(1, 8)}
+    for d in "23456":
+        split[d] = [{"start": "07:00", "finish": "12:00"}, {"start": "13:00", "finish": "17:30"}]
+    nights = {str(d): [{"start": "22:00", "finish": "00:00"}] for d in range(1, 8)}
+    rng = random.Random(7)
+    holidays = [{"date": (date(2026, 1, 1) + timedelta(days=rng.randrange(700))).isoformat(), "periods": []} for _ in range(40)]
+    worked = [{"date": (date(2026, 1, 3) + timedelta(days=7 * rng.randrange(100))).isoformat(),
+               "periods": [{"start": "08:00", "finish": "12:00"}]} for _ in range(10)]
+    yield WorkCalendar(FIVE_DAY, holidays + worked)
+    yield WorkCalendar(split, holidays)
+    yield WorkCalendar(nights, [])
+    yield WorkCalendar({str(d): [{"start": "00:00", "finish": "00:00"}] for d in range(1, 8)}, [])
+
+
+def test_bulk_days_match_the_day_by_day_walk():
+    rng = random.Random(42)
+    for cal in _calendars():
+        for _ in range(1000):
+            t0 = datetime(2026, 1, 1) + timedelta(minutes=rng.randrange(0, 700 * 1440, 15))
+            t1 = t0 + timedelta(minutes=rng.randrange(-200 * 1440, 200 * 1440, 15))
+            assert cal.working_hours_between(t0, t1) == pytest.approx(_ref_between(cal, t0, t1), abs=1e-9)
+            h = rng.choice([rng.randrange(-2000, 2000), rng.uniform(-900, 900), rng.choice([8, -8, 0.5, -0.5])])
+            got, want = cal.add_working_hours(t0, h), _ref_add(cal, t0, h)
+            assert abs((got - want).total_seconds()) < 1e-3, (t0, h, got, want)

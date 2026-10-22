@@ -1,134 +1,43 @@
 <template>
   <div class="gantt-wrap" :class="{ 'is-fullscreen': isFullscreen }" ref="wrapEl">
-    <!-- The bar encoding, stated once: in the sidebar beneath the navigation while the
-         Gantt is open, and here in place when the chart is fullscreen. -->
-    <Teleport v-if="active" to="#sb-legend" defer :disabled="isFullscreen">
-      <div class="sb-legend" :class="{ 'legend-inline': isFullscreen }">
-        <div class="sb-legend-title">Legend</div>
-        <div class="legend">
-          <template v-if="criticalBasis === 'tf0'">
-            <span class="legend-item"><i class="lg-bar lg-critical"></i>Critical (TF&le;0)</span>
-            <span class="legend-item"><i class="lg-bar lg-near"></i>Near-critical</span>
-            <span class="legend-item"><i class="lg-bar lg-normal"></i>Normal</span>
-          </template>
-          <template v-else>
-            <span class="legend-item"><i class="lg-bar lg-critical"></i>On longest path</span>
-            <span class="legend-item"><i class="lg-bar lg-normal"></i>Normal</span>
-          </template>
-          <span class="legend-item"><i class="lg-bar lg-negative"></i>Negative float</span>
-          <span class="legend-item"><i class="diamond"></i>Milestone</span>
-          <span class="legend-item"><i class="bar-wbs"></i>WBS rollup</span>
-          <span class="legend-item" v-if="baseline && showBaseline"><i class="lg-bar lg-ghost"></i>Baseline</span>
-        </div>
-      </div>
-    </Teleport>
+    <GanttLegend :active="active" :inline="isFullscreen" :basis="criticalBasis" :baseline="!!baseline && showBaseline" />
 
-    <!-- One compact toolbar row, every control in sight: icons where the meaning is
-         plain, a short word where it isn't. Grouped left to right as scale, structure,
-         basis, overlays, markup, then the once-a-session actions. -->
-    <div class="gantt-toolbar">
-      <div class="seg" role="group" aria-label="Scale">
-        <button
-          v-for="z in zoomLevels"
-          :key="z"
-          :class="{ active: !dayWidthOverride && zoom === z }"
-          :title="zoomLabel(z)"
-          @click="selectZoomPreset(z)"
-        >{{ zoomLabel(z).charAt(0) }}</button>
-      </div>
-      <div class="seg" role="group" aria-label="Zoom">
-        <button title="Zoom out" @click="zoomOut"><Icon name="zoom-out" /></button>
-        <button title="Fit to the available width" @click="fitToWidth"><Icon name="fit" /></button>
-        <button title="Zoom in" @click="zoomIn"><Icon name="zoom-in" /></button>
-      </div>
+    <GanttToolbar
+      :zoom="zoom"
+      :zoom-overridden="!!dayWidthOverride"
+      v-model:basis="criticalBasis"
+      v-model:show-links="showLinks"
+      v-model:links-scope="linksScope"
+      v-model:show-progress="showProgressLine"
+      :has-baseline="!!baseline"
+      v-model:show-baseline="showBaseline"
+      v-model:show-slip-arrows="showSlipArrows"
+      :markup="markup"
+      v-model:show-markup="showMarkup"
+      :markup-default-date="markupDefaultDate"
+      :can-scroll-to-today="todayX !== null"
+      :fullscreen="isFullscreen"
+      v-model:paper="printPaperSize"
+      @zoom-preset="selectZoomPreset"
+      @zoom-in="zoomIn"
+      @zoom-out="zoomOut"
+      @fit="fitToWidth"
+      @wbs="onWbsAction"
+      @add-text="addTextBox"
+      @markup="setMarkup"
+      @today="scrollToToday"
+      @fullscreen="toggleFullscreen"
+      @print="printGantt"
+    />
 
-      <span class="tb-div"></span>
-
-      <div class="seg" role="group" aria-label="WBS">
-        <button title="Collapse all WBS" @click="collapseAll"><Icon name="collapse-all" /></button>
-        <button title="Collapse the deepest expanded WBS level" @click="collapseOneLevel"><Icon name="level-up" /></button>
-        <button title="Expand one more WBS level" @click="expandOneLevel"><Icon name="level-down" /></button>
-        <button title="Expand all WBS" @click="expandAll"><Icon name="expand-all" /></button>
-      </div>
-
-      <div class="tb-group basis-group" title="Critical basis: total float ≤ 0, or the longest path">
-        <button :class="{ active: criticalBasis === 'tf0' }" @click="criticalBasis = 'tf0'">TF &le; 0</button>
-        <button :class="{ active: criticalBasis === 'longest' }" @click="criticalBasis = 'longest'">Longest</button>
-      </div>
-
-      <span class="tb-div"></span>
-
-      <!-- Overlay chips: solid and in the accent colour when on, dashed when off. -->
-      <button class="tb-chip" :class="{ on: showLinks }" title="Relationship lines" @click="showLinks = !showLinks"><Icon name="link" :size="13" />Links</button>
-      <select v-if="showLinks" v-model="linksScope" class="tb-select" title="Which relationships to draw">
-        <option value="critical">Critical</option>
-        <option value="all">All</option>
-      </select>
-      <button class="tb-chip" :class="{ on: showProgressLine }" title="Progress line through the data date" @click="showProgressLine = !showProgressLine"><Icon name="progress" :size="13" />Progress</button>
-      <button v-if="baseline" class="tb-chip" :class="{ on: showBaseline }" title="Outlined bars at each activity's position in the compared schedule" @click="showBaseline = !showBaseline"><Icon name="baseline" :size="13" />Baseline</button>
-      <button v-if="showSlip" class="tb-chip" :class="{ on: showSlipArrows }" title="An arrow under each moved activity, from its compared finish to its current one" @click="showSlipArrows = !showSlipArrows"><Icon name="slip" :size="13" />Slip</button>
-
-      <span class="tb-div"></span>
-
-      <div class="tb-pop tb-markup">
-        <button class="tb-chip" :class="{ on: markupShown }" :title="hasMarkup ? 'Show or hide your key dates, periods, highlights and text boxes' : 'Add key dates, periods and highlights'" @click="hasMarkup ? (showMarkup = !showMarkup) : (markupOpen = !markupOpen)"><Icon name="flag" :size="13" />Key dates</button>
-        <button class="tb-icon" :class="{ active: markupOpen }" title="Edit key dates, periods and highlights" @click="markupOpen = !markupOpen"><Icon name="pencil" :size="14" /></button>
-        <button class="tb-icon" title="Add a text box to the chart" @click="addTextBox"><Icon name="text" :size="14" /></button>
-        <div v-if="markupOpen" class="tb-panel">
-          <GanttMarkupPanel :markup="markup" :default-date="markupDefaultDate" @change="setMarkup" />
-        </div>
-      </div>
-
-      <div class="tb-right">
-        <button class="tb-icon" :disabled="todayX === null" title="Scroll to today" @click="scrollToToday"><Icon name="today" :size="14" /></button>
-        <button class="tb-icon" :class="{ active: isFullscreen }" :title="isFullscreen ? 'Exit fullscreen' : 'Fullscreen'" @click="toggleFullscreen"><Icon name="fullscreen" :size="14" /></button>
-        <span class="tb-print">
-          <button class="tb-icon" title="Print the chart as it is, fitted to the paper width" @click="printGantt"><Icon name="print" :size="14" /></button>
-          <select v-model="printPaperSize" class="tb-select tb-paper" title="Paper">
-            <option v-for="key in Object.keys(paperSizes)" :key="key" :value="key">{{ key.toUpperCase() }}</option>
-          </select>
-        </span>
-      </div>
-    </div>
-
-    <!-- Every filter sits on this one row, and a control that is narrowing the view is
-         drawn in the accent colour, so a filtered chart can't be read as the whole programme. -->
-    <div class="filter-strip">
-      <input type="text" v-model="filterText" class="filter-input fb-search" :class="{ set: filterText.trim() }" placeholder="Search…" title="Search activity code, name or WBS path" />
-      <select v-model="filterStatus" class="fb-select" :class="{ set: filterStatus }" title="Status">
-        <option value="">Status</option>
-        <option value="TK_NotStart">Not started</option>
-        <option value="TK_Active">Active</option>
-        <option value="TK_Complete">Complete</option>
-      </select>
-      <select v-model="filterConstraint" class="fb-select" :class="{ set: filterConstraint }" title="Constraint">
-        <option value="">Constraint</option>
-        <option v-for="o in constraintFilterOptions" :key="o.value" :value="o.value" :disabled="o.count === 0">{{ o.label }} ({{ o.count }})</option>
-      </select>
-      <select v-model="filterNotes" class="fb-select" :class="{ set: filterNotes }" title="Your review notes (the dot after an activity's name)">
-        <option value="">Notes</option>
-        <option v-for="o in noteFilterOptions" :key="o.value" :value="o.value" :disabled="o.count === 0">{{ o.label }} ({{ o.count }})</option>
-      </select>
-      <button class="tb-chip" :class="{ on: filterCriticalOnly }" @click="filterCriticalOnly = !filterCriticalOnly" title="Critical activities only, on the current basis"><i></i>Critical</button>
-      <span class="fb-dates" :class="{ set: filterFrom || filterTo }" title="Date window: activities touching it">
-        <input type="date" v-model="filterFrom" class="filter-date" aria-label="From" />
-        <span class="fb-dash">–</span>
-        <input type="date" v-model="filterTo" class="filter-date" aria-label="To" />
-      </span>
-      <template v-if="data.project.data_date">
-        <button class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(28) }" title="Data date + 4 weeks" @click="setLookAhead(28)">4 wk</button>
-        <button class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(56) }" title="Data date + 8 weeks" @click="setLookAhead(56)">8 wk</button>
-      </template>
-      <select v-if="codeTypesAvailable.length" class="fb-select" title="P6 activity codes, read verbatim from this file's ACTVTYPE table" @change="addCodeFilter">
-        <option value="">Activity code</option>
-        <optgroup v-for="t in codeTypesAvailable" :key="t" :label="t">
-          <option v-for="c in codeValuesByType.get(t)" :key="c" :value="JSON.stringify([t, c])">{{ c }}</option>
-        </optgroup>
-      </select>
-      <button v-for="[type, code] in activeCodeFilters" :key="type" class="fs-chip" @click="clearFilter('code:' + type)" :title="`Remove: ${type}: ${code}`">
-        {{ type }}: {{ code }}<span class="fs-x">&times;</span>
-      </button>
-      <button v-if="activeFilterChips.length" class="btn-tiny-light" @click="clearFilters">Clear</button>
+    <GanttFilterBar
+      v-model:filter="filter"
+      :activities="data.activities"
+      :annotations="annotations"
+      :code-types="codeTypesAvailable"
+      :data-date="data.project.data_date"
+      @clear="clearFilters"
+    >
       <button v-if="returnTab" class="return-chip" @click="$emit('return-to-origin')">&larr; Back to {{ returnTab }}</button>
       <span v-if="isolatedIds" class="isolation-chip">
         Chain trace &middot; {{ isolatedIds.size }} {{ isolatedIds.size === 1 ? 'activity' : 'activities' }}
@@ -146,7 +55,7 @@
         @remove="removeView"
       />
       <span class="filter-count" title="Activities shown">{{ matchCount }} of {{ data.activities.length }}</span>
-    </div>
+    </GanttFilterBar>
 
     <div class="gantt-body">
     <div
@@ -240,27 +149,27 @@
         <!-- Background layer: weekend shading + gridlines — sits BELOW bars -->
         <svg
           class="g-overlay g-overlay-bg"
-          :style="{ left: labelColWidth + 'px', top: HEADER_HEIGHT + 'px', width: totalWidth + 'px', height: pg.bodyHeight + 'px' }"
+          :style="{ left: labelColWidth + 'px', top: winTop(pg) + 'px', width: totalWidth + 'px', height: winHeight(pg) + 'px' }"
           :width="totalWidth"
-          :height="pg.bodyHeight"
+          :height="winHeight(pg)"
         >
           <rect
             v-for="r in weekendRects"
             :key="'we' + r.x"
-            :x="r.x" y="0" :width="r.w" :height="pg.bodyHeight"
+            :x="r.x" y="0" :width="r.w" :height="winHeight(pg)"
             class="g-weekend"
           />
           <line
             v-for="t in detailTicks"
             :key="'gl' + t.x"
-            :x1="t.x" :x2="t.x" y1="0" :y2="pg.bodyHeight"
+            :x1="t.x" :x2="t.x" y1="0" :y2="winHeight(pg)"
             class="g-gridline"
           />
           <template v-if="markupShown">
             <rect
               v-for="p in markupPeriods"
               :key="'mp' + p.id"
-              :x="p.x" y="0" :width="p.w" :height="pg.bodyHeight"
+              :x="p.x" y="0" :width="p.w" :height="winHeight(pg)"
               class="g-mk-band"
               :class="'mk-' + p.color"
             />
@@ -268,7 +177,7 @@
           <line
             v-for="t in secondaryMonthGridlines"
             :key="'glm' + t.x"
-            :x1="t.x" :x2="t.x" y1="0" :y2="pg.bodyHeight"
+            :x1="t.x" :x2="t.x" y1="0" :y2="winHeight(pg)"
             class="g-gridline-month"
           />
         </svg>
@@ -277,9 +186,9 @@
              visually disappears behind an unrelated activity's bar. -->
         <svg
           class="g-overlay g-overlay-fg"
-          :style="{ left: labelColWidth + 'px', top: HEADER_HEIGHT + 'px', width: totalWidth + 'px', height: pg.bodyHeight + 'px' }"
+          :style="{ left: labelColWidth + 'px', top: winTop(pg) + 'px', width: totalWidth + 'px', height: winHeight(pg) + 'px' }"
           :width="totalWidth"
-          :height="pg.bodyHeight"
+          :height="winHeight(pg)"
         >
           <defs>
             <marker id="gantt-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -295,9 +204,9 @@
               <path d="M0 0L8 4L0 8z" class="g-link-arrow-chain" />
             </marker>
           </defs>
-          <g :transform="'translate(0,' + (-pg.start * ROW_HEIGHT) + ')'">
+          <g :transform="'translate(0,' + (-pg.from * ROW_HEIGHT) + ')'">
           <path
-            v-for="l in links"
+            v-for="l in linksIn(pg)"
             :key="l.id"
             :d="l.d"
             class="g-link"
@@ -319,7 +228,7 @@
             class="g-callout-leader"
           />
           <circle
-            v-for="(p, i) in progressLinePoints"
+            v-for="(p, i) in progressDotsIn(pg)"
             :key="'pp' + i"
             :cx="p.x" :cy="p.y" r="2.5"
             class="g-progress-dot"
@@ -400,7 +309,7 @@
           <div
             class="g-cell g-timeline-row"
             :class="hlClass(row)"
-            :style="{ gridRow: (row.index - pg.start + 2), gridColumn: 2, width: totalWidth + 'px' }"
+            :style="{ top: (HEADER_HEIGHT + (row.index - pg.start) * ROW_HEIGHT) + 'px', left: labelColWidth + 'px', width: totalWidth + 'px' }"
           >
             <div
               v-if="row.type === 'wbs'"
@@ -560,22 +469,21 @@
 
 <script lang="ts">
 import { defineComponent, type PropType } from 'vue'
-import type { Activity, Schedule, WbsNode } from '../types/schedule'
-import { loadMarkup, saveMarkup, periodSpan, highlightColors, toggleMember, newMarkId, nextColor, MARK_COLORS, type Markup, type MarkColor, type TextBox } from '../utils/markup'
-import GanttMarkupPanel from './GanttMarkupPanel.vue'
+import type { Activity, Schedule } from '../types/schedule'
+import { loadMarkup, saveMarkup, highlightColors, toggleMember, newMarkId, nextColor, MARK_COLORS, type Markup, type MarkColor, type TextBox } from '../utils/markup'
+import GanttToolbar, { type WbsAction } from './GanttToolbar.vue'
+import GanttLegend from './GanttLegend.vue'
 import GanttViewBar from './GanttViewBar.vue'
-import Icon from './Icon.vue'
-import { loadViews, saveViews, completeState, stepView, type SavedView as NamedView, type ViewState } from '../utils/views'
-import { matchesNoteFilter, NOTE_FILTER_LABELS, DEFAULT_CALLOUT, SEVERITY_LABELS, type Annotations, type CalloutOffset, type NoteFilter, type Severity } from '../utils/annotations'
-import { formatDate, formatDateShort, formatHours, isMilestone, formatFloat, formatLag, statusLabel } from '../utils/format'
+import GanttFilterBar from './GanttFilterBar.vue'
+import { loadViews, saveViews, completeState, stepView, filterToView, filterFromView, type SavedView as NamedView, type ViewState } from '../utils/views'
+import { DEFAULT_CALLOUT, SEVERITY_LABELS, type Annotations, type CalloutOffset, type Severity } from '../utils/annotations'
+import { emptyFilter, isFilterSet, matchesFilter, filterChips, emptyFilterHint, type GanttFilter } from '../utils/ganttFilter'
+import { formatDate, formatDateShort, formatHours, formatFloat, formatLag, statusLabel } from '../utils/format'
 
-const NEAR_CRITICAL_HRS = 80 // 10 working days
-const FLOAT_TAIL_MAX_DAYS = 26
-const STATUS_LABELS: Record<string, string> = { TK_NotStart: 'Not started', TK_Active: 'Active', TK_Complete: 'Complete' }
 import fullscreenMixin from '../mixins/fullscreen'
-import { relTypeLabel, cstrLabel, displayStart, displayEnd, CSTR_LABELS, CONSTRAINT_FILTER_GROUPS, constraintTypesOf, matchesConstraintFilter, constraintFilterLabel } from '../utils/p6'
+import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
 import { dateSlipDays, finishSlipDays } from '../utils/compareChecks'
-import { PAPER_SIZES, paperOrDefault, usableWidthPx, usableHeightPx } from '../utils/paper'
+import { paperOrDefault, usableWidthPx, usableHeightPx } from '../utils/paper'
 import {
   type Zoom,
   timelineRange, unionRange, dayWidthFor, clampDayWidth, totalWidth,
@@ -583,6 +491,17 @@ import {
   rowsPerPrintPage, printPageRanges, zoomForDayWidth,
   type Tick,
 } from '../utils/ganttGeometry'
+import {
+  type WbsKey, type CriticalBasis, type Rollup, type WbsRow, type ActivityRow, type Row,
+  activitiesByWbs, computeRollups, wbsParentMap, allWbsKeys, wbsNodesByLevel, initialExpanded,
+  isBasisCritical, floatClass, buildActivityRow, buildRows, rowIndexByTaskId, buildLinks, progressPoints, type Link,
+} from '../utils/ganttRows'
+import { trackDrag } from '../utils/drag'
+import { visibleRowRange } from '../utils/virtual'
+import {
+  keyDateMarks, periodBands, placedTextBoxes, calloutAnchorX, slipArrows, callouts,
+  type KeyDateMark, type PeriodBand, type SlipArrow, type Callout, type CalloutDrag, type TextDrag,
+} from '../utils/ganttOverlays'
 import IconChevron from './IconChevron.vue'
 import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
 
@@ -601,7 +520,6 @@ function paperUsableWidthPx(key: string): number {
 }
 const VIEW_STORAGE_KEY = 'schedule-app:gantt-view'
 
-type CriticalBasis = 'tf0' | 'longest'
 type LinksScope = 'critical' | 'all'
 
 /** View settings persisted to localStorage. */
@@ -618,13 +536,14 @@ interface SavedView {
   printPaperSize?: string
 }
 
-/** WBS ids, plus the synthetic group holding activities with no known WBS. */
-type WbsKey = number | '__unassigned'
-
 interface GridPage {
   screen: boolean
-  /** Index of the page's first row in `rows`. */
+  /** Index of the page's first row in `rows`: row positions on the page count from it. */
   start: number
+  /** The rows drawn, `rows[from..to)`: the sheet's rows when printing; on screen, those
+   *  in view plus a margin, so a long schedule draws a few dozen rows, not thousands. */
+  from: number
+  to: number
   rows: Row[]
   bodyHeight: number
   /** Where the frozen header and label column sit (the scroll offsets on screen). */
@@ -642,61 +561,12 @@ function slipCellOf(d: number, was: string, what: string): SlipCell {
   }
 }
 
-// baseFinish: the latest compared finish of the activities under the node that the
-// compared schedule also has (null without a compared schedule or with none in common).
-interface Rollup { start: Date | null; finish: Date | null; baseFinish: Date | null; count: number }
-
-interface WbsRow {
-  type: 'wbs'
-  key: string
-  wbsId: WbsKey
-  level: number
-  name: string
-  count: number
-  start?: Date | null
-  finish?: Date | null
-  baseFinish?: Date | null
-  index: number
-}
-
-interface ActivityRow {
-  type: 'activity'
-  key: string
-  level: number
-  activity: Activity
-  milestone: boolean
-  x: number
-  w: number
-  tailW: number
-  cls: string
-  index: number
-}
-
-type Row = WbsRow | ActivityRow
-
-interface Callout {
-  id: number
-  code: string
-  note: string
-  severity: Severity | null
-  /** The bar's finish end, in timeline coordinates (row centre). */
-  ax: number
-  ay: number
-  dx: number
-  dy: number
-}
-// Rows before `rows` numbers them.
-type UnindexedRow = Omit<WbsRow, 'index'> | Omit<ActivityRow, 'index'>
-
 /** Drag bookkeeping kept off the reactive state (Vue does not proxy `_`-prefixed data). */
 interface DragState {
   _onDocMousedown: (e: MouseEvent) => void
-  _panStartX: number
-  _panStartY: number
-  _panScrollLeft: number
-  _panScrollTop: number
-  _resizeStartX: number
-  _resizeStartWidth: number
+  /** Ends the drag in progress, if any (see utils/drag). */
+  _stopDrag: (() => void) | null
+  _resizeObserver: ResizeObserver | null
 }
 function drag(vm: object): DragState {
   return vm as DragState
@@ -722,7 +592,7 @@ function saveView(view: SavedView): void {
 export default defineComponent({
   name: 'GanttChart',
   mixins: [fullscreenMixin],
-  components: { IconChevron, ActivityDetailDrawer, GanttMarkupPanel, GanttViewBar, Icon },
+  components: { IconChevron, ActivityDetailDrawer, GanttToolbar, GanttLegend, GanttViewBar, GanttFilterBar },
   directives: { focus: { mounted: (el: HTMLElement) => el.focus() } },
   props: {
     data: { type: Object as PropType<Schedule>, required: true },
@@ -747,20 +617,13 @@ export default defineComponent({
     const days = Math.max(1, (end.getTime() - start.getTime()) / 86400000)
     const autoZoom: Zoom = days > 300 ? 'month' : days > 100 ? 'week' : 'day'
 
-    const expandedWbs = new Set<WbsKey>()
-    const markExpanded = (node: WbsNode, level: number) => {
-      if (level < 1) expandedWbs.add(node.wbs_id)
-      for (const c of node.children || []) markExpanded(c, level + 1)
-    }
-    for (const root of this.data.wbs_tree || []) markExpanded(root, 0)
+    const expandedWbs = initialExpanded(this.data.wbs_tree || [])
 
     return {
       HEADER_HEIGHT,
       ROW_HEIGHT,
       zoom: saved.zoom || autoZoom,
-      zoomLevels: ['day', 'week', 'month', 'quarter'] as Zoom[],
       printPaperSize: saved.printPaperSize || 'a4',
-      paperSizes: PAPER_SIZES,
       dayWidthOverride: saved.dayWidthOverride ?? null,
       labelColWidth: Math.min(saved.labelColWidth || LABEL_COL_WIDTH_DEFAULT, labelColMax()),
       criticalBasis: (saved.criticalBasis || 'tf0') as CriticalBasis,
@@ -777,44 +640,40 @@ export default defineComponent({
       showProgressLine: saved.showProgressLine ?? false,
       showMarkup: saved.showMarkup ?? true,
       showSlipArrows: saved.showSlipArrows ?? false,
-      markupOpen: false,
       markup: loadMarkup(this.data.project.proj_short_name) as Markup,
       views: loadViews(this.data.project.proj_short_name) as NamedView[],
       // The view last applied or saved; the select shows it, and ‹ › step from it.
       currentViewId: null as string | null,
       editingTextId: null as string | null,
-      textDrag: null as { id: string; startX: number; startY: number; x0: number; y0: number; x: number; y: number } | null,
+      textDrag: null as TextDrag | null,
       selectedTaskId: null as number | null,
-      filterText: '',
-      filterStatus: '',
-      filterCriticalOnly: false,
-      filterConstraint: '',
-      filterNotes: '' as NoteFilter,
-      filterFrom: '',
-      filterTo: '',
-      filterCodes: Object.fromEntries<string>((this.data.project.activity_code_types || []).map(t => [t, ''])),
+      filter: emptyFilter(this.data.project.activity_code_types) as GanttFilter,
       // Chain tracing: null = off; a Set of task_ids = show ONLY these activities.
       // Grown one activity at a time by clicking predecessors/successors in the drawer,
       // letting a reviewer reconstruct a driving chain link by link.
       isolatedIds: null as Set<number> | null,
       scrollLeftPx: 0,
       scrollTopPx: 0,
+      // The scroll viewport's height, followed by a ResizeObserver: it sets how many rows are drawn.
+      viewportH: 900,
       panning: false,
       resizing: false,
       // The callout being dragged, with its offset live until the drop saves it.
-      calloutDrag: null as { id: number; startX: number; startY: number; dx0: number; dy0: number; dx: number; dy: number } | null,
+      calloutDrag: null as CalloutDrag | null,
     }
   },
   mounted() {
     window.addEventListener('keydown', this.onKeydown)
+    const scrollEl = this.$refs.scrollEl as HTMLElement
+    this.viewportH = scrollEl.clientHeight || this.viewportH
+    const ro = new ResizeObserver(() => { this.viewportH = scrollEl.clientHeight || this.viewportH })
+    ro.observe(scrollEl)
+    drag(this)._resizeObserver = ro
     // The drawer is a fixed overlay; a click on app chrome outside this component
     // (tab bar, summary toggle, another tab's controls) dismisses it instead of the
     // overlay swallowing the interaction context.
     drag(this)._onDocMousedown = (e: MouseEvent) => {
       const target = e.target as Element
-      if (this.markupOpen && !target.closest('.tb-pop')) {
-        this.markupOpen = false
-      }
       if (this.selectedTaskId && this.$el.offsetParent !== null && !this.$el.contains(target)) {
         this.selectedTaskId = null
       }
@@ -824,14 +683,8 @@ export default defineComponent({
   beforeUnmount() {
     document.removeEventListener('mousedown', drag(this)._onDocMousedown)
     window.removeEventListener('keydown', this.onKeydown)
-    window.removeEventListener('mousemove', this.onPanMove)
-    window.removeEventListener('mouseup', this.onPanEnd)
-    window.removeEventListener('mousemove', this.onResizeMove)
-    window.removeEventListener('mouseup', this.onResizeEnd)
-    window.removeEventListener('mousemove', this.onCalloutDragMove)
-    window.removeEventListener('mouseup', this.onCalloutDragEnd)
-    window.removeEventListener('mousemove', this.onTextDragMove)
-    window.removeEventListener('mouseup', this.onTextDragEnd)
+    drag(this)._stopDrag?.()
+    drag(this)._resizeObserver?.disconnect()
   },
   watch: {
     // The component survives file swaps (tabs use v-show), so reseed the per-category
@@ -869,36 +722,17 @@ export default defineComponent({
       return this.selectedTaskId != null ? this.actLookup.get(this.selectedTaskId) : null
     },
     wbsParentOf(): Map<number, number> {
-      const map = new Map<number, number>()
-      const walk = (node: WbsNode, parentId: number | null) => {
-        if (parentId != null) map.set(node.wbs_id, parentId)
-        for (const c of node.children || []) walk(c, node.wbs_id)
-      }
-      for (const root of this.data.wbs_tree || []) walk(root, null)
-      return map
+      return wbsParentMap(this.data.wbs_tree || [])
     },
     activitiesByWbs(): Map<number, Activity[]> {
-      const map = new Map<number, Activity[]>()
-      for (const a of this.data.activities) {
-        if (!map.has(a.wbs_id)) map.set(a.wbs_id, [])
-        map.get(a.wbs_id)!.push(a)
-      }
-      for (const list of map.values()) {
-        list.sort((a, b) => {
-          const da = displayStart(a) || ''
-          const db = displayStart(b) || ''
-          if (da !== db) return da < db ? -1 : 1
-          return a.task_code < b.task_code ? -1 : a.task_code > b.task_code ? 1 : 0
-        })
-      }
-      return map
+      return activitiesByWbs(this.data.activities)
     },
     rollups(): Map<number, Rollup> {
-      return this.computeRollups(null)
+      return computeRollups(this.data.wbs_tree || [], this.activitiesByWbs, this.baselineByCode, null)
     },
     rollupsFiltered(): Map<number, Rollup> | null {
       const matched = this.matchedTaskIds
-      return matched ? this.computeRollups(a => matched.has(a.task_id)) : null
+      return matched ? computeRollups(this.data.wbs_tree || [], this.activitiesByWbs, this.baselineByCode, a => matched.has(a.task_id)) : null
     },
     activeRollups(): Map<number, Rollup> {
       return this.isFilterActive && this.rollupsFiltered ? this.rollupsFiltered : this.rollups
@@ -935,11 +769,12 @@ export default defineComponent({
     // sheet's title line and the repeated column header.
     gridPages(): GridPage[] {
       if (!this.printing) {
-        return [{ screen: true, start: 0, rows: this.rows, bodyHeight: this.bodyHeight, top: this.scrollTopPx, left: this.scrollLeftPx }]
+        const { from, to } = visibleRowRange(this.scrollTopPx, this.viewportH, ROW_HEIGHT, this.rows.length)
+        return [{ screen: true, start: 0, from, to, rows: this.rows.slice(from, to), bodyHeight: this.bodyHeight, top: this.scrollTopPx, left: this.scrollLeftPx }]
       }
       const perPage = rowsPerPrintPage(usableHeightPx(this.printPaperSize, PRINT_BUFFER_PX), PRINT_TITLE_HEIGHT + HEADER_HEIGHT, ROW_HEIGHT)
       return printPageRanges(this.rows.length, perPage).map(({ start, end }) => ({
-        screen: false, start, rows: this.rows.slice(start, end), bodyHeight: (end - start) * ROW_HEIGHT, top: 0, left: 0,
+        screen: false, start, from: start, to: end, rows: this.rows.slice(start, end), bodyHeight: (end - start) * ROW_HEIGHT, top: 0, left: 0,
       }))
     },
     yearTicks(): Tick[] {
@@ -1022,14 +857,7 @@ export default defineComponent({
       return this.markup.keyDates.length + this.markup.periods.length + this.markup.groups.length + this.markup.texts.length > 0
     },
     textBoxes(): (TextBox & { x: number })[] {
-      const out = []
-      for (const t of this.markup.texts) {
-        const live = this.textDrag?.id === t.id ? this.textDrag : null
-        const x = live ? live.x : this.dateToX(t.at)
-        if (x === null) continue
-        out.push({ ...t, x, y: live ? live.y : t.y })
-      }
-      return out
+      return placedTextBoxes(this.markup.texts, this.dateToX, this.textDrag)
     },
     // Activity code → highlight colour; empty (nothing dimmed) unless a group is on.
     hlColors(): Map<string, MarkColor> {
@@ -1044,109 +872,28 @@ export default defineComponent({
       const t = new Date()
       return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
     },
-    // Days are local midnights: a key date's line sits at the start of its day, and a
-    // period's band runs to the end of its last day.
-    markupKeyDates(): { id: string; x: number; label: string; color: MarkColor; title: string }[] {
-      const out = []
-      for (const k of this.markup.keyDates) {
-        const x = this.dateToX(k.date + 'T00:00:00')
-        if (x === null || x < 0 || x > this.totalWidth) continue
-        out.push({ id: k.id, x, label: k.label, color: k.color, title: `${k.label || 'Key date'} — ${formatDate(k.date + 'T00:00:00')}` })
-      }
-      return out
+    markupKeyDates(): KeyDateMark[] {
+      return keyDateMarks(this.markup, this.dateToX, this.totalWidth)
     },
-    markupPeriods(): { id: string; x: number; w: number; label: string; color: MarkColor; title: string }[] {
-      const out = []
-      for (const p of this.markup.periods) {
-        const { from, to } = periodSpan(p)
-        const x0 = this.dateToX(from + 'T00:00:00')
-        const xTo = this.dateToX(to + 'T00:00:00')
-        if (x0 === null || xTo === null) continue
-        const x1 = xTo + this.dayWidth
-        const x = Math.max(0, x0)
-        const w = Math.min(this.totalWidth, x1) - x
-        if (w <= 0) continue
-        out.push({ id: p.id, x, w, label: p.label, color: p.color,
-          title: `${p.label || 'Period'} — ${formatDate(from + 'T00:00:00')} to ${formatDate(to + 'T00:00:00')}` })
-      }
-      return out
+    markupPeriods(): PeriodBand[] {
+      return periodBands(this.markup, this.dateToX, this.dayWidth, this.totalWidth)
     },
     codeTypesAvailable(): string[] {
       return this.data.project.has_activity_codes ? this.data.project.activity_code_types : []
-    },
-    codeValuesByType(): Map<string, string[]> {
-      const sets = new Map<string, Set<string>>()
-      for (const t of this.codeTypesAvailable) sets.set(t, new Set())
-      for (const a of this.data.activities) {
-        for (const c of a.activity_codes) {
-          sets.get(c.type)?.add(c.code)
-        }
-      }
-      const m = new Map<string, string[]>()
-      for (const [t, set] of sets) m.set(t, [...set].sort())
-      return m
-    },
-    // The groups first, then each P6 type in its usual order, counted on this file so an
-    // empty choice is visibly empty rather than a surprise blank chart.
-    constraintFilterOptions(): { value: string; label: string; count: number }[] {
-      const counts = new Map<string, number>()
-      const bump = (k: string) => counts.set(k, (counts.get(k) || 0) + 1)
-      for (const a of this.data.activities) {
-        const types = constraintTypesOf(a)
-        for (const t of new Set(types)) bump(t)
-        for (const g of Object.keys(CONSTRAINT_FILTER_GROUPS)) if (matchesConstraintFilter(a, g)) bump(g)
-      }
-      const groups = Object.entries(CONSTRAINT_FILTER_GROUPS).map(([value, label]) => ({ value, label, count: counts.get(value) || 0 }))
-      const types = Object.keys(CSTR_LABELS).filter(t => counts.has(t))
-        .map(t => ({ value: t, label: cstrLabel(t), count: counts.get(t)! }))
-      return [...groups, ...types]
-    },
-    // Counted over this file's activities, so a note left on an activity the file no
-    // longer has doesn't promise a match.
-    noteFilterOptions(): { value: NoteFilter; label: string; count: number }[] {
-      const notes = this.data.activities.map(a => this.annotations[a.task_id]).filter(Boolean)
-      return (Object.entries(NOTE_FILTER_LABELS) as [NoteFilter, string][])
-        .map(([value, label]) => ({ value, label, count: notes.filter(n => matchesNoteFilter(n, value)).length }))
-    },
-    activeCodeFilters(): [string, string][] {
-      return Object.entries(this.filterCodes).filter(([, v]) => v)
     },
     isolationActive(): boolean {
       return this.isolatedIds !== null
     },
     isFilterActive(): boolean {
-      return this.isolationActive || !!(this.filterText.trim() || this.filterStatus || this.filterConstraint || this.filterNotes || this.filterCriticalOnly || this.filterFrom || this.filterTo || this.activeCodeFilters.length)
+      return this.isolationActive || isFilterSet(this.filter)
     },
     matchedTaskIds(): Set<number> | null {
       // Isolation takes precedence over the text/status/code filters: the trace IS the view.
       if (this.isolatedIds) return this.isolatedIds
       if (!this.isFilterActive) return null
-      const q = this.filterText.trim().toLowerCase()
+      const ctx = { annotations: this.annotations, isCritical: this.isBasisCritical }
       const ids = new Set<number>()
-      for (const a of this.data.activities) {
-        if (q && !(a.task_code.toLowerCase().includes(q) || a.task_name.toLowerCase().includes(q) || (a.wbs_path && a.wbs_path.toLowerCase().includes(q)))) continue
-        if (this.filterStatus && a.status !== this.filterStatus) continue
-        if (this.filterFrom || this.filterTo) {
-          // Window-intersection on the display dates (actual once started, else early):
-          // an activity is shown if any part of it touches [from, to]. ISO date-prefix
-          // string comparison is deliberate — no timezone surprises.
-          const aStart = (displayStart(a) || '').slice(0, 10)
-          const aEnd = (displayEnd(a) || aStart || '').slice(0, 10)
-          if (!aStart) continue
-          if (this.filterFrom && aEnd < this.filterFrom) continue
-          if (this.filterTo && aStart > this.filterTo) continue
-        }
-        if (!matchesConstraintFilter(a, this.filterConstraint)) continue
-        if (!matchesNoteFilter(this.annotations[a.task_id], this.filterNotes)) continue
-        if (this.filterCriticalOnly && !this.isBasisCritical(a)) continue
-        if (this.activeCodeFilters.length) {
-          const matchesAll = this.activeCodeFilters.every(([type, code]) =>
-            a.activity_codes.some(c => c.type === type && c.code === code)
-          )
-          if (!matchesAll) continue
-        }
-        ids.add(a.task_id)
-      }
+      for (const a of this.data.activities) if (matchesFilter(a, this.filter, ctx)) ids.add(a.task_id)
       return ids
     },
     // The slip column belongs to the two-schedule view: it shows whenever the compared
@@ -1160,144 +907,45 @@ export default defineComponent({
       for (const a of this.baseline.activities) m.set(a.task_code, a)
       return m
     },
-    // One removable chip per active filter — the strip states exactly what is
-    // narrowing the view, so a filtered chart can't be read as the whole programme.
+    // One label per active filter, for the printout's title line.
     activeFilterChips(): { id: string; label: string }[] {
-      const out: { id: string; label: string }[] = []
-      const q = this.filterText.trim()
-      if (q) out.push({ id: 'text', label: `Search: ${q}` })
-      if (this.filterStatus) out.push({ id: 'status', label: `Status: ${STATUS_LABELS[this.filterStatus] || this.filterStatus}` })
-      if (this.filterConstraint) out.push({ id: 'cstr', label: `Constraint: ${constraintFilterLabel(this.filterConstraint)}` })
-      if (this.filterNotes) out.push({ id: 'notes', label: `Notes: ${NOTE_FILTER_LABELS[this.filterNotes]}` })
-      if (this.filterCriticalOnly) out.push({ id: 'crit', label: 'Critical only' })
-      if (this.filterFrom || this.filterTo) {
-        const la = [28, 56].find(d => this.lookAheadActive(d))
-        out.push({ id: 'dates', label: la
-          ? `${la / 7}-week look-ahead`
-          : `Window: ${this.filterFrom ? formatDateShort(this.filterFrom) : '…'} – ${this.filterTo ? formatDateShort(this.filterTo) : '…'}` })
-      }
-      for (const [type, code] of this.activeCodeFilters) out.push({ id: 'code:' + type, label: `${type}: ${code}` })
-      return out
+      return filterChips(this.filter, this.data.project.data_date)
     },
     emptyFilterHint(): string {
-      const bits: string[] = []
-      if (this.filterText.trim()) bits.push(`text “${this.filterText.trim()}”`)
-      if (this.filterStatus) bits.push('a status')
-      if (this.filterConstraint) bits.push('a constraint')
-      if (this.filterNotes) bits.push('notes')
-      if (this.filterCriticalOnly) bits.push('critical only')
-      if (this.filterFrom || this.filterTo) bits.push('a date window')
-      if (this.activeCodeFilters.length) bits.push('an activity code')
-      return bits.length
-        ? `Filtering by ${bits.join(', ')}.`
-        : 'This schedule has no activities to show.'
+      return emptyFilterHint(this.filter)
     },
     matchCount(): number {
       return this.matchedTaskIds ? this.matchedTaskIds.size : this.data.activities.length
     },
     rows(): Row[] {
-      const rows: UnindexedRow[] = []
-      const filtering = this.isFilterActive
-      // Non-null whenever `filtering` is true: an active filter always yields a match set.
-      const matched = this.matchedTaskIds as Set<number>
-      const rollups = this.activeRollups
-      const walk = (nodes: WbsNode[], level: number) => {
-        const sorted = [...nodes].sort((a, b) => a.seq_num - b.seq_num)
-        for (const node of sorted) {
-          const roll = rollups.get(node.wbs_id) || { start: null, finish: null, baseFinish: null, count: 0 }
-          if (filtering && roll.count === 0) continue
-          rows.push({
-            type: 'wbs',
-            key: 'w' + node.wbs_id,
-            wbsId: node.wbs_id,
-            level,
-            name: node.wbs_short_name ? `${node.wbs_short_name} ${node.wbs_name}` : node.wbs_name,
-            count: roll.count,
-            start: roll.start,
-            finish: roll.finish,
-            baseFinish: roll.baseFinish,
-          })
-          const expanded = filtering ? !this.filterCollapsed.has(node.wbs_id) : this.expandedWbs.has(node.wbs_id)
-          if (expanded) {
-            walk(node.children || [], level + 1)
-            for (const a of this.activitiesByWbs.get(node.wbs_id) || []) {
-              if (filtering && !matched.has(a.task_id)) continue
-              rows.push(this.buildActivityRow(a, level + 1))
-            }
-          }
-        }
-      }
-      walk(this.data.wbs_tree || [], 0)
-
-      const orphansAll = this.data.activities.filter(a => !this.allWbsIds.has(a.wbs_id))
-      const orphans = filtering ? orphansAll.filter(a => matched.has(a.task_id)) : orphansAll
-      if (orphans.length) {
-        rows.push({ type: 'wbs', key: 'w-unassigned', wbsId: '__unassigned', level: 0, name: '(Unassigned)', count: orphans.length })
-        if (filtering ? !this.filterCollapsed.has('__unassigned') : this.expandedWbs.has('__unassigned')) {
-          for (const a of orphans) rows.push(this.buildActivityRow(a, 1))
-        }
-      }
-
-      rows.forEach((r, i) => { (r as Row).index = i })
-      return rows as Row[]
-    },
-    allWbsIds(): Set<number> {
-      const ids = new Set<number>()
-      const walk = (nodes: WbsNode[]) => {
-        for (const n of nodes) { ids.add(n.wbs_id); walk(n.children || []) }
-      }
-      walk(this.data.wbs_tree || [])
-      return ids
+      return buildRows({
+        tree: this.data.wbs_tree || [],
+        activities: this.data.activities,
+        byWbs: this.activitiesByWbs,
+        rollups: this.activeRollups,
+        // Non-null whenever a filter is active: an active filter always yields a match set.
+        matched: this.isFilterActive ? this.matchedTaskIds : null,
+        isExpanded: id => this._wbsExpanded(id),
+        activityRow: (a, level) => buildActivityRow(a, level, this.dateToX, this.dayWidth, this.criticalBasis),
+      })
     },
     rowIndexByTaskId(): Map<number, number> {
-      const map = new Map<number, number>()
-      this.rows.forEach(r => { if (r.type === 'activity') map.set(r.activity.task_id, r.index) })
-      return map
+      return rowIndexByTaskId(this.rows)
     },
-    links(): { id: string; d: string; chain: boolean }[] {
+    links(): Link[] {
       // Chain tracing draws its links regardless of the Links toggle — they're the point.
       if (!this.showLinks && !this.isolationActive) return []
-      const out: { id: string; d: string; chain: boolean }[] = []
-      const rowByIndex = this.rows
-      for (const row of rowByIndex) {
-        if (row.type !== 'activity') continue
-        // Normal mode: "Critical only" scope draws just critical-to-critical links (per
-        // the selected basis) to keep large schedules legible; "All logic" draws every
-        // relationship. Isolation mode always draws every relationship between traced
-        // activities, with non-critical ones styled as "chain" links.
-        const criticalScope = !this.isolationActive && this.linksScope === 'critical'
-        if (criticalScope && !this.isBasisCritical(row.activity)) continue
-        for (const p of row.activity.predecessors || []) {
-          const predIdx = this.rowIndexByTaskId.get(p.task_id)
-          if (predIdx === undefined) continue
-          const predRow = rowByIndex[predIdx] as ActivityRow // rowIndexByTaskId only indexes activity rows
-          const bothCritical = this.isBasisCritical(row.activity) && this.isBasisCritical(predRow.activity)
-          if (criticalScope && !bothCritical) continue
-          const predX = this.dateToX(displayEnd(predRow.activity))
-          const predY = predIdx * ROW_HEIGHT + ROW_HEIGHT / 2
-          const succX = row.x
-          const succY = row.index * ROW_HEIGHT + ROW_HEIGHT / 2
-          if (predX === null || succX === null) continue
-          const midX = predX + 8
-          out.push({
-            id: `${p.task_id}-${row.activity.task_id}-${p.type}-${out.length}`,
-            d: `M${predX},${predY} L${midX},${predY} L${midX},${succY} L${succX},${succY}`,
-            chain: !bothCritical,
-          })
-        }
-      }
-      return out
+      // Normal mode: "Critical" scope draws just critical-to-critical links (per the
+      // selected basis) to keep large schedules legible; "All" draws every relationship.
+      // Isolation always draws every relationship between traced activities, with
+      // non-critical ones styled as "chain" links.
+      return buildLinks(this.rows, this.rowIndexByTaskId, {
+        criticalOnly: !this.isolationActive && this.linksScope === 'critical',
+        basis: this.criticalBasis, toX: this.dateToX, rowHeight: ROW_HEIGHT,
+      })
     },
     progressLinePoints(): { x: number; y: number }[] {
-      if (!this.showProgressLine) return []
-      const pts: { x: number; y: number }[] = []
-      for (const row of this.rows) {
-        if (row.type !== 'activity' || row.milestone) continue
-        const px = row.x + row.w * (row.activity.pct_complete / 100)
-        const py = row.index * ROW_HEIGHT + ROW_HEIGHT / 2
-        pts.push({ x: px, y: py })
-      }
-      return pts
+      return this.showProgressLine ? progressPoints(this.rows, ROW_HEIGHT) : []
     },
     progressLinePath(): string {
       if (this.progressLinePoints.length < 2) return ''
@@ -1305,83 +953,15 @@ export default defineComponent({
     },
   },
   methods: {
-    computeRollups(matchFn: ((a: Activity) => boolean) | null): Map<number, Rollup> {
-      const map = new Map<number, Rollup>()
-      const activitiesByWbs = this.activitiesByWbs
-      const baselineByCode = this.baselineByCode
-      const visit = (node: WbsNode): Rollup => {
-        let start: Date | null = null, finish: Date | null = null, baseFinish: Date | null = null, count = 0
-        for (const a of activitiesByWbs.get(node.wbs_id) || []) {
-          if (matchFn && !matchFn(a)) continue
-          count++
-          const b = baselineByCode?.get(a.task_code)
-          const be = b ? displayEnd(b) : null
-          if (be) {
-            const d = new Date(be)
-            if (!baseFinish || d > baseFinish) baseFinish = d
-          }
-          const ds = displayStart(a)
-          const de = displayEnd(a)
-          if (ds) {
-            const d = new Date(ds)
-            if (!start || d < start) start = d
-          }
-          if (de) {
-            const d = new Date(de)
-            if (!finish || d > finish) finish = d
-          }
-        }
-        for (const child of node.children || []) {
-          const r = visit(child)
-          count += r.count
-          if (r.start && (!start || r.start < start)) start = r.start
-          if (r.finish && (!finish || r.finish > finish)) finish = r.finish
-          if (r.baseFinish && (!baseFinish || r.baseFinish > baseFinish)) baseFinish = r.baseFinish
-        }
-        const roll = { start, finish, baseFinish, count }
-        map.set(node.wbs_id, roll)
-        return roll
-      }
-      for (const root of this.data.wbs_tree || []) visit(root)
-      return map
-    },
     dateToX(dateStr: string | null | undefined): number | null {
       return dateToX(dateStr, this.rangeStart, this.dayWidth)
     },
     isBasisCritical(a: Activity): boolean {
-      return this.criticalBasis === 'longest' ? a.is_longest_path : a.is_critical
+      return isBasisCritical(a, this.criticalBasis)
     },
     // The number a reviewer reads most often, now in the grid rather than only in
     // the drawer — same severity bands as the bars.
-    floatCellClass(a: Activity): string {
-      if (a.total_float_hrs == null) return ''
-      if (a.total_float_hrs < 0) return 'fl-neg'
-      if (a.total_float_hrs === 0) return 'fl-crit'
-      if (a.total_float_hrs <= NEAR_CRITICAL_HRS) return 'fl-near'
-      return ''
-    },
-    classifyActivity(a: Activity): string {
-      const base = this.isBasisCritical(a)
-        ? 'critical'
-        : (this.criticalBasis === 'tf0' && a.total_float_hrs != null && a.total_float_hrs > 0 && a.total_float_hrs <= 80 ? 'near' : 'other')
-      // Negative float means the activity is already behind an imposed date — flag it
-      // regardless of critical basis, since that's a property of the activity itself.
-      return a.is_negative_float ? `${base} negative` : base
-    },
-    buildActivityRow(a: Activity, level: number): Omit<ActivityRow, 'index'> {
-      const milestone = isMilestone(a)
-      const x = this.dateToX(displayStart(a))
-      const xEnd = this.dateToX(displayEnd(a))
-      const w = milestone ? 0 : Math.max((xEnd ?? x ?? 0) - (x ?? 0), 3)
-      // Slack drawn as a dashed tail off the bar end: float becomes something you see
-      // in the chart, not a number to look up. Capped so a 200-day tail can't dominate.
-      const tfDays = a.total_float_hrs != null ? a.total_float_hrs / (a.calendar_hrs_per_day || 8) : 0
-      const tailW = tfDays > 0 && tfDays <= FLOAT_TAIL_MAX_DAYS ? Math.round(tfDays * this.dayWidth) : 0
-      return {
-        type: 'activity' as const, key: 'a' + a.task_id, level, activity: a,
-        milestone, x: x ?? 0, w, tailW, cls: this.classifyActivity(a),
-      }
-    },
+    floatCellClass: floatClass,
     wbsBarStyle(row: WbsRow): Record<string, string> {
       if (!row.start || !row.finish) return { display: 'none' }
       const x = this.dateToX(row.start.toISOString())
@@ -1391,6 +971,24 @@ export default defineComponent({
     },
     // The data-date line's position: on screen it yields to a nearby Today line; a printed
     // sheet has no Today line, so it always shows.
+    // The drawn window of a page, in the grid's pixels: the overlays cover just these rows.
+    winTop(pg: GridPage): number {
+      return HEADER_HEIGHT + (pg.from - pg.start) * ROW_HEIGHT
+    },
+    winHeight(pg: GridPage): number {
+      return (pg.to - pg.from) * ROW_HEIGHT
+    },
+    // Links and progress dots that cross the drawn window (a link may start or end outside it).
+    linksIn(pg: GridPage): Link[] {
+      const top = pg.from * ROW_HEIGHT
+      const bottom = pg.to * ROW_HEIGHT
+      return this.links.filter(l => l.yMax >= top && l.yMin <= bottom)
+    },
+    progressDotsIn(pg: GridPage): { x: number; y: number }[] {
+      const top = pg.from * ROW_HEIGHT
+      const bottom = pg.to * ROW_HEIGHT
+      return this.progressLinePoints.filter(p => p.y >= top && p.y <= bottom)
+    },
     ddX(pg: GridPage): number | null {
       return pg.screen ? this.dataDateX : this.printDataDateX
     },
@@ -1434,29 +1032,12 @@ export default defineComponent({
       else this.expandedWbs.add(wbsId)
       this.expandedWbs = new Set(this.expandedWbs)
     },
-    allWbsIdSet(): Set<WbsKey> {
-      const all = new Set<WbsKey>()
-      const walk = (nodes: WbsNode[]) => {
-        for (const n of nodes) { all.add(n.wbs_id); walk(n.children || []) }
-      }
-      walk(this.data.wbs_tree || [])
-      all.add('__unassigned')
-      return all
-    },
     expandAll() {
       if (this.isFilterActive) {
         this.filterCollapsed = new Set()
         return
       }
-      this.expandedWbs = this.allWbsIdSet()
-    },
-    wbsNodesByLevel(): { id: number; level: number }[] {
-      const out: { id: number; level: number }[] = []
-      const walk = (nodes: WbsNode[], level: number) => {
-        for (const n of nodes) { out.push({ id: n.wbs_id, level }); walk(n.children || [], level + 1) }
-      }
-      walk(this.data.wbs_tree || [], 0)
-      return out
+      this.expandedWbs = allWbsKeys(this.data.wbs_tree || [])
     },
     _wbsExpanded(id: WbsKey): boolean {
       return this.isFilterActive ? !this.filterCollapsed.has(id) : this.expandedWbs.has(id)
@@ -1475,20 +1056,26 @@ export default defineComponent({
     // One level at a time: expand the shallowest collapsed ring / collapse the deepest
     // expanded one — stepping through the hierarchy the way P6's outline levels do.
     expandOneLevel() {
-      const collapsed = this.wbsNodesByLevel().filter(n => !this._wbsExpanded(n.id))
+      const collapsed = wbsNodesByLevel(this.data.wbs_tree || []).filter(n => !this._wbsExpanded(n.id))
       if (!collapsed.length) return
       const lvl = Math.min(...collapsed.map(n => n.level))
       this._setWbsExpanded(collapsed.filter(n => n.level === lvl).map(n => n.id), true)
     },
     collapseOneLevel() {
-      const expanded = this.wbsNodesByLevel().filter(n => this._wbsExpanded(n.id))
+      const expanded = wbsNodesByLevel(this.data.wbs_tree || []).filter(n => this._wbsExpanded(n.id))
       if (!expanded.length) return
       const lvl = Math.max(...expanded.map(n => n.level))
       this._setWbsExpanded(expanded.filter(n => n.level === lvl).map(n => n.id), false)
     },
+    onWbsAction(action: WbsAction) {
+      if (action === 'collapse-all') this.collapseAll()
+      else if (action === 'collapse-level') this.collapseOneLevel()
+      else if (action === 'expand-level') this.expandOneLevel()
+      else this.expandAll()
+    },
     collapseAll() {
       if (this.isFilterActive) {
-        this.filterCollapsed = this.allWbsIdSet()
+        this.filterCollapsed = allWbsKeys(this.data.wbs_tree || [])
         return
       }
       this.expandedWbs = new Set()
@@ -1550,62 +1137,11 @@ export default defineComponent({
       this.selectedTaskId = next.task_id
       this.$nextTick(() => this.scrollToActivity(next.task_id))
     },
-    clearFilter(id: string) {
-      if (id === 'text') this.filterText = ''
-      else if (id === 'status') this.filterStatus = ''
-      else if (id === 'cstr') this.filterConstraint = ''
-      else if (id === 'notes') this.filterNotes = ''
-      else if (id === 'crit') this.filterCriticalOnly = false
-      else if (id === 'dates') { this.filterFrom = ''; this.filterTo = '' }
-      else if (id.startsWith('code:')) this.filterCodes[id.slice(5)] = ''
-    },
-    // The code picker is a one-shot menu: a pick sets that category's filter (shown as a
-    // chip beside it) and the menu returns to its prompt for the next pick.
-    addCodeFilter(e: Event) {
-      const sel = e.target as HTMLSelectElement
-      if (sel.value) {
-        const [type, code] = JSON.parse(sel.value) as [string, string]
-        this.filterCodes[type] = code
-      }
-      sel.value = ''
-    },
     clearFilters() {
       this.filterCollapsed = new Set()
-      this.filterText = ''
-      this.filterStatus = ''
-      this.filterCriticalOnly = false
-      this.filterConstraint = ''
-      this.filterNotes = ''
-      this.filterFrom = ''
-      this.filterTo = ''
-      // Reseed one '' entry per category — an undefined v-model renders the select blank.
-      this.filterCodes = Object.fromEntries<string>((this.data.project.activity_code_types || []).map(t => [t, '']))
+      // Reseeds one '' entry per code category — an undefined v-model renders the select blank.
+      this.filter = emptyFilter(this.data.project.activity_code_types)
       this.isolatedIds = null
-    },
-    // Look-ahead: the window every site meeting asks for — data date + N days.
-    lookAheadWindow(days: number): { from: string; to: string } | null {
-      const dd = this.data.project.data_date
-      if (!dd) return null
-      const from = dd.slice(0, 10)
-      const end = new Date(from + 'T12:00:00')
-      end.setDate(end.getDate() + days)
-      const to = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`
-      return { from, to }
-    },
-    lookAheadActive(days: number): boolean {
-      const w = this.lookAheadWindow(days)
-      return !!w && this.filterFrom === w.from && this.filterTo === w.to
-    },
-    setLookAhead(days: number) {
-      const w = this.lookAheadWindow(days)
-      if (!w) return
-      if (this.lookAheadActive(days)) {
-        this.filterFrom = ''
-        this.filterTo = ''
-      } else {
-        this.filterFrom = w.from
-        this.filterTo = w.to
-      }
     },
     isolateSelected() {
       if (this.selectedTaskId == null) return
@@ -1689,9 +1225,7 @@ export default defineComponent({
         zoom: this.zoom, dayWidthOverride: this.dayWidthOverride, criticalBasis: this.criticalBasis,
         showLinks: this.showLinks, linksScope: this.linksScope, showProgressLine: this.showProgressLine,
         showBaseline: this.showBaseline, showMarkup: this.showMarkup, showSlipArrows: this.showSlipArrows,
-        filterText: this.filterText, filterStatus: this.filterStatus, filterConstraint: this.filterConstraint,
-        filterNotes: this.filterNotes, filterCriticalOnly: this.filterCriticalOnly,
-        filterFrom: this.filterFrom, filterTo: this.filterTo, filterCodes: { ...this.filterCodes },
+        ...filterToView(this.filter),
         isolatedCodes: this.isolatedIds ? [...this.isolatedIds].map(codeOf).filter((c): c is string => !!c) : null,
         expandedWbs: [...this.expandedWbs], filterCollapsed: [...this.filterCollapsed],
         groupsOn: this.markup.groups.filter(g => g.on).map(g => g.id),
@@ -1712,15 +1246,7 @@ export default defineComponent({
       this.showBaseline = s.showBaseline
       this.showMarkup = s.showMarkup
       this.showSlipArrows = s.showSlipArrows
-      this.filterText = s.filterText
-      this.filterStatus = s.filterStatus
-      this.filterConstraint = s.filterConstraint
-      this.filterNotes = s.filterNotes as NoteFilter
-      this.filterCriticalOnly = s.filterCriticalOnly
-      this.filterFrom = s.filterFrom
-      this.filterTo = s.filterTo
-      // Only this file's code categories: a category that no longer exists is dropped.
-      this.filterCodes = Object.fromEntries((this.data.project.activity_code_types || []).map(t => [t, s.filterCodes[t] || '']))
+      this.filter = filterFromView(s, this.data.project.activity_code_types)
       if (s.isolatedCodes) {
         const want = new Set(s.isolatedCodes)
         this.isolatedIds = new Set(this.data.activities.filter(a => want.has(a.task_code)).map(a => a.task_id))
@@ -1796,22 +1322,15 @@ export default defineComponent({
     onTextDragStart(e: MouseEvent, t: TextBox & { x: number }) {
       if (e.button !== 0 || this.editingTextId === t.id) return
       e.preventDefault()
-      this.textDrag = { id: t.id, startX: e.clientX, startY: e.clientY, x0: t.x, y0: t.y, x: t.x, y: t.y }
-      window.addEventListener('mousemove', this.onTextDragMove)
-      window.addEventListener('mouseup', this.onTextDragEnd)
-    },
-    onTextDragMove(e: MouseEvent) {
+      this.textDrag = { id: t.id, x0: t.x, y0: t.y, x: t.x, y: t.y }
       const d = this.textDrag
-      if (!d) return
-      d.x = d.x0 + e.clientX - d.startX
-      d.y = Math.max(0, d.y0 + e.clientY - d.startY)
-    },
-    onTextDragEnd() {
-      const d = this.textDrag
-      window.removeEventListener('mousemove', this.onTextDragMove)
-      window.removeEventListener('mouseup', this.onTextDragEnd)
-      if (d && (d.x !== d.x0 || d.y !== d.y0)) this.patchText(d.id, { at: this.xToIso(d.x), y: Math.round(d.y) })
-      this.textDrag = null
+      this.startDrag(e, (dx, dy) => {
+        d.x = d.x0 + dx
+        d.y = Math.max(0, d.y0 + dy)
+      }, () => {
+        if (d.x !== d.x0 || d.y !== d.y0) this.patchText(d.id, { at: this.xToIso(d.x), y: Math.round(d.y) })
+        this.textDrag = null
+      })
     },
     nextColor,
     setMarkup(m: Markup) {
@@ -1831,9 +1350,6 @@ export default defineComponent({
         dayWidthOverride: this.dayWidthOverride,
         printPaperSize: this.printPaperSize,
       })
-    },
-    zoomLabel(z: string): string {
-      return z.charAt(0).toUpperCase() + z.slice(1)
     },
     barTitle(a: Activity): string {
       return `${a.task_code} — ${a.task_name}\n${formatDate(displayStart(a))} → ${formatDate(displayEnd(a))}\n` +
@@ -1936,41 +1452,14 @@ export default defineComponent({
       this.scrollTopPx = target.scrollTop
     },
     // ── Note callouts ────────────────────────────────────────────────────
-    calloutAnchorX(row: ActivityRow): number {
-      return row.milestone ? row.x + 7 : row.x + row.w
-    },
-    // Finish movement against the compared schedule, drawn just under the bar. Only rows
-    // that moved by at least a calendar day, so a steady programme draws nothing.
-    slipArrowsOf(pg: GridPage): { id: number; x1: number; x2: number; y: number; late: boolean }[] {
+    calloutAnchorX,
+    slipArrowsOf(pg: GridPage): SlipArrow[] {
       if (!this.showSlip || !this.showSlipArrows || !this.baselineByCode) return []
-      const out = []
-      for (const row of pg.rows) {
-        if (row.type !== 'activity') continue
-        const b = this.baselineByCode.get(row.activity.task_code)
-        const d = b ? finishSlipDays(row.activity, b) : null
-        if (!b || !d) continue
-        const x1 = this.dateToX(displayEnd(b))
-        const x2 = this.dateToX(displayEnd(row.activity))
-        if (x1 === null || x2 === null) continue
-        out.push({ id: row.activity.task_id, x1, x2, y: row.index * ROW_HEIGHT + 24, late: d > 0 })
-      }
-      return out
+      return slipArrows(pg.rows, this.baselineByCode, this.dateToX, ROW_HEIGHT)
     },
+    // Callouts are screen-only: on paper a note is a numbered marker (printNotes).
     calloutsOf(pg: GridPage): Callout[] {
-      const out: Callout[] = []
-      if (!pg.screen) return out
-      for (const row of pg.rows) {
-        if (row.type !== 'activity') continue
-        const a = this.annotations[row.activity.task_id]
-        if (!a?.callout) continue
-        const live = this.calloutDrag?.id === row.activity.task_id ? this.calloutDrag : a.callout
-        out.push({
-          id: row.activity.task_id, code: row.activity.task_code, note: a.note, severity: a.severity,
-          ax: this.calloutAnchorX(row) + 7, ay: row.index * ROW_HEIGHT + ROW_HEIGHT / 2,
-          dx: live.dx, dy: live.dy,
-        })
-      }
-      return out
+      return pg.screen ? callouts(pg.rows, this.annotations, this.calloutDrag, ROW_HEIGHT) : []
     },
     toggleCallout(taskId: number) {
       const open = !!this.annotations[taskId]?.callout
@@ -1979,25 +1468,27 @@ export default defineComponent({
     onCalloutDragStart(e: MouseEvent, c: Callout) {
       if (e.button !== 0) return
       e.preventDefault()
-      this.calloutDrag = { id: c.id, startX: e.clientX, startY: e.clientY, dx0: c.dx, dy0: c.dy, dx: c.dx, dy: c.dy }
-      window.addEventListener('mousemove', this.onCalloutDragMove)
-      window.addEventListener('mouseup', this.onCalloutDragEnd)
-    },
-    onCalloutDragMove(e: MouseEvent) {
+      this.calloutDrag = { id: c.id, dx0: c.dx, dy0: c.dy, dx: c.dx, dy: c.dy }
       const d = this.calloutDrag
-      if (!d) return
-      d.dx = d.dx0 + e.clientX - d.startX
-      d.dy = d.dy0 + e.clientY - d.startY
+      this.startDrag(e, (mx, my) => {
+        d.dx = d.dx0 + mx
+        d.dy = d.dy0 + my
+      }, () => {
+        if (d.dx !== d.dx0 || d.dy !== d.dy0) {
+          const moved: CalloutOffset = { dx: d.dx, dy: d.dy }
+          this.$emit('callout', d.id, moved)
+        }
+        this.calloutDrag = null
+      })
     },
-    onCalloutDragEnd() {
-      const d = this.calloutDrag
-      window.removeEventListener('mousemove', this.onCalloutDragMove)
-      window.removeEventListener('mouseup', this.onCalloutDragEnd)
-      if (d && (d.dx !== d.dx0 || d.dy !== d.dy0)) {
-        const moved: CalloutOffset = { dx: d.dx, dy: d.dy }
-        this.$emit('callout', d.id, moved)
-      }
-      this.calloutDrag = null
+
+    // One drag at a time, followed on the window until release (utils/drag).
+    startDrag(e: MouseEvent, onMove: (dx: number, dy: number) => void, onEnd: () => void) {
+      drag(this)._stopDrag?.()
+      drag(this)._stopDrag = trackDrag(e, onMove, () => {
+        drag(this)._stopDrag = null
+        onEnd()
+      })
     },
 
     onPanStart(e: MouseEvent) {
@@ -2005,43 +1496,27 @@ export default defineComponent({
       const target = e.target as Element
       if (target.closest('.g-label') || target.closest('.g-resize-handle')) return
       this.panning = true
-      const st = drag(this)
       // The handler is bound on the scroll element itself, so the ref is mounted.
-      const scrollEl = this.$refs.scrollEl as HTMLElement
-      st._panStartX = e.clientX
-      st._panStartY = e.clientY
-      st._panScrollLeft = scrollEl.scrollLeft
-      st._panScrollTop = scrollEl.scrollTop
-      window.addEventListener('mousemove', this.onPanMove)
-      window.addEventListener('mouseup', this.onPanEnd)
-    },
-    onPanMove(e: MouseEvent) {
-      const el = this.$refs.scrollEl as HTMLElement | undefined
-      if (!this.panning || !el) return
-      const st = drag(this)
-      el.scrollLeft = st._panScrollLeft - (e.clientX - st._panStartX)
-      el.scrollTop = st._panScrollTop - (e.clientY - st._panStartY)
-    },
-    onPanEnd() {
-      this.panning = false
-      window.removeEventListener('mousemove', this.onPanMove)
-      window.removeEventListener('mouseup', this.onPanEnd)
+      const el = this.$refs.scrollEl as HTMLElement
+      const left0 = el.scrollLeft
+      const top0 = el.scrollTop
+      this.startDrag(e, (dx, dy) => {
+        el.scrollLeft = left0 - dx
+        el.scrollTop = top0 - dy
+      }, () => { this.panning = false })
     },
 
     // ── Resizable label column ───────────────────────────────────────────
     onResizeStart(e: MouseEvent) {
       e.preventDefault()
       this.resizing = true
-      drag(this)._resizeStartX = e.clientX
-      drag(this)._resizeStartWidth = this.labelColWidth
-      window.addEventListener('mousemove', this.onResizeMove)
-      window.addEventListener('mouseup', this.onResizeEnd)
-    },
-    onResizeMove(e: MouseEvent) {
-      if (!this.resizing) return
-      const st = drag(this)
-      const dx = e.clientX - st._resizeStartX
-      this.labelColWidth = Math.min(labelColMax(), Math.max(LABEL_COL_MIN, st._resizeStartWidth + dx))
+      const w0 = this.labelColWidth
+      this.startDrag(e, dx => {
+        this.labelColWidth = Math.min(labelColMax(), Math.max(LABEL_COL_MIN, w0 + dx))
+      }, () => {
+        this.resizing = false
+        this.persistView()
+      })
     },
     // Double-click on the column edge: widen (or narrow) it to the longest name on screen.
     fitLabelColumn() {
@@ -2059,13 +1534,6 @@ export default defineComponent({
       this.labelColWidth = Math.min(labelColMax(), Math.max(LABEL_COL_MIN, this.labelColWidth + slack + 2))
       this.persistView()
     },
-    onResizeEnd() {
-      if (!this.resizing) return
-      this.resizing = false
-      window.removeEventListener('mousemove', this.onResizeMove)
-      window.removeEventListener('mouseup', this.onResizeEnd)
-      this.persistView()
-    },
   },
 })
 </script>
@@ -2074,47 +1542,6 @@ export default defineComponent({
 .gantt-wrap { border: 1px solid var(--gray-300); border-radius: var(--radius-md); overflow: hidden; background: var(--white); margin-bottom: var(--space-6); box-shadow: 0 1px 3px rgba(28,25,23,0.06); font-family: var(--font-ui); }
 .gantt-wrap.is-fullscreen { border-radius: 0; display: flex; flex-direction: column; height: 100vh; }
 .gantt-wrap.is-fullscreen .gantt-body { flex: 1; min-height: 0; display: flex; }
-/* ── Toolbar: one row ─────────────────────────────────────────────────────── */
-.gantt-toolbar { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding: 7px var(--space-4); background: var(--panel); border-bottom: 1px solid var(--line); }
-.tb-div { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }
-.tb-group { display: flex; align-items: center; gap: 4px; }
-.tb-group-label { font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-right: 2px; }
-.tb-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
-
-/* Popovers: filters and overflow */
-.tb-pop { position: relative; }
-.tb-markup { display: flex; align-items: center; gap: 2px; }
-/* Segmented groups: one bordered strip of equal, compact buttons. */
-.seg { display: flex; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); overflow: hidden; flex-shrink: 0; }
-.seg button { height: 26px; min-width: 26px; padding: 0 7px; border: none; border-right: 1px solid var(--gray-300); background: var(--white); color: var(--gray-700); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font: var(--text-small); font-weight: 600; }
-.seg button:last-child { border-right: none; }
-.seg button:hover:not(.active) { background: var(--gray-150); color: var(--ink); }
-.seg button.active { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
-/* Icon-only actions: borderless until hovered, so a row of them stays quiet. */
-.tb-icon { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: var(--radius-sm); background: none; color: var(--ink-2); cursor: pointer; padding: 0; }
-.tb-icon:hover:not(:disabled) { border-color: var(--gray-300); background: var(--panel); color: var(--ink); }
-.tb-icon.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-.tb-icon:disabled { opacity: 0.35; cursor: default; }
-.tb-select { height: 26px; padding: 0 3px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); color: var(--ink-2); }
-.tb-print { display: inline-flex; align-items: center; gap: 2px; }
-.tb-paper { width: 50px; }
-.gantt-toolbar .tb-chip { padding: 4px 7px; }
-.tb-panel { position: absolute; right: 0; top: calc(100% + 5px); min-width: 250px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: 0 10px 30px -12px rgba(0,0,0,0.35); padding: var(--space-3); z-index: 12; display: flex; flex-direction: column; gap: 7px; }
-
-/* ── Active-filter strip ──────────────────────────────────────────────────── */
-.filter-strip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 34px; padding: 5px var(--space-4); background: var(--panel-2); border-bottom: 1px solid var(--line); }
-.fs-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); border-radius: 14px; padding: 2px 5px 2px 10px; cursor: pointer; font: var(--text-small); font-weight: 600; }
-.fs-chip:hover { background: var(--panel); }
-.fs-x { font-size: 14px; line-height: 1; opacity: 0.75; }
-.filter-strip .fb-search { width: 124px; padding: 3px 8px; }
-.filter-strip .fb-select { height: 26px; padding: 0 4px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); color: var(--ink-2); max-width: 118px; }
-.filter-strip .fb-select.set { max-width: 180px; }
-.filter-strip .tb-chip { padding: 3px 9px; }
-.fb-dates { display: inline-flex; align-items: center; gap: 2px; }
-.filter-strip .fb-dates .filter-date { height: 26px; box-sizing: border-box; padding: 0 2px; width: 108px; font-size: 11px; }
-.fb-dash { color: var(--ink-3); }
-.filter-strip .set, .fb-dates.set .filter-date { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.filter-strip .filter-count { margin-left: 4px; white-space: nowrap; font: var(--text-small); color: var(--ink-3); font-family: var(--font-mono); }
 
 
 .gantt-wrap.is-fullscreen .gantt-scroll { flex: 1; height: auto; max-height: none; }
@@ -2126,44 +1553,10 @@ export default defineComponent({
 /* Thin ink strip: title + the one highest-value toggle. Everything else lives in the
    light control row below, so there's no large dark panel to justify visually. */
 
-.basis-group { display: flex; align-items: center; gap: 6px; border: 1px solid var(--ink-soft); border-radius: var(--radius-sm); padding: 2px; flex-shrink: 0; }
-.basis-group button { padding: 4px 8px; border: none; border-radius: 3px; background: none; cursor: pointer; font: var(--text-small); color: var(--ink-2); }
-.basis-group button.active { background: var(--crit); color: var(--on-solid); font-weight: 700; }
-.basis-group button:hover:not(.active) { background: var(--ink-soft); }
-
-/* Light control row: legend + every interactive control, directly adjoining the light
-   timeline header below — no light/dark/light seam. */
-.legend { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; align-items: center; }
-.legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; line-height: 1.3; color: var(--nav-ink-2); white-space: nowrap; }
-.sb-legend .lg-bar { width: 16px; }
-.sb-legend { padding: 0 2px var(--space-3); margin-bottom: var(--space-3); border-bottom: 1px solid var(--nav-line); }
-.sb-legend-title { font-family: var(--font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--nav-ink-3); margin-bottom: 7px; }
-.sb-legend .bar-wbs { background: var(--nav-ink-3); }
-/* Fullscreen hides the sidebar, so the legend comes back as a row above the toolbar. */
-.legend-inline { display: flex; align-items: center; gap: var(--space-3); padding: 6px var(--space-4); margin: 0; background: var(--panel-2); border-bottom: 1px solid var(--line); }
-.legend-inline .sb-legend-title { margin: 0; color: var(--ink-3); }
-.legend-inline .legend { display: flex; flex-wrap: wrap; gap: 14px; }
-.legend-inline .legend-item { color: var(--gray-700); font: var(--text-small); }
-.legend-inline .bar-wbs { background: var(--gray-700); }
-/* Legend swatches ARE miniature bars — same fills and borders as the chart itself, so
-   the legend teaches the encoding instead of adding a second one to decode. */
-.lg-bar { width: 20px; height: 10px; border-radius: 3px; display: inline-block; box-sizing: border-box; border: 1.5px solid; }
-.lg-critical { background: var(--crit-tint); border-color: var(--crit); }
-.lg-near { background: var(--near-tint); border-color: var(--near); }
-.lg-normal { background: var(--accent-soft); border-color: var(--accent); }
-.lg-negative { background: repeating-linear-gradient(135deg, rgba(255,255,255,0.45) 0 2px, transparent 2px 5px), var(--crit); border-color: var(--crit-deep); }
-.diamond { width: 8px; height: 8px; background: var(--milestone); display: inline-block; transform: rotate(45deg); }
-.bar-wbs { width: 16px; height: 7px; border-radius: 3px; background: var(--gray-700); display: inline-block; }
-.progress-swatch { width: 14px; height: 2px; background: var(--milestone); display: inline-block; }
-
-
-.filter-input { padding: 6px 12px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); width: 240px; }
-.filter-date { border: 1px solid var(--gray-300); border-radius: var(--radius-sm); padding: 4px 6px; background: var(--white); font-family: var(--font-mono); font-size: 12px; color: var(--ink); }
-.filter-strip .la-btn { padding: 3px 7px; }
-.la-btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 700; }
 .filter-select { padding: 6px 8px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); }
 .filter-check { font: var(--text-small); color: var(--gray-700); display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .filter-count { font: var(--text-small); color: var(--gray-500); margin-left: auto; }
+.filter-strip .filter-count { margin-left: 4px; white-space: nowrap; font: var(--text-small); color: var(--ink-3); font-family: var(--font-mono); }
 .return-chip { display: inline-flex; align-items: center; background: var(--nav); color: var(--nav-ink); border: none; border-radius: 12px; padding: 3px 12px; font: var(--text-small); font-weight: 600; cursor: pointer; }
 .return-chip:hover { opacity: 0.9; }
 .isolation-chip { display: inline-flex; align-items: center; gap: 8px; background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); border-radius: 12px; padding: 2px 4px 2px 10px; font: var(--text-small); font-weight: 600; }
@@ -2292,7 +1685,7 @@ export default defineComponent({
 .g-col-date { width: 48px; }
 
 
-.g-timeline-row { position: relative; height: 26px; border-bottom: 1px solid var(--gray-150); z-index: 2; }
+.g-timeline-row { position: absolute; height: 26px; border-bottom: 1px solid var(--gray-150); z-index: 2; }
 
 .g-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); z-index: 6; background: var(--white); }
 .g-empty-title { font: var(--text-h3); color: var(--ink); margin: 0; }
@@ -2300,7 +1693,6 @@ export default defineComponent({
 .g-float-tail { position: absolute; top: 13px; height: 0; border-top: 1px dashed var(--float-tail); pointer-events: auto; }
 .g-bar-ghost { position: absolute; top: 20px; height: 4px; border-radius: 2px; background: transparent; border: 1.5px solid var(--gray-500); box-sizing: border-box; pointer-events: auto; }
 .g-milestone-ghost { position: absolute; top: 16px; width: 7px; height: 7px; transform: translateX(-4px) rotate(45deg); border: 1.5px solid var(--gray-500); background: transparent; box-sizing: border-box; }
-.lg-ghost { background: transparent !important; border-color: var(--gray-500) !important; height: 5px !important; }
 .g-bar { position: absolute; top: 7px; height: 12px; border-radius: var(--radius-sm); overflow: hidden; background: var(--accent-soft); border: 1.5px solid var(--accent); box-sizing: border-box; box-shadow: 0 1px 2px rgba(28,25,23,0.15); }
 .g-bar.critical { background: var(--crit-tint); border-color: var(--crit); }
 .g-bar.near { background: var(--near-tint); border-color: var(--near); }

@@ -7,11 +7,10 @@ and in the browser under Pyodide, where the file never leaves the user's machine
 """
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from xerparser.reader import Reader
 
 from backend import analysis, recalc
 
@@ -149,7 +148,7 @@ def table_records(raw_tables: dict, name: str):
 
 
 def parse_calendars(raw_tables: dict):
-    """Calendars decoded from the raw CALENDAR table (not PyP6XER's objects, so the
+    """Calendars decoded from the raw CALENDAR table (so the
     inspector and viewer agree byte-for-byte with the file)."""
     out = []
     for row in table_records(raw_tables, "CALENDAR"):
@@ -220,6 +219,31 @@ def _num(v):
         return None
 
 
+# Field readers matching the types the rest of the reader expects: ids as integers,
+# text stripped, numbers as floats, P6's "YYYY-MM-DD HH:MM" stamps as datetimes; an
+# empty field is None.
+
+def _int(v):
+    v = (v or "").strip()
+    try:
+        return int(v) if v else None
+    except ValueError:
+        return None
+
+
+def _str(v):
+    return v.strip() if v else None
+
+
+def _float(v):
+    return float(v) if v and v.strip() else None
+
+
+def _date(v):
+    # fromisoformat reads P6's stamp natively, many times faster than strptime.
+    return datetime.fromisoformat(v) if v and v.strip() else None
+
+
 def safe_float(val, default=0.0):
     """Convert to float, handling None and falsy 0.0 correctly."""
     if val is None:
@@ -237,9 +261,8 @@ def safe_float_or(val, default=999.0):
 def read_xer(filepath: str) -> dict:
     """Read a .xer into the neutral intermediate (analysis.build documents its keys):
     the file's own activities, links, WBS, calendars and options, with nothing derived."""
-    # Raw pass first, independent of PyP6XER: decode as UTF-8 with cp1252 fallback
-    # (P6's usual export encoding), so the table inspector shows accented characters
-    # correctly even where the object parser drops them.
+    # One pass over the file: decode as UTF-8 with a Windows-1252 fallback (P6's usual
+    # export encoding), split it into its tables, and read everything from those.
     raw_bytes = Path(filepath).read_bytes()
     encoding_ok = True
     try:
@@ -250,67 +273,71 @@ def read_xer(filepath: str) -> dict:
     raw_tables, ermhdr = parse_raw_tables(raw_text)
     calendars = parse_calendars(raw_tables)
 
-    reader = Reader(filepath)
-    # Deliberately single-project: this is a one-file, one-programme review tool. When an
-    # export carries several projects (common with embedded baselines), take the first and
-    # say so rather than silently showing partial data.
-    projects = list(reader.projects)
+    # Every table is read from the raw pass above: one parse of the file, and no
+    # third-party object model (which re-read the file, built an object per row with a
+    # strptime per date, and failed outright on exports missing optional columns).
+    projects = [r for r in table_records(raw_tables, "PROJECT") if _int(r.get("proj_id")) is not None]
     if not projects:
         raise ValueError("No projects found in XER file")
+    tasks_by_proj: dict = {}
+    for r in table_records(raw_tables, "TASK"):
+        tasks_by_proj.setdefault(_int(r.get("proj_id")), []).append(r)
 
     # Pick the project owning the most activities, not the first one in the file.
     # Exports routinely lead with near-empty shells (a baseline stub, a template, a
     # closed phase); taking projects[0] on such a file showed an empty schedule while
     # the real programme sat further down the list.
-    counts = [(p, len(list(p.activities))) for p in projects]
+    counts = [(p, len(tasks_by_proj.get(_int(p.get("proj_id")), []))) for p in projects]
     project, chosen_count = max(counts, key=lambda pc: pc[1])
+    proj_id = _int(project.get("proj_id"))
+    proj_short_name = _str(project.get("proj_short_name"))
     warnings = []
     if len(projects) > 1:
         others = ", ".join(
-            f"{p.proj_short_name or '?'} ({n})" for p, n in counts if p is not project
+            f"{_str(p.get('proj_short_name')) or '?'} ({n})" for p, n in counts if p is not project
         )
         warnings.append(
             f"This file contains {len(projects)} projects — showing "
-            f"'{project.proj_short_name}', the largest with {chosen_count} activities "
+            f"'{proj_short_name}', the largest with {chosen_count} activities "
             f"(also present: {others})."
         )
 
     wbs = [{
-        "wbs_id": w.wbs_id,
-        "wbs_short_name": w.wbs_short_name,
-        "wbs_name": w.wbs_name,
-        "parent_wbs_id": w.parent_wbs_id if w.parent_wbs_id and w.parent_wbs_id != "0" else None,
-        "seq_num": int(getattr(w, "seq_num", 0) or 0),
-    } for w in project.wbss]
+        "wbs_id": _int(w.get("wbs_id")),
+        "wbs_short_name": (w.get("wbs_short_name") or "").strip(),
+        "wbs_name": (w.get("wbs_name") or "").strip(),
+        "parent_wbs_id": _int(w.get("parent_wbs_id")) or None,
+        "seq_num": int((w.get("seq_num") or "").strip() or 0),
+    } for w in table_records(raw_tables, "PROJWBS") if _int(w.get("proj_id")) == proj_id]
 
     cal_dict = {}
     cal_hrs_dict = {}
-    for c in reader.calendars:
-        cal_dict[c.clndr_id] = c.clndr_name if hasattr(c, "clndr_name") else str(c.clndr_id)
-        cal_hrs_dict[c.clndr_id] = float(c.day_hr_cnt) if getattr(c, "day_hr_cnt", None) else 8.0
+    for c in table_records(raw_tables, "CALENDAR"):
+        cid = _int(c.get("clndr_id"))
+        cal_dict[cid] = _str(c.get("clndr_name"))
+        cal_hrs_dict[cid] = _float(c.get("day_hr_cnt")) or 8.0
 
-    # Activity codes: xerparser's property names are swapped relative to what the XER
-    # table names suggest — reader.acttypes holds the code CATEGORIES (ACTVTYPE, e.g.
-    # "Phase"/"Area"), reader.actvcodes holds the code VALUES (ACTVCODE, e.g. "Main
-    # Contract"), and reader.activitycodes holds the per-task code ASSIGNMENTS (TASKACTV).
-    actv_type_names = {t.actv_code_type_id: t.actv_code_type for t in reader.acttypes}
-    actv_code_lookup = {c.actv_code_id: (c.actv_code_type_id, c.actv_code_name) for c in reader.actvcodes}
+    # Activity codes: ACTVTYPE holds the code categories (e.g. "Phase"/"Area"), ACTVCODE
+    # the code values (e.g. "Main Contract"), TASKACTV the per-task assignments.
+    actv_type_names = {_int(t.get("actv_code_type_id")): _str(t.get("actv_code_type"))
+                       for t in table_records(raw_tables, "ACTVTYPE")}
+    actv_code_lookup = {_int(c.get("actv_code_id")): (_int(c.get("actv_code_type_id")), _str(c.get("actv_code_name")))
+                        for c in table_records(raw_tables, "ACTVCODE")}
     task_codes_map = {}
-    for assignment in reader.activitycodes:
-        entry = actv_code_lookup.get(assignment.actv_code_id)
+    for assignment in table_records(raw_tables, "TASKACTV"):
+        entry = actv_code_lookup.get(_int(assignment.get("actv_code_id")))
         if not entry:
             continue
         type_id, code_name = entry
         type_name = actv_type_names.get(type_id, "")
         if not type_name or not code_name:
             continue
-        task_codes_map.setdefault(assignment.task_id, []).append({"type": type_name, "code": code_name})
+        task_codes_map.setdefault(_int(assignment.get("task_id")), []).append({"type": type_name, "code": code_name})
 
     # Resources: TASKRSRC rows per activity, each resolved to its RSRC name. Many
     # contractor XER exports carry no resource data at all — degrade to empty
-    # lists/flags rather than erroring. Indexed once from the raw table rather than
-    # through PyP6XER's per-task lookups, which rescan every row for every activity.
-    rsrc_names = {res.rsrc_id: res.rsrc_name for res in reader.resources if res.rsrc_id}
+    # lists/flags rather than erroring.
+    rsrc_names = {_int(r.get("rsrc_id")): _str(r.get("rsrc_name")) for r in table_records(raw_tables, "RSRC") if _int(r.get("rsrc_id"))}
     task_rsrc = {}
     rsrc_tbl = raw_tables.get("TASKRSRC")
     if rsrc_tbl:
@@ -321,15 +348,17 @@ def read_xer(filepath: str) -> dict:
                     tid = int(row[ri["task_id"]])
                 except (ValueError, IndexError):
                     continue
-                name = rsrc_names.get(row[ri["rsrc_id"]])
+                name = rsrc_names.get(_int(row[ri["rsrc_id"]]))
                 if name:
                     task_rsrc.setdefault(tid, set()).add(name)
+
+    own_tasks = tasks_by_proj.get(proj_id, [])
 
     # Relationships from the raw TASKPRED table in one pass (PyP6XER's
     # task.predecessors is O(activities x relationships): 96 million comparisons on a
     # 4,217-activity export). Cross-project relationships point outside this schedule;
     # the graph would dangle, so they are left out.
-    own_ids = {a.task_id for a in project.activities}
+    own_ids = {_int(a.get("task_id")) for a in own_tasks}
     links = []
     pred_tbl = raw_tables.get("TASKPRED")
     if pred_tbl:
@@ -354,7 +383,7 @@ def read_xer(filepath: str) -> dict:
                 "lag_hrs": lag,
             })
 
-    sched_options = schedule_options_for(raw_tables, project.proj_id)
+    sched_options = schedule_options_for(raw_tables, proj_id)
     task_rows = {r.get("task_id"): r for r in table_records(raw_tables, "TASK")}
     units_done = {}
     for r in table_records(raw_tables, "TASKRSRC"):
@@ -364,51 +393,53 @@ def read_xer(filepath: str) -> dict:
         units_done[r.get("task_id")] = (d + act, t + act + rem)
 
     activities = []
-    for a in project.activities:
-        row = task_rows.get(str(a.task_id), {})
+    for row in own_tasks:
+        task_id = _int(row.get("task_id"))
+        clndr_id = _int(row.get("clndr_id"))
         activities.append({
-            "task_id": a.task_id,
-            "task_code": a.task_code,
-            "task_name": a.task_name,
-            "wbs_id": a.wbs_id,
-            "status": a.status_code or "",
-            "pct_complete": percent_complete(row, units_done.get(str(a.task_id))),
+            "task_id": task_id,
+            "task_code": _str(row.get("task_code")),
+            "task_name": _str(row.get("task_name")),
+            "wbs_id": _int(row.get("wbs_id")),
+            "status": _str(row.get("status_code")) or "",
+            "pct_complete": percent_complete(row, units_done.get(str(task_id))),
             "pct_complete_type": row.get("complete_pct_type", ""),
-            "early_start": a.early_start_date,
-            "early_end": a.early_end_date,
-            "late_start": a.late_start_date,
-            "late_end": a.late_end_date,
-            "total_float_hrs": float(a.total_float_hr_cnt) if a.total_float_hr_cnt is not None else None,
-            "free_float_hrs": safe_float(a.free_float_hr_cnt),
-            "duration_hrs": safe_float(a.target_drtn_hr_cnt),
-            "remain_duration_hrs": safe_float(a.remain_drtn_hr_cnt),
-            "task_type": a.task_type or "",
-            "clndr_id": str(a.clndr_id) if a.clndr_id is not None else "",
-            "calendar": cal_dict.get(a.clndr_id, ""),
-            "calendar_hrs_per_day": cal_hrs_dict.get(a.clndr_id, 8.0),
-            "driving_path_flag": a.driving_path_flag == "Y",
-            "cstr_type": a.cstr_type,
-            "cstr_date": a.cstr_date,
-            "cstr_type2": a.cstr_type2,
-            "cstr_date2": a.cstr_date2,
-            "act_start": a.act_start_date,
-            "act_end": a.act_end_date,
-            "target_start": a.target_start_date,
-            "target_end": a.target_end_date,
-            "activity_codes": task_codes_map.get(a.task_id, []),
-            "resource_names": sorted(task_rsrc.get(a.task_id, ())),
+            "early_start": _date(row.get("early_start_date")),
+            "early_end": _date(row.get("early_end_date")),
+            "late_start": _date(row.get("late_start_date")),
+            "late_end": _date(row.get("late_end_date")),
+            "total_float_hrs": _float(row.get("total_float_hr_cnt")),
+            "free_float_hrs": safe_float(_float(row.get("free_float_hr_cnt"))),
+            "duration_hrs": safe_float(_float(row.get("target_drtn_hr_cnt"))),
+            "remain_duration_hrs": safe_float(_float(row.get("remain_drtn_hr_cnt")) or 0),
+            "task_type": _str(row.get("task_type")) or "",
+            "clndr_id": str(clndr_id) if clndr_id is not None else "",
+            "calendar": cal_dict.get(clndr_id, ""),
+            "calendar_hrs_per_day": cal_hrs_dict.get(clndr_id, 8.0),
+            "driving_path_flag": row.get("driving_path_flag") == "Y",
+            "cstr_type": _str(row.get("cstr_type")),
+            "cstr_date": _date(row.get("cstr_date")),
+            "cstr_type2": _str(row.get("cstr_type2")),
+            "cstr_date2": _date(row.get("cstr_date2")),
+            "act_start": _date(row.get("act_start_date")),
+            "act_end": _date(row.get("act_end_date")),
+            "target_start": _date(row.get("target_start_date")),
+            "target_end": _date(row.get("target_end_date")),
+            "activity_codes": task_codes_map.get(task_id, []),
+            "resource_names": sorted(task_rsrc.get(task_id, ())),
         })
 
-    # PyP6XER opens files with errors='ignore', which silently DROPS bytes that aren't valid
-    # UTF-8, and P6 commonly exports cp1252, so accented characters in activity names can
-    # vanish. The raw tables above decode correctly; the object-parsed names may not.
+    # P6 commonly exports Windows-1252 rather than UTF-8. The file was decoded as such
+    # above, which is right for P6's own exports; say so, since a file from elsewhere
+    # in another single-byte encoding would show some characters wrongly.
     if not encoding_ok:
         warnings.append(
-            "This file is not valid UTF-8 (P6 often exports cp1252/latin-1). Accented or "
-            "special characters in activity names may be missing."
+            "This file is not valid UTF-8, so it was read as Windows-1252, the encoding "
+            "P6 usually exports in. If accented characters look wrong, the file was saved "
+            "in another encoding."
         )
 
-    pid = str(project.proj_id)
+    pid = str(proj_id)
     project_row = next((r for r in table_records(raw_tables, "PROJECT") if r.get("proj_id") == pid), {})
     sched_row = next((r for r in table_records(raw_tables, "SCHEDOPTIONS") if r.get("proj_id") == pid), {})
 
@@ -419,8 +450,8 @@ def read_xer(filepath: str) -> dict:
 
     return {
         "project": {
-            "proj_short_name": project.proj_short_name,
-            "data_date": str(project.last_recalc_date) if project.last_recalc_date else None,
+            "proj_short_name": proj_short_name,
+            "data_date": (project.get("last_recalc_date") or "").strip() or None,
             "schedule_options": sched_options,
             "source_format": "xer",
         },

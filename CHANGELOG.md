@@ -4,6 +4,42 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.9.0] - 2026-10-22
+
+Large programmes. Measured on a 5,040-activity schedule, before and after:
+parsing 6.4 s -> 2.1 s; opening the file 8.2 s -> 3.7 s; expanding the whole Gantt
+2.6 s -> 0.2 s; the critical path view 7.5 s -> 0.6 s; the activity table 4.1 s ->
+0.2 s. A 2,000-activity Gantt used to run a browser out of memory when scrolled.
+
+### Changed
+- Views are built the first time they are opened, not all at once on load.
+- The Gantt and the activity table draw only the rows in view; the network diagram
+  draws only what is on screen, and plain boxes when zoomed far out. Printing still
+  draws everything.
+- The network diagram is laid out by XERlock's own linear-time layered layout instead
+  of dagre: hundreds of times faster, and fewer crossing links on most real networks.
+- Health check and Progress lists show 100 rows, then "Show all N" (the Excel export
+  keeps every row).
+- Calendar arithmetic and date formatting no longer walk day by day or rebuild a
+  formatter per date.
+- The server parses each upload in its own process with a time limit, at most two at
+  a time: a file that hangs or crashes a reader gets an error instead of holding or
+  stopping the server. A crash names the step that failed.
+
+### Fixed
+- .xer files from older P6 versions whose WBS table lacks the tmpl_guid column no
+  longer fail to open.
+- Activity names in Windows-1252 files keep their accented characters (they were
+  dropped); the warning now says which encoding was used.
+- Activities list the resources assigned to them; on files with resources, the
+  "no resource assigned" check counted every activity.
+- Asta Powerproject (.pp) files get a clear message: export them as Microsoft Project
+  XML.
+
+### Removed
+- The PyP6XER and dagre dependencies: every .xer table is read in one pass, and the
+  standalone build no longer downloads a parser wheel.
+
 ## [1.8.5] - 2026-10-22
 
 ### Changed

@@ -249,3 +249,21 @@ def test_safe_float_or_preserves_zero_float():
     assert safe_float_or(0.0) == 0.0
     assert safe_float_or(None) == 999.0
     assert safe_float_or(-8.0) == -8.0
+
+
+def test_resource_names_resolve_per_activity(tmp_path):
+    """TASKRSRC assignments name the RSRC they use; each activity lists those names."""
+    from pathlib import Path
+    from backend.xer import parse_xer
+    text = Path(__file__).resolve().parent.parent.joinpath("examples", "sample-schedule.xer").read_text()
+    first_task = next(l.split("\t")[1] for l in text.split("\n")[text.split("\n").index(next(l for l in text.split("\n") if l == "%T\tTASK")) + 2:] if l.startswith("%R"))
+    extra = (
+        "%T\tRSRC\n%F\trsrc_id\trsrc_name\n%R\t71\tTower crane\n%R\t72\tSteel erectors\n"
+        f"%T\tTASKRSRC\n%F\ttaskrsrc_id\ttask_id\trsrc_id\n%R\t1\t{first_task}\t72\t\n%R\t2\t{first_task}\t71\n"
+    )
+    f = tmp_path / "with-resources.xer"
+    f.write_text(text.replace("%E", extra + "%E") if "%E" in text else text + extra)
+    data = parse_xer(str(f))
+    act = next(a for a in data["activities"] if str(a["task_id"]) == first_task)
+    assert act["resource_names"] == ["Steel erectors", "Tower crane"]
+    assert data["project"]["has_resources"] is True

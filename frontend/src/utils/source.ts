@@ -35,3 +35,14 @@ export function hasAcceptedExtension(name: string): boolean {
   const n = name.toLowerCase()
   return ACCEPTED_EXTENSIONS.some(e => n.endsWith(e))
 }
+
+/** Why a file can't be opened, from its name; null when it can be tried. Formats people
+ *  commonly send instead get a way to export what can be read. */
+export function unsupportedFileMessage(name: string): string | null {
+  if (hasAcceptedExtension(name)) return null
+  const n = name.toLowerCase()
+  if (n.endsWith('.pp')) {
+    return 'Asta Powerproject (.pp) files can\'t be read. In Powerproject, export the project as Microsoft Project XML and open that file instead.'
+  }
+  return 'Only .xer, Microsoft Project XML and .mpp files are accepted'
+}

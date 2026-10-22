@@ -433,3 +433,29 @@ export function weightedScore(results: Record<CheckKey, CheckResult>, cfg: Healt
   }
   return wTotal ? Math.round((100 * wPass) / wTotal) : 100
 }
+
+// ── The reviewer's targets and weights, kept in this browser ─────────────────
+
+const CFG_KEY = 'schedule-app:health-config'
+
+/** The saved targets and weights over the defaults; a config saved under another
+ *  version of the checks is ignored rather than half-applied. */
+export function loadHealthConfig(): HealthConfig {
+  const cfg = defaultConfig()
+  try {
+    const raw = localStorage.getItem(CFG_KEY)
+    if (!raw) return cfg
+    const saved = JSON.parse(raw) as { version?: number; cfg?: Partial<HealthConfig> }
+    if (saved.version !== CFG_VERSION) return cfg
+    for (const key of Object.keys(cfg) as CheckKey[]) {
+      if (saved.cfg?.[key]) Object.assign(cfg[key], saved.cfg[key])
+    }
+  } catch { /* corrupted config — fall back to defaults */ }
+  return cfg
+}
+
+export function saveHealthConfig(cfg: HealthConfig): void {
+  try {
+    localStorage.setItem(CFG_KEY, JSON.stringify({ version: CFG_VERSION, cfg }))
+  } catch { /* storage unavailable */ }
+}

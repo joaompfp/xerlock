@@ -161,7 +161,7 @@
       </div>
 
       <!-- Gantt Chart (primary view) -->
-      <div v-show="tab === 'gantt'" class="section section-full">
+      <div v-if="opened.includes('gantt')" v-show="tab === 'gantt'" class="section section-full">
         <GanttChart
           :data="data"
           :baseline="compareData"
@@ -179,7 +179,7 @@
       </div>
 
       <!-- Critical Path Graph -->
-      <div v-show="tab === 'story'" class="section section-full">
+      <div v-if="opened.includes('story')" v-show="tab === 'story'" class="section section-full">
         <CriticalPathGraph
           :activities="data.activities"
           :visible="tab === 'story'"
@@ -189,7 +189,7 @@
           @unannotate="removeAnnotationFor"
         />
       </div>
-      <div v-show="tab === 'story'" class="section cp-below-section">
+      <div v-if="opened.includes('story')" v-show="tab === 'story'" class="section cp-below-section">
         <!-- Near-critical watchlist -->
         <div class="insight-card" v-if="nearCritical.length > 0">
           <h3>Near-critical watchlist</h3>
@@ -218,111 +218,16 @@
       </div>
 
       <!-- Activity Table -->
-      <div v-show="tab === 'table'" class="section">
-        <div class="table-controls">
-          <input
-            type="text"
-            v-model="search"
-            placeholder="Search code, name, or WBS..."
-            class="search-input"
-          />
-          <select v-model="statusFilter" class="filter-select">
-            <option value="">All statuses</option>
-            <option value="TK_NotStart">Not Started</option>
-            <option value="TK_Active">Active</option>
-            <option value="TK_Complete">Complete</option>
-          </select>
-          <label class="filter-toggle">
-            <input type="checkbox" v-model="showCriticalOnly" />
-            Critical only
-          </label>
-          <span v-for="t in codeTypesAvailable" :key="t" class="code-filter-group">
-            <span class="code-filter-src" aria-hidden="true">{{ t }}</span>
-            <select v-model="codeFilters[t]" class="filter-select" :title="`P6 activity code category '${t}' — name and values read verbatim from this file's ACTVTYPE/ACTVCODE tables`">
-              <option value="">All {{ t }}</option>
-              <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
-            </select>
-          </span>
-          <button class="btn-outline btn-export-view" @click="doExport(() => exportActivitiesCsv(data!, filteredActivities, slugName() + '-filtered.csv'))">
-            Export view (.csv)
-          </button>
-        </div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th @click="sortBy('task_code')" class="sortable">Code {{ sortIcon('task_code') }}</th>
-                <th @click="sortBy('task_name')" class="sortable name-col">Activity {{ sortIcon('task_name') }}</th>
-                <th @click="sortBy('status')" class="sortable">Status {{ sortIcon('status') }}</th>
-                <th @click="sortBy('pct_complete')" class="sortable num">% {{ sortIcon('pct_complete') }}</th>
-                <th @click="sortBy('duration_hrs')" class="sortable num">Dur {{ sortIcon('duration_hrs') }}</th>
-                <th @click="sortBy('early_start')" class="sortable num">Start {{ sortIcon('early_start') }}</th>
-                <th @click="sortBy('early_end')" class="sortable num">End {{ sortIcon('early_end') }}</th>
-                <th @click="sortBy('total_float_hrs')" class="sortable num">Float {{ sortIcon('total_float_hrs') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="filteredActivities.length === 0" class="table-empty-row">
-                <td :colspan="8">
-                  <span class="table-empty">No activities match the current filters.</span>
-                </td>
-              </tr>
-              <tr
-                v-for="act in filteredActivities"
-                :key="act.task_id"
-                :class="{ critical: act.is_critical, 'negative-float': act.is_negative_float, milestone: isMilestone(act) }"
-                @click="selectedAct = selectedAct?.task_id === act.task_id ? null : act"
-              >
-                <td class="code">{{ act.task_code }}</td>
-                <td class="name-cell">
-                  <i v-if="annotations[act.task_id]" class="annotation-dot" :class="'sev-' + annotations[act.task_id].severity" :title="annotations[act.task_id].note"></i>
-                  <span class="act-name">{{ act.task_name }}</span>
-                  <span v-if="isMilestone(act)" class="badge-milestone">M</span>
-                </td>
-                <td><span class="status-badge" :class="act.status"><i class="status-dot"></i>{{ statusLabel(act.status) }}</span></td>
-                <td class="num-cell">
-                  <div class="prog-bar">
-                    <div class="prog-fill" :style="{ width: act.pct_complete + '%' }"></div>
-                  </div>
-                  <span class="prog-text">{{ act.pct_complete }}%</span>
-                </td>
-                <td class="num-cell">{{ formatHours(act.duration_hrs, act.calendar_hrs_per_day) }}</td>
-                <td class="num-cell">{{ formatDate(displayStart(act)) }}</td>
-                <td class="num-cell">{{ formatDate(displayEnd(act)) }}</td>
-                <td class="num-cell" :class="floatClass(act.total_float_hrs)">{{ formatFloat(act.total_float_hrs, act.calendar_hrs_per_day) }}</td>
-              </tr>
-              <tr v-if="selectedAct" class="rel-row">
-                <td colspan="8">
-                  <div class="rel-wbs-path" v-if="selectedAct.wbs_path">{{ selectedAct.wbs_path }}</div>
-                  <div class="rel-panel">
-                    <div class="rel-col">
-                      <h4>Predecessors ({{ selectedAct.predecessors.length }})</h4>
-                      <div v-if="selectedAct.predecessors.length === 0" class="rel-empty">None</div>
-                      <div v-for="p in selectedAct.predecessors" :key="p.task_id" class="rel-item">
-                        <span class="rel-code">{{ getActCode(p.task_id) }}</span>
-                        <span class="rel-type">{{ p.type }}</span>
-                        <span v-if="p.lag_hrs" class="rel-lag">{{ p.lag_hrs }}h</span>
-                      </div>
-                    </div>
-                    <div class="rel-col">
-                      <h4>Successors ({{ selectedAct.successors.length }})</h4>
-                      <div v-if="selectedAct.successors.length === 0" class="rel-empty">None</div>
-                      <div v-for="s in selectedAct.successors" :key="s.task_id" class="rel-item">
-                        <span class="rel-code">{{ getActCode(s.task_id) }}</span>
-                        <span class="rel-type">{{ s.type }}</span>
-                        <span v-if="s.lag_hrs" class="rel-lag">{{ s.lag_hrs }}h</span>
-                      </div>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <div v-if="opened.includes('table')" v-show="tab === 'table'" class="section">
+        <ActivityTable
+          :data="data"
+          :annotations="annotations"
+          @export-view="(list: Activity[]) => doExport(() => exportActivitiesCsv(data!, list, slugName() + '-filtered.csv'))"
+        />
+</div>
 
       <!-- WBS Tree -->
-      <div v-show="tab === 'wbs'" class="section">
+      <div v-if="opened.includes('wbs')" v-show="tab === 'wbs'" class="section">
         <div class="wbs-tree">
           <div class="wbs-head">
             <span class="wbs-head-name">WBS</span>
@@ -344,16 +249,16 @@
       </div>
 
       <!-- Progress -->
-      <div v-show="tab === 'progress'" class="section section-full">
+      <div v-if="opened.includes('progress')" v-show="tab === 'progress'" class="section section-full">
         <ProgressView :data="data" @jump="jumpToActivity" />
       </div>
 
       <!-- Health Check -->
-      <div v-show="tab === 'health'" class="section section-full">
+      <div v-if="opened.includes('health')" v-show="tab === 'health'" class="section section-full">
         <HealthCheck
           :data="data"
           :annotations="annotations"
-          @score="healthScore = $event"
+          @score="liveHealthScore = $event"
           @jump="jumpToActivity"
           @annotate="setAnnotation"
           @unannotate="removeAnnotationFor"
@@ -361,17 +266,17 @@
       </div>
 
       <!-- Calendars -->
-      <div v-show="tab === 'calendars'" class="section section-full">
+      <div v-if="opened.includes('calendars')" v-show="tab === 'calendars'" class="section section-full">
         <CalendarView :data="data" @jump="jumpToActivity" />
       </div>
 
       <!-- Raw table inspector -->
-      <div v-show="tab === 'tables'" class="section section-full">
+      <div v-if="opened.includes('tables')" v-show="tab === 'tables'" class="section section-full">
         <TableInspector :data="data" />
       </div>
 
       <!-- Compare -->
-      <div v-show="tab === 'compare'" class="section section-full">
+      <div v-if="opened.includes('compare')" v-show="tab === 'compare'" class="section section-full">
         <CompareView
           v-if="compareData"
           :current="data"
@@ -457,23 +362,23 @@ import CriticalPathGraph from './components/CriticalPathGraph.vue'
 import GanttChart from './components/GanttChart.vue'
 import HealthCheck from './components/HealthCheck.vue'
 import CalendarView from './components/CalendarView.vue'
+import ActivityTable from './components/ActivityTable.vue'
 import TableInspector from './components/TableInspector.vue'
 import ProgressView from './components/ProgressView.vue'
 import CompareView from './components/CompareView.vue'
 import { formatDate, formatHours, statusLabel, isMilestone, formatFloat, timeAgo } from './utils/format'
 import { exportWorkbook, exportActivitiesCsv, exportReviewReport } from './utils/export'
+import { runChecks, weightedScore, loadHealthConfig } from './utils/healthChecks'
 import { loadLastFile, saveLastFile, clearLastFile, type LastFile, type StoredSchedule } from './utils/lastFile'
 import { loadAnnotations, saveAnnotation, removeAnnotation, setCallout, type Annotations, type CalloutOffset, type Severity } from './utils/annotations'
 import { listSnapshots, saveSnapshot, getSnapshotData, deleteSnapshot, type SnapshotMeta } from './utils/snapshots'
 import { displayStart, displayEnd } from './utils/p6'
-import { compareBy, type SortDir } from './utils/sort'
 import { buildWbsRollups, type WbsRollup } from './utils/wbs'
 import type { Activity } from './types/schedule'
 import { parseSchedule, prepareParser, PARSER_MODE } from './utils/parseSchedule'
-import { ACCEPT, DROP_PROMPT, hasAcceptedExtension } from './utils/source'
+import { ACCEPT, DROP_PROMPT, unsupportedFileMessage } from './utils/source'
 
 type Theme = 'light' | 'dark'
-type SortField = 'task_code' | 'task_name' | 'status' | 'pct_complete' | 'duration_hrs' | 'early_start' | 'early_end' | 'total_float_hrs'
 
 const PARSE_STAGES = [
   'Reading XER tables…',
@@ -497,7 +402,7 @@ function applyTheme(theme: Theme): void {
 
 export default defineComponent({
   name: 'App',
-  components: { WBSNode, XerlockMark, CriticalPathGraph, GanttChart, HealthCheck, ProgressView, CompareView, CalendarView, TableInspector },
+  components: { WBSNode, XerlockMark, CriticalPathGraph, GanttChart, HealthCheck, ProgressView, CompareView, CalendarView, TableInspector, ActivityTable },
   data() {
     return {
       data: null as StoredSchedule | null,
@@ -508,16 +413,9 @@ export default defineComponent({
       dropPrompt: DROP_PROMPT,
       dragOver: false,
       tab: 'gantt',
-      search: '',
-      statusFilter: '',
-      showCriticalOnly: false,
-      sortField: 'total_float_hrs' as SortField,
-      sortDir: 'asc' as SortDir,
-      selectedAct: null as Activity | null,
       exporting: false,
       lastFile: loadLastFile() as LastFile | null,
       pendingJump: null as number | null,
-      codeFilters: {} as Record<string, string>,  // seeded per file in activateData
       annotations: {} as Annotations,
       compareData: null as StoredSchedule | null,
       snapshots: [] as SnapshotMeta[],
@@ -555,7 +453,12 @@ export default defineComponent({
       sidebarCollapsed: (() => { try { return localStorage.getItem('schedule-app:sidebar-collapsed') === '1' } catch { return false } })(),
       exportMenuOpen: false,
       // Reported up by HealthCheck so the score is visible from any view.
-      healthScore: null as number | null,
+      // The views opened since this file was loaded. A view is built the first time it is
+      // shown and then kept (switching back keeps its state); one never opened costs
+      // nothing, which matters on a large file.
+      opened: ['gantt'] as string[],
+      // The Health check view's score once it is open (it follows edits to targets and weights).
+      liveHealthScore: null as number | null,
       exportState: '',
       themeOptions: { light: 'Light', dark: 'Dark' } as Record<Theme, string>,
       compareLoading: false,
@@ -577,6 +480,9 @@ export default defineComponent({
     applyTheme(this.theme)
   },
   watch: {
+    tab(t: string) {
+      if (!this.opened.includes(t)) this.opened.push(t)
+    },
     sidebarCollapsed(v: boolean) {
       try { localStorage.setItem('schedule-app:sidebar-collapsed', v ? '1' : '0') } catch { /* not remembered */ }
     },
@@ -589,40 +495,17 @@ export default defineComponent({
     wbsRollups(): Map<number, WbsRollup> | null {
       return this.data ? buildWbsRollups(this.data.wbs_tree, this.data.activities) : null
     },
+    // Shown on the Health check nav item from any view, so it is worked out here rather
+    // than waiting for that view to be opened.
+    healthScore(): number | null {
+      if (this.liveHealthScore !== null) return this.liveHealthScore
+      if (!this.data) return null
+      const cfg = loadHealthConfig()
+      return weightedScore(runChecks(this.data, cfg).results, cfg)
+    },
     healthScoreClass(): string {
       if (this.healthScore === null) return ''
       return this.healthScore >= 80 ? 'is-ok' : this.healthScore >= 60 ? 'is-near' : 'is-crit'
-    },
-    // Rendered only once a file is loaded, so data is set.
-    filteredActivities(): Activity[] {
-      let acts = [...this.data!.activities]
-      if (this.search) {
-        const q = this.search.toLowerCase()
-        acts = acts.filter(a =>
-          a.task_code.toLowerCase().includes(q) ||
-          a.task_name.toLowerCase().includes(q) ||
-          (a.wbs_path && a.wbs_path.toLowerCase().includes(q))
-        )
-      }
-      if (this.statusFilter) {
-        acts = acts.filter(a => a.status === this.statusFilter)
-      }
-      if (this.showCriticalOnly) {
-        acts = acts.filter(a => a.is_critical)
-      }
-      const activeCodeFilters = Object.entries(this.codeFilters).filter(([, v]) => v)
-      if (activeCodeFilters.length) {
-        acts = acts.filter(a =>
-          activeCodeFilters.every(([type, code]) => a.activity_codes.some(c => c.type === type && c.code === code))
-        )
-      }
-      // Sort. Unknown values (P6 leaves total float blank on completed work) sort
-      // last rather than being treated as zero — see utils/sort.js.
-      acts.sort(compareBy((x: Activity) =>
-        this.sortField === 'early_start' ? displayStart(x) :
-        this.sortField === 'early_end' ? displayEnd(x) : x[this.sortField],
-      this.sortDir))
-      return acts
     },
     nearCritical(): Activity[] {
       if (!this.data) return []
@@ -646,23 +529,6 @@ export default defineComponent({
     },
     annotationCount(): number {
       return Object.keys(this.annotations).length
-    },
-    codeTypesAvailable(): string[] {
-      return this.data && this.data.project.has_activity_codes ? this.data.project.activity_code_types : []
-    },
-    codeValuesByType(): Map<string, string[]> {
-      const sets = new Map<string, Set<string>>()
-      for (const t of this.codeTypesAvailable) sets.set(t, new Set())
-      if (this.data) {
-        for (const a of this.data.activities) {
-          for (const c of a.activity_codes) {
-            sets.get(c.type)?.add(c.code)
-          }
-        }
-      }
-      const m = new Map<string, string[]>()
-      for (const [t, set] of sets) m.set(t, [...set].sort())
-      return m
     },
   },
   methods: {
@@ -724,8 +590,9 @@ export default defineComponent({
       if (file) await this.uploadCompareFile(file)
     },
     async uploadCompareFile(file: File) {
-      if (!hasAcceptedExtension(file.name)) {
-        alert('Only .xer, Microsoft Project XML and .mpp files are accepted')
+      const refused = unsupportedFileMessage(file.name)
+      if (refused) {
+        alert(refused)
         return
       }
       this.compareLoading = true
@@ -739,8 +606,9 @@ export default defineComponent({
       }
     },
     async uploadFile(file: File) {
-      if (!hasAcceptedExtension(file.name)) {
-        alert('Only .xer, Microsoft Project XML and .mpp files are accepted')
+      const refused = unsupportedFileMessage(file.name)
+      if (refused) {
+        alert(refused)
         return
       }
       this.loading = true
@@ -777,11 +645,8 @@ export default defineComponent({
     activateData(parsed: StoredSchedule) {
       this.data = parsed
       this.tab = 'gantt'
-      this.search = ''
-      this.statusFilter = ''
-      this.showCriticalOnly = false
-      this.selectedAct = null
-      this.codeFilters = Object.fromEntries((parsed.project.activity_code_types || []).map(t => [t, '']))
+      this.opened = ['gantt']
+      this.liveHealthScore = null
       this.annotations = loadAnnotations(parsed.project.proj_short_name)
       this.dismissedWarnings = []
       this.compareData = null
@@ -797,18 +662,6 @@ export default defineComponent({
       clearLastFile()
       this.lastFile = null
     },
-    sortBy(field: SortField) {
-      if (this.sortField === field) {
-        this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc'
-      } else {
-        this.sortField = field
-        this.sortDir = 'asc'
-      }
-    },
-    sortIcon(field: SortField) {
-      if (this.sortField !== field) return ''
-      return this.sortDir === 'asc' ? '\u25B2' : '\u25BC'
-    },
     formatDate,
     formatHours,
     displayStart,
@@ -817,20 +670,6 @@ export default defineComponent({
     isMilestone,
     formatFloat,
     timeAgo,
-    // Same 0h / ≤80h (10d) thresholds as the Gantt and network diagram, so "critical" and
-    // "near-critical" mean exactly the same thing — and use exactly the same colors — in
-    // every view instead of each surface inventing its own float-banding scheme.
-    floatClass(f: number | null | undefined) {
-      if (f == null) return ''
-      if (f < 0) return 'float-neg'
-      if (f === 0) return 'float-crit'
-      if (f <= 80) return 'float-near'
-      return ''
-    },
-    getActCode(tid: number) {
-      const a = this.data!.activities.find(a => a.task_id === tid)
-      return a ? a.task_code : '?' + tid
-    },
     dismissWarning(w: string) {
       this.dismissedWarnings.push(w)
     },

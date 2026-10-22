@@ -188,21 +188,23 @@ evidence for each decision.
 ```
 ┌────────────┐  file upload   ┌─────────────────────────────┐
 │  Vue 3 SPA │ ─────────────▶ │ FastAPI backend              │
-│  (Vite)    │ ◀───────────── │ readers: .xer (PyP6XER),     │
-└────────────┘  parsed JSON   │ Project XML, .mpp (MPXJ)     │
+│  (Vite)    │ ◀───────────── │ readers: .xer, Project XML,  │
+└────────────┘  parsed JSON   │ .mpp (MPXJ)                  │
                               └─────────────────────────────┘
 ```
 
 - **Backend** (`backend/main.py`): FastAPI. One endpoint (`POST /api/upload`) picks the reader
-  from the file's content (`backend/schedule.py`): `backend/xer.py` with
-  [PyP6XER](https://pypi.org/project/PyP6XER/) for `.xer`, `backend/mspdi.py` (standard
-  library only) for Project XML, `backend/mpp.py` with [MPXJ](https://www.mpxj.org) over JPype
+  from the file's content (`backend/schedule.py`): `backend/xer.py` for `.xer`
+  and `backend/mspdi.py` for Project XML (both standard library only), `backend/mpp.py` with [MPXJ](https://www.mpxj.org) over JPype
   for `.mpp`. `backend/analysis.py` derives what both formats share (driving links, Longest
   Path, CPLI, WBS roll-ups) and returns the full schedule as JSON - activities with
   float/constraints/actuals/codes, the WBS tree, and project stats. **Nothing is persisted
-  server-side**; files are parsed and discarded.
+  server-side**; files are parsed and discarded. Each upload is parsed in its own child process
+  with a time limit (`backend/isolate.py`), so a file that hangs or crashes a reader ends
+  that process, not the server.
 - **Frontend** (`frontend/`): Vue 3 (Options API) + Vite, in strict TypeScript; `src/types/schedule.ts` declares the API contract, and the build fails if it drifts from what the backend returns. No UI framework - hand-rolled CSS on a
-  design-token system. [dagre](https://github.com/dagrejs/dagre) computes the network layout;
+  design-token system. The network diagram's layered layout is XERlock's own
+  (`src/utils/networkLayout.ts`, linear time);
   [ExcelJS](https://github.com/exceljs/exceljs) (lazy-loaded) generates the Excel exports.
   Annotations and the last-opened file live in `localStorage` only.
 - In production, FastAPI serves the built frontend from `frontend/dist/` - a single container
@@ -325,8 +327,8 @@ distribute a modified version or offer it to others over a network, you must pub
 under the same licence. Commercial licences without these conditions are available from the author.
 Versions published before 12 October 2026 remain available under MIT.
 
-Depends on [PyP6XER](https://pypi.org/project/PyP6XER/) (LGPL-2.1, used as an
-unmodified library), dagre, ExcelJS, Vue, and IBM Plex fonts (OFL, bundled via Fontsource - the app makes no third-party requests).
+Depends on [MPXJ](https://www.mpxj.org) (LGPL-2.1, server only, for `.mpp`; used as an
+unmodified library), ExcelJS, Vue, and IBM Plex fonts (OFL, bundled via Fontsource - the app makes no third-party requests).
 
 Primavera and P6 are trademarks of Oracle. This project is not affiliated with or endorsed by
 Oracle; it merely reads the documented `.xer` interchange format.

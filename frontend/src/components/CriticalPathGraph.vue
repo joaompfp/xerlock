@@ -70,7 +70,7 @@
         </defs>
         <g class="viewport" :class="{ 'viewport-animated': animating }" :transform="`translate(${tx},${ty}) scale(${scale})`">
           <path
-            v-for="e in edges"
+            v-for="e in drawnEdges"
             :key="e.id"
             :d="e.path"
             class="edge"
@@ -81,14 +81,14 @@
           </path>
 
           <g v-if="showEdgeLabels" class="edge-labels">
-            <g v-for="e in edges" :key="'el' + e.id" :class="edgeClass(e)">
+            <g v-for="e in drawnEdges" :key="'el' + e.id" :class="edgeClass(e)">
               <rect :x="e.mx - e.label.length * 3 - 4" :y="e.my - 8" :width="e.label.length * 6 + 8" height="15" rx="3" class="edge-label-bg" />
               <text :x="e.mx" :y="e.my + 3.5" text-anchor="middle" class="edge-label">{{ e.label }}</text>
             </g>
           </g>
 
           <g
-            v-for="n in nodes"
+            v-for="n in drawnNodes"
             :key="n.id"
             class="node"
             :class="nodeClass(n)"
@@ -99,6 +99,8 @@
 {{ n.fullRangeLabel }} ({{ n.durationLabel }})</title>
             <rect :width="n.width" :height="n.height" rx="8" class="node-rect" />
             <rect v-if="n.negativeFloat" :width="n.width" height="4" rx="2" class="node-neg-flag" />
+            <!-- Zoomed far out the text is unreadable: each box is drawn alone, in its colour. -->
+            <template v-if="detailed">
             <circle v-if="annotations[n.id]" :cx="n.width - 9" cy="12" r="3.5" class="node-annotation-flag" :class="'sev-' + annotations[n.id].severity">
               <title>{{ annotations[n.id].note }}</title>
             </circle>
@@ -119,6 +121,7 @@
               <rect x="0" y="0" width="46" height="18" rx="9" />
               <text x="23" y="12.5" text-anchor="middle">+{{ n.hiddenCount }} more</text>
             </g>
+            </template>
           </g>
         </g>
       </svg>
@@ -150,7 +153,7 @@
 
 <script lang="ts">
 import { defineComponent, type PropType } from 'vue'
-import dagre from 'dagre'
+import { layerNetwork } from '../utils/networkLayout'
 import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
 import { formatDate, formatHours, formatLag, statusLabel, isMilestone, formatFloat, formatDateRange } from '../utils/format'
 import fullscreenMixin from '../mixins/fullscreen'
@@ -160,9 +163,13 @@ import type { Activity } from '../types/schedule'
 import type { Annotations } from '../utils/annotations'
 
 const NEAR_CRITICAL_THRESHOLD_HRS = 80 // 10 working days
+
+/** A visible activity's column along the logic, and its place within that column. */
+interface RankedNode { id: number; a: Activity; rank: number; order: number }
+// Below this zoom a node's text is too small to read, so nodes are drawn as plain boxes.
+const DETAIL_MIN_SCALE = 0.45
 const NODE_WIDTH = 236
 const NODE_HEIGHT = 56
-const DAGRE_RANKSEP = 70 // spacing dagre uses internally, only needed to recover rank index from its output
 const RANK_GAP_X = 50 // column gap in our own wrapped grid
 const STACK_GAP_Y = 14 // gap between same-rank siblings stacked in one column
 const ROW_GAP_Y = 46 // gap between wrapped rows
@@ -214,6 +221,11 @@ interface EdgeMeta {
 
 interface GraphEdge extends EdgeMeta {
   path: string
+  /** Bounding box of the curve (its ends and control points), to tell if it is in view. */
+  x0: number
+  x1: number
+  y0: number
+  y1: number
   mx: number
   my: number
   label: string
@@ -272,6 +284,9 @@ export default defineComponent({
       panStart: null as Point | null,
       animating: false,
       canvasWidth: 900,
+      canvasHeight: 600,
+      // While printing every node is drawn in full, whatever the screen shows.
+      printing: false,
       printPaperSize: 'a4' as PaperKey,
       paperSizes: PAPER_SIZES,
     }
@@ -292,8 +307,12 @@ export default defineComponent({
     const canvas = this.$refs.canvas as HTMLElement | undefined
     if (canvas) {
       this.canvasWidth = canvas.clientWidth
+      this.canvasHeight = canvas.clientHeight
       priv._resizeObserver = new ResizeObserver(entries => {
-        for (const entry of entries) this.canvasWidth = entry.contentRect.width
+        for (const entry of entries) {
+          this.canvasWidth = entry.contentRect.width
+          this.canvasHeight = entry.contentRect.height
+        }
       })
       priv._resizeObserver.observe(canvas)
     }
@@ -384,58 +403,41 @@ export default defineComponent({
     selected(): Activity | null | undefined {
       return this.selectedId != null ? this.actLookup.get(this.selectedId) : null
     },
-    // Runs dagre once to get a correct topological rank + crossing-minimized order,
-    // then re-flows that single wide row into wrapped, alternating-direction rows —
-    // like a snake / wrapped paragraph — so long critical chains stay readable
-    // instead of demanding a mile of horizontal scrolling.
-    layout(): GraphLayout {
-      const g = new dagre.graphlib.Graph()
-      g.setGraph({ rankdir: 'LR', nodesep: 20, ranksep: DAGRE_RANKSEP, marginx: 20, marginy: 20 })
-      g.setDefaultEdgeLabel(() => ({}))
-
-      const crit = this.criticalIds
+    // Each visible activity's rank (column along the logic) and its order within the
+    // rank, crossing-minimised. Independent of the canvas width, so a resize only
+    // re-flows the rows below and never repeats this.
+    ranked(): { raw: RankedNode[]; edgeMeta: EdgeMeta[] } {
       const visible = this.visibleIds
-
-      for (const id of visible) {
-        const a = this.actLookup.get(id)
-        if (!a) continue
-        // dagre keys nodes by string; graphlib would stringify the number anyway.
-        g.setNode(String(id), { width: NODE_WIDTH, height: NODE_HEIGHT })
-      }
-
+      const ids: number[] = []
       const edgeMeta: EdgeMeta[] = []
       for (const id of visible) {
         const a = this.actLookup.get(id)
         if (!a) continue
+        ids.push(id)
         for (const p of a.predecessors) {
           if (!visible.has(p.task_id)) continue
-          const edgeId = `${p.task_id}->${id}`
-          g.setEdge(String(p.task_id), String(id), { id: edgeId })
-          edgeMeta.push({ id: edgeId, from: p.task_id, to: id, type: p.type, lagHrs: p.lag_hrs })
+          edgeMeta.push({ id: `${p.task_id}->${id}`, from: p.task_id, to: id, type: p.type, lagHrs: p.lag_hrs })
         }
       }
-
-      dagre.layout(g)
-
-      const raw: { id: number; a: Activity; gx: number; gy: number }[] = []
-      for (const id of visible) {
-        const a = this.actLookup.get(id)
-        const gn = g.node(String(id))
-        if (!a || !gn) continue
-        raw.push({ id, a, gx: gn.x, gy: gn.y })
-      }
+      const placed = layerNetwork(ids, edgeMeta.map(e => [e.from, e.to]))
+      const raw: RankedNode[] = ids.map(id => ({ id, a: this.actLookup.get(id)!, ...placed.get(id)! }))
+      return { raw, edgeMeta }
+    },
+    // Re-flows the ranked graph's single wide row into wrapped, alternating-direction
+    // rows — like a snake / wrapped paragraph — so long critical chains stay readable
+    // instead of demanding a mile of horizontal scrolling.
+    layout(): GraphLayout {
+      const { raw, edgeMeta } = this.ranked
+      const crit = this.criticalIds
+      const visible = this.visibleIds
       if (raw.length === 0) return { nodes: [], edges: [], width: 400, height: 300 }
 
-      const minGx = Math.min(...raw.map(r => r.gx))
-      const rankOf = (r: { gx: number }) => Math.round((r.gx - minGx) / (NODE_WIDTH + DAGRE_RANKSEP))
-
-      const rankGroups = new Map<number, typeof raw>()
+      const rankGroups = new Map<number, RankedNode[]>()
       for (const r of raw) {
-        const rk = rankOf(r)
-        if (!rankGroups.has(rk)) rankGroups.set(rk, [])
-        rankGroups.get(rk)!.push(r)
+        if (!rankGroups.has(r.rank)) rankGroups.set(r.rank, [])
+        rankGroups.get(r.rank)!.push(r)
       }
-      for (const group of rankGroups.values()) group.sort((x, y) => x.gy - y.gy)
+      for (const group of rankGroups.values()) group.sort((x, y) => x.order - y.order)
 
       const maxRank = Math.max(...rankGroups.keys())
       const ranksPerRow = Math.max(
@@ -530,6 +532,8 @@ export default defineComponent({
         const my = (start.y + end.y) / 2
         const lagLabel = em.lagHrs ? ` ${formatLag(em.lagHrs)}` : ''
         return { ...em, path, mx, my, label: relTypeLabel(em.type) + lagLabel,
+                 x0: Math.min(start.x, c1x, c2x, end.x), x1: Math.max(start.x, c1x, c2x, end.x),
+                 y0: Math.min(start.y, end.y), y1: Math.max(start.y, end.y),
                  criticalEdge: crit.has(em.from) && crit.has(em.to) }
       })
 
@@ -537,6 +541,30 @@ export default defineComponent({
     },
     nodes(): GraphNode[] {
       return this.layout.nodes
+    },
+    // The part of the graph the canvas shows (graph coordinates), with a margin so a
+    // short pan never reveals an empty edge before the next render.
+    viewRect(): { x0: number; y0: number; x1: number; y1: number } {
+      const m = 300 / this.scale
+      return {
+        x0: -this.tx / this.scale - m, y0: -this.ty / this.scale - m,
+        x1: (this.canvasWidth - this.tx) / this.scale + m, y1: (this.canvasHeight - this.ty) / this.scale + m,
+      }
+    },
+    // Only what is in view is drawn: a network of thousands of activities would
+    // otherwise put tens of thousands of SVG elements on the page.
+    drawnNodes(): GraphNode[] {
+      if (this.printing) return this.nodes
+      const v = this.viewRect
+      return this.nodes.filter(n => n.x + n.width / 2 >= v.x0 && n.x - n.width / 2 <= v.x1 && n.y + n.height / 2 >= v.y0 && n.y - n.height / 2 <= v.y1)
+    },
+    drawnEdges(): GraphEdge[] {
+      if (this.printing) return this.edges
+      const v = this.viewRect
+      return this.edges.filter(e => e.x1 >= v.x0 && e.x0 <= v.x1 && e.y1 >= v.y0 && e.y0 <= v.y1)
+    },
+    detailed(): boolean {
+      return this.printing || this.scale >= DETAIL_MIN_SCALE
     },
     edges(): GraphEdge[] {
       return this.layout.edges
@@ -653,12 +681,14 @@ export default defineComponent({
       this.scale = fitScale
       this.tx = (targetW - gw * fitScale) / 2
       this.ty = (targetH - gh * fitScale) / 2
+      this.printing = true
 
       const pageCss = (this.paperSizes[this.printPaperSize] || this.paperSizes.a4).pageCss
       const styleTag = document.createElement('style')
       styleTag.textContent = `@page { size: ${pageCss} landscape; margin: 10mm; }`
       document.head.appendChild(styleTag)
       const restore = () => {
+        this.printing = false
         this.scale = prev.scale
         this.tx = prev.tx
         this.ty = prev.ty

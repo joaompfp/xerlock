@@ -122,12 +122,13 @@
         <table v-else class="health-table">
           <thead><tr><th>Code</th><th>Activity</th><th>Issue</th><th>WBS</th><th class="tg-th"></th></tr></thead>
           <tbody>
-            <tr v-for="a in openEnds" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
+            <tr v-for="a in openEnds.slice(0, rowLimit('openEnds'))" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
               <td><span class="issue-badge" :class="a.bothOpen ? 'issue-severe' : 'issue-warn'">{{ a.bothOpen ? 'Both ends open' : (a.openStart ? (a.dangling ? 'Dangling start (FF/SF only)' : 'No predecessor') : (a.dangling ? 'Dangling finish (SS/SF only)' : 'No successor')) }}</span></td>
               <td class="wbs-cell">{{ a.wbs_path }}</td>
             <td class="tg-cell"><button class="to-gantt" title="Show in Gantt" @click.stop="$emit('jump', a.task_id)">↗</button></td></tr>
+            <tr v-if="openEnds.length > rowLimit('openEnds')" class="more-row"><td colspan="5"><button class="btn-tiny-light" @click.stop="showAllRows('openEnds')">Show all {{ openEnds.length }}</button></td></tr>
           </tbody>
         </table>
       </div>
@@ -216,7 +217,7 @@
         <table v-else class="health-table">
           <thead><tr><th>Code</th><th>Activity</th><th>Constraint</th><th class="num">Date</th><th>Severity</th><th>Note</th><th class="tg-th"></th></tr></thead>
           <tbody>
-            <tr v-for="a in constraintList" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
+            <tr v-for="a in constraintList.slice(0, rowLimit('constraintList'))" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
               <td>{{ cstrLabels[a.cstr_type ?? ''] || a.cstr_type }}</td>
@@ -224,6 +225,7 @@
               <td><span class="issue-badge" :class="a.hard ? 'issue-severe' : 'issue-warn'">{{ a.hard ? 'Hard' : 'Soft' }}</span></td>
               <td class="section-note-cell">{{ a.criticalOnlyByConstraint ? 'Critical only due to this constraint, not network logic' : '' }}</td>
             <td class="tg-cell"><button class="to-gantt" title="Show in Gantt" @click.stop="$emit('jump', a.task_id)">↗</button></td></tr>
+            <tr v-if="constraintList.length > rowLimit('constraintList')" class="more-row"><td colspan="7"><button class="btn-tiny-light" @click.stop="showAllRows('constraintList')">Show all {{ constraintList.length }}</button></td></tr>
           </tbody>
         </table>
       </div>
@@ -245,7 +247,7 @@
           <table class="health-table">
             <thead><tr><th>Code</th><th>Activity</th><th>On critical path</th><th class="num">Float</th><th class="num">Finish</th><th>WBS</th></tr></thead>
             <tbody>
-              <tr v-for="a in alapList" :key="a.task_id" class="jump-row" title="Show in Gantt" @click="$emit('jump', a.task_id)">
+              <tr v-for="a in alapList.slice(0, rowLimit('alapList'))" :key="a.task_id" class="jump-row" title="Show in Gantt" @click="$emit('jump', a.task_id)">
                 <td class="code">{{ a.task_code }}</td>
                 <td class="name-cell">{{ a.task_name }}</td>
                 <td>
@@ -256,6 +258,7 @@
                 <td class="num-cell">{{ formatDate(displayEnd(a)) }}</td>
                 <td class="wbs-cell">{{ a.wbs_path }}</td>
               </tr>
+            <tr v-if="alapList.length > rowLimit('alapList')" class="more-row"><td colspan="6"><button class="btn-tiny-light" @click.stop="showAllRows('alapList')">Show all {{ alapList.length }}</button></td></tr>
             </tbody>
           </table>
         </template>
@@ -274,12 +277,13 @@
         <table v-else class="health-table">
           <thead><tr><th>Code</th><th>Activity</th><th class="num">Float</th><th class="num">Finish</th><th class="tg-th"></th></tr></thead>
           <tbody>
-            <tr v-for="a in negativeFloatList" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
+            <tr v-for="a in negativeFloatList.slice(0, rowLimit('negativeFloatList'))" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
               <td class="num-cell lag-neg">{{ formatFloat(a.total_float_hrs, a.calendar_hrs_per_day) }}</td>
               <td class="num-cell">{{ formatDate(a.early_end) }}</td>
             <td class="tg-cell"><button class="to-gantt" title="Show in Gantt" @click.stop="$emit('jump', a.task_id)">↗</button></td></tr>
+            <tr v-if="negativeFloatList.length > rowLimit('negativeFloatList')" class="more-row"><td colspan="5"><button class="btn-tiny-light" @click.stop="showAllRows('negativeFloatList')">Show all {{ negativeFloatList.length }}</button></td></tr>
           </tbody>
         </table>
       </div>
@@ -297,12 +301,13 @@
         <table v-else class="health-table">
           <thead><tr><th>Code</th><th>Activity</th><th class="num">Float</th><th>WBS</th><th class="tg-th"></th></tr></thead>
           <tbody>
-            <tr v-for="a in highFloatList" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
+            <tr v-for="a in highFloatList.slice(0, rowLimit('highFloatList'))" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
               <td class="num-cell">{{ formatFloat(a.total_float_hrs, a.calendar_hrs_per_day) }}</td>
               <td class="wbs-cell">{{ a.wbs_path }}</td>
             <td class="tg-cell"><button class="to-gantt" title="Show in Gantt" @click.stop="$emit('jump', a.task_id)">↗</button></td></tr>
+            <tr v-if="highFloatList.length > rowLimit('highFloatList')" class="more-row"><td colspan="5"><button class="btn-tiny-light" @click.stop="showAllRows('highFloatList')">Show all {{ highFloatList.length }}</button></td></tr>
           </tbody>
         </table>
       </div>
@@ -320,11 +325,12 @@
         <table v-else class="health-table">
           <thead><tr><th>Code</th><th>Activity</th><th>Issue</th><th class="tg-th"></th></tr></thead>
           <tbody>
-            <tr v-for="a in invalidDatesList" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
+            <tr v-for="a in invalidDatesList.slice(0, rowLimit('invalidDatesList'))" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
               <td><span class="issue-badge issue-warn">{{ a.issues.join(' · ') }}</span></td>
             <td class="tg-cell"><button class="to-gantt" title="Show in Gantt" @click.stop="$emit('jump', a.task_id)">↗</button></td></tr>
+            <tr v-if="invalidDatesList.length > rowLimit('invalidDatesList')" class="more-row"><td colspan="4"><button class="btn-tiny-light" @click.stop="showAllRows('invalidDatesList')">Show all {{ invalidDatesList.length }}</button></td></tr>
           </tbody>
         </table>
       </div>
@@ -342,13 +348,14 @@
         <table v-else class="health-table">
           <thead><tr><th>Code</th><th>Activity</th><th class="num">Planned finish</th><th class="num">Forecast finish</th><th>Status</th><th class="tg-th"></th></tr></thead>
           <tbody>
-            <tr v-for="a in missedTasksList" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
+            <tr v-for="a in missedTasksList.slice(0, rowLimit('missedTasksList'))" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
               <td class="num-cell">{{ formatDate(a.target_end) }}</td>
               <td class="num-cell">{{ formatDate(a.act_end || a.early_end) }}</td>
               <td>{{ a.status === 'TK_Complete' ? 'Finished late' : a.status === 'TK_Active' ? 'In progress' : 'Not started' }}</td>
             <td class="tg-cell"><button class="to-gantt" title="Show in Gantt" @click.stop="$emit('jump', a.task_id)">↗</button></td></tr>
+            <tr v-if="missedTasksList.length > rowLimit('missedTasksList')" class="more-row"><td colspan="6"><button class="btn-tiny-light" @click.stop="showAllRows('missedTasksList')">Show all {{ missedTasksList.length }}</button></td></tr>
           </tbody>
         </table>
       </div>
@@ -366,7 +373,7 @@
         <table v-else class="health-table">
           <thead><tr><th>Code</th><th>Activity</th><th class="num">Duration</th><th class="num">Start</th><th class="num">Finish</th><th class="tg-th"></th></tr></thead>
           <tbody>
-            <tr v-for="a in highDurationList" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
+            <tr v-for="a in highDurationList.slice(0, rowLimit('highDurationList'))" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
               <td class="num-cell">{{ formatHours(a.duration_hrs, a.calendar_hrs_per_day) }}</td>
@@ -374,6 +381,7 @@
               <td class="num-cell">{{ formatDate(displayEnd(a)) }}</td>
               <td class="tg-cell"><button class="to-gantt" title="Show in Gantt" @click.stop="$emit('jump', a.task_id)">↗</button></td>
             </tr>
+            <tr v-if="highDurationList.length > rowLimit('highDurationList')" class="more-row"><td colspan="6"><button class="btn-tiny-light" @click.stop="showAllRows('highDurationList')">Show all {{ highDurationList.length }}</button></td></tr>
           </tbody>
         </table>
       </div>
@@ -391,7 +399,7 @@
         <table v-else class="health-table">
           <thead><tr><th>Code</th><th>Activity</th><th class="num">Start</th><th class="num">Finish</th><th class="num">Dur</th><th class="tg-th"></th></tr></thead>
           <tbody>
-            <tr v-for="a in loeOnCriticalList" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
+            <tr v-for="a in loeOnCriticalList.slice(0, rowLimit('loeOnCriticalList'))" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
               <td class="num-cell">{{ formatDate(displayStart(a)) }}</td>
@@ -399,6 +407,7 @@
               <td class="num-cell">{{ formatHours(a.duration_hrs, a.calendar_hrs_per_day) }}</td>
               <td class="tg-cell"><button class="to-gantt" title="Show in Gantt" @click.stop="$emit('jump', a.task_id)">↗</button></td>
             </tr>
+            <tr v-if="loeOnCriticalList.length > rowLimit('loeOnCriticalList')" class="more-row"><td colspan="6"><button class="btn-tiny-light" @click.stop="showAllRows('loeOnCriticalList')">Show all {{ loeOnCriticalList.length }}</button></td></tr>
           </tbody>
         </table>
       </div>
@@ -416,7 +425,7 @@
         <table v-else class="health-table">
           <thead><tr><th>Code</th><th>Activity</th><th class="num">Start</th><th class="num">Finish</th><th class="num">Float</th><th>WBS</th><th class="tg-th"></th></tr></thead>
           <tbody>
-            <tr v-for="a in manualList" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
+            <tr v-for="a in manualList.slice(0, rowLimit('manualList'))" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
               <td class="num-cell">{{ formatDate(displayStart(a)) }}</td>
@@ -424,6 +433,7 @@
               <td class="num-cell">{{ formatFloat(a.total_float_hrs, a.calendar_hrs_per_day) }}</td>
               <td class="wbs-cell">{{ a.wbs_path }}</td>
             <td class="tg-cell"><button class="to-gantt" title="Show in Gantt" @click.stop="$emit('jump', a.task_id)">↗</button></td></tr>
+            <tr v-if="manualList.length > rowLimit('manualList')" class="more-row"><td colspan="7"><button class="btn-tiny-light" @click.stop="showAllRows('manualList')">Show all {{ manualList.length }}</button></td></tr>
           </tbody>
         </table>
       </div>
@@ -464,12 +474,13 @@
         <table v-else class="health-table">
           <thead><tr><th>Code</th><th>Activity</th><th>P6 driving?</th><th>App longest path?</th><th class="tg-th"></th></tr></thead>
           <tbody>
-            <tr v-for="a in drivingMismatchList" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
+            <tr v-for="a in drivingMismatchList.slice(0, rowLimit('drivingMismatchList'))" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
               <td>{{ a.driving_path_flag ? 'Yes' : 'No' }}</td>
               <td>{{ a.is_longest_path ? 'Yes' : 'No' }}</td>
             <td class="tg-cell"><button class="to-gantt" title="Show in Gantt" @click.stop="$emit('jump', a.task_id)">↗</button></td></tr>
+            <tr v-if="drivingMismatchList.length > rowLimit('drivingMismatchList')" class="more-row"><td colspan="5"><button class="btn-tiny-light" @click.stop="showAllRows('drivingMismatchList')">Show all {{ drivingMismatchList.length }}</button></td></tr>
           </tbody>
         </table>
       </div>
@@ -593,10 +604,11 @@
         <table v-else class="health-table">
           <thead><tr><th>Code</th><th>Activity</th><th class="tg-th"></th></tr></thead>
           <tbody>
-            <tr v-for="a in noResourceList" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
+            <tr v-for="a in noResourceList.slice(0, rowLimit('noResourceList'))" :key="a.task_id" class="jump-row" title="Show details" @click="openDetail(a.task_id)">
               <td class="code">{{ a.task_code }}</td>
               <td class="name-cell">{{ a.task_name }}</td>
             <td class="tg-cell"><button class="to-gantt" title="Show in Gantt" @click.stop="$emit('jump', a.task_id)">↗</button></td></tr>
+            <tr v-if="noResourceList.length > rowLimit('noResourceList')" class="more-row"><td colspan="3"><button class="btn-tiny-light" @click.stop="showAllRows('noResourceList')">Show all {{ noResourceList.length }}</button></td></tr>
           </tbody>
         </table>
       </div>
@@ -623,9 +635,10 @@
 import { defineComponent, type PropType } from 'vue'
 import { formatDate, formatHours, formatFloat, formatLag } from '../utils/format'
 import { REL_TYPE_LABELS, CSTR_LABELS, displayStart, displayEnd } from '../utils/p6'
-import { CHECK_DEFS, CFG_VERSION, defaultConfig, runChecks, weightedScore } from '../utils/healthChecks'
+import { CHECK_DEFS, defaultConfig, runChecks, weightedScore, loadHealthConfig, saveHealthConfig } from '../utils/healthChecks'
 import type { CheckDef, CheckKey, CheckResult, HealthConfig } from '../utils/healthChecks'
 import ActivityDetailDrawer from './ActivityDetailDrawer.vue'
+import rowLimitMixin from '../mixins/rowLimit'
 import type { Activity, MspOptions, Schedule, ScheduleOptions } from '../types/schedule'
 import type { Annotations } from '../utils/annotations'
 
@@ -647,24 +660,9 @@ interface ScorecardItem {
   tip: string
 }
 
-const CFG_KEY = 'schedule-app:health-config'
-
-function loadConfig(): HealthConfig {
-  const cfg = defaultConfig()
-  try {
-    const raw = localStorage.getItem(CFG_KEY)
-    if (!raw) return cfg
-    const saved = JSON.parse(raw) as { version?: number; cfg?: Partial<HealthConfig> }
-    if (saved.version !== CFG_VERSION) return cfg
-    for (const key of Object.keys(cfg) as CheckKey[]) {
-      if (saved.cfg?.[key]) Object.assign(cfg[key], saved.cfg[key])
-    }
-  } catch { /* corrupted config — fall back to defaults */ }
-  return cfg
-}
-
 export default defineComponent({
   name: 'HealthCheck',
+  mixins: [rowLimitMixin],
   components: { ActivityDetailDrawer },
   props: {
     data: { type: Object as PropType<Schedule>, required: true },
@@ -694,7 +692,7 @@ export default defineComponent({
       } as Record<SectionKey, boolean>,
       showConfig: false,
       selectedTaskId: null as number | null,
-      cfg: loadConfig(),
+      cfg: loadHealthConfig(),
       checkDefs: CHECK_DEFS,
       cstrLabels: CSTR_LABELS,
       relTypeLabels: REL_TYPE_LABELS,
@@ -709,11 +707,7 @@ export default defineComponent({
     weightedScore: { immediate: true, handler(v: number) { this.$emit('score', v) } },
     cfg: {
       deep: true,
-      handler(v: HealthConfig) {
-        try {
-          localStorage.setItem(CFG_KEY, JSON.stringify({ version: CFG_VERSION, cfg: v }))
-        } catch { /* storage unavailable */ }
-      },
+      handler(v: HealthConfig) { saveHealthConfig(v) },
     },
   },
   computed: {
