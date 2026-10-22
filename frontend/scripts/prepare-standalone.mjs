@@ -8,6 +8,7 @@
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { STANDALONE_PYTHON_FILES } from './standalone-files.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const frontend = join(here, '..')
@@ -24,7 +25,7 @@ for (const f of ['pyodide.mjs', 'pyodide.asm.mjs', 'pyodide.asm.wasm', 'python_s
   cpSync(join(pyodide, f), join(py, f))
 }
 
-const pythonFiles = ['schedule.py', 'xer.py', 'mspdi.py', 'analysis.py', 'worktime.py', 'cpm_core.py', 'cpm.py', 'recalc.py', 'cpm_msp.py', 'recalc_msp.py']
+const pythonFiles = STANDALONE_PYTHON_FILES
 for (const f of pythonFiles) cpSync(join(repo, 'backend', f), join(py, 'backend', f))
 
 writeFileSync(join(py, 'manifest.json'), JSON.stringify({ python: pythonFiles }, null, 2))
