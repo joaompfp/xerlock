@@ -329,7 +329,7 @@
 import { defineComponent, type PropType } from 'vue'
 import { formatDate, formatFloat, formatHours, formatLag } from '../utils/format'
 import { REL_TYPE_LABELS, cstrLabel, displayStart, displayEnd } from '../utils/p6'
-import { actualDateChanges, constraintChanges, finishSlipDays, finishVerdict, type ActualChange, type FinishVerdict, type MatchedPair } from '../utils/compareChecks'
+import { actualDateChanges, constraintChanges, finishSlipDays, finishVerdict, longestPathStability, type ActualChange, type FinishVerdict, type MatchedPair, type Stability } from '../utils/compareChecks'
 import type { Activity, Schedule } from '../types/schedule'
 
 type SectionKey = 'milestones' | 'tornado' | 'dates' | 'durations' | 'actuals' | 'constraints' | 'float' | 'critical' | 'logic' | 'addrem'
@@ -517,24 +517,8 @@ export default defineComponent({
       if (!this.stability.baseCount) return ''
       return this.stability.pct < 50 ? 'fail' : this.stability.pct < 90 ? 'warn' : 'pass'
     },
-    stability(): { pct: number; retained: number; baseCount: number; newlyCritical: number; dropped: number; driverChanged: boolean | string | null } {
-      const baseLongest = new Set(this.baseline.activities.filter(a => a.is_longest_path).map(a => a.task_code))
-      const curLongest = new Set(this.current.activities.filter(a => a.is_longest_path).map(a => a.task_code))
-      const retained = [...baseLongest].filter(c => curLongest.has(c)).length
-      const pct = baseLongest.size ? Math.round((100 * retained) / baseLongest.size) : 100
-      const newlyCritical = [...curLongest].filter(c => !baseLongest.has(c)).length
-      const dropped = [...baseLongest].filter(c => !curLongest.has(c)).length
-      const driverOf = (data: Schedule, codeSet: Set<string>) => {
-        let best: Activity | null = null
-        for (const a of data.activities) {
-          if (!codeSet.has(a.task_code) || !a.early_end) continue
-          if (!best || new Date(a.early_end) > new Date(best.early_end!)) best = a
-        }
-        return best ? best.task_code : null
-      }
-      const baseDriver = driverOf(this.baseline, baseLongest)
-      const curDriver = driverOf(this.current, curLongest)
-      return { pct, retained, baseCount: baseLongest.size, newlyCritical, dropped, driverChanged: baseDriver && curDriver && baseDriver !== curDriver }
+    stability(): Stability {
+      return longestPathStability(this.baseline, this.current)
     },
   },
   methods: {

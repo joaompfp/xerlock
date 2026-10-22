@@ -1,7 +1,7 @@
 // Forensic comparisons between two submissions of the same programme, over activities
 // matched by code. Pure, so each rule is testable on its own.
 
-import type { Activity } from '../types/schedule'
+import type { Activity, Schedule } from '../types/schedule'
 import { displayEnd } from './p6'
 
 const DAY_MS = 86400000
@@ -82,4 +82,38 @@ export function finishVerdict(
   const resequenced = !!stability.driverChanged || fewKept
   const cls = finishDelta > 0 ? 'v-slip' : finishDelta < 0 && !resequenced ? 'v-gain' : 'v-hold'
   return { cls, chips }
+}
+
+
+export interface Stability {
+  /** Share of the earlier longest path still on the current one, 0-100. */
+  pct: number
+  retained: number
+  baseCount: number
+  newlyCritical: number
+  dropped: number
+  /** The finish-driving activity's code when it changed, else false/null. */
+  driverChanged: boolean | string | null
+}
+
+/** How much of the earlier file's longest path (by activity code) is still on the
+ *  current one, and whether the activity driving the finish changed. */
+export function longestPathStability(baseline: Schedule, current: Schedule): Stability {
+  const baseLongest = new Set(baseline.activities.filter(a => a.is_longest_path).map(a => a.task_code))
+  const curLongest = new Set(current.activities.filter(a => a.is_longest_path).map(a => a.task_code))
+  const retained = [...baseLongest].filter(c => curLongest.has(c)).length
+  const pct = baseLongest.size ? Math.round((100 * retained) / baseLongest.size) : 100
+  const newlyCritical = [...curLongest].filter(c => !baseLongest.has(c)).length
+  const dropped = [...baseLongest].filter(c => !curLongest.has(c)).length
+  const driverOf = (data: Schedule, codeSet: Set<string>) => {
+    let best: Activity | null = null
+    for (const a of data.activities) {
+      if (!codeSet.has(a.task_code) || !a.early_end) continue
+      if (!best || new Date(a.early_end) > new Date(best.early_end!)) best = a
+    }
+    return best ? best.task_code : null
+  }
+  const baseDriver = driverOf(baseline, baseLongest)
+  const curDriver = driverOf(current, curLongest)
+  return { pct, retained, baseCount: baseLongest.size, newlyCritical, dropped, driverChanged: baseDriver && curDriver && baseDriver !== curDriver }
 }
