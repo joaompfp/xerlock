@@ -91,44 +91,14 @@
       </div>
     </div>
 
-    <!-- Every filter sits on this one row, and a control that is narrowing the view is
-         drawn in the accent colour, so a filtered chart can't be read as the whole programme. -->
-    <div class="filter-strip">
-      <input type="text" v-model="filterText" class="filter-input fb-search" :class="{ set: filterText.trim() }" placeholder="Search…" title="Search activity code, name or WBS path" />
-      <select v-model="filterStatus" class="fb-select" :class="{ set: filterStatus }" title="Status">
-        <option value="">Status</option>
-        <option value="TK_NotStart">Not started</option>
-        <option value="TK_Active">Active</option>
-        <option value="TK_Complete">Complete</option>
-      </select>
-      <select v-model="filterConstraint" class="fb-select" :class="{ set: filterConstraint }" title="Constraint">
-        <option value="">Constraint</option>
-        <option v-for="o in constraintFilterOptions" :key="o.value" :value="o.value" :disabled="o.count === 0">{{ o.label }} ({{ o.count }})</option>
-      </select>
-      <select v-model="filterNotes" class="fb-select" :class="{ set: filterNotes }" title="Your review notes (the dot after an activity's name)">
-        <option value="">Notes</option>
-        <option v-for="o in noteFilterOptions" :key="o.value" :value="o.value" :disabled="o.count === 0">{{ o.label }} ({{ o.count }})</option>
-      </select>
-      <button class="tb-chip" :class="{ on: filterCriticalOnly }" @click="filterCriticalOnly = !filterCriticalOnly" title="Critical activities only, on the current basis"><i></i>Critical</button>
-      <span class="fb-dates" :class="{ set: filterFrom || filterTo }" title="Date window: activities touching it">
-        <input type="date" v-model="filterFrom" class="filter-date" aria-label="From" />
-        <span class="fb-dash">–</span>
-        <input type="date" v-model="filterTo" class="filter-date" aria-label="To" />
-      </span>
-      <template v-if="data.project.data_date">
-        <button class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(28) }" title="Data date + 4 weeks" @click="setLookAhead(28)">4 wk</button>
-        <button class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(56) }" title="Data date + 8 weeks" @click="setLookAhead(56)">8 wk</button>
-      </template>
-      <select v-if="codeTypesAvailable.length" class="fb-select" title="P6 activity codes, read verbatim from this file's ACTVTYPE table" @change="addCodeFilter">
-        <option value="">Activity code</option>
-        <optgroup v-for="t in codeTypesAvailable" :key="t" :label="t">
-          <option v-for="c in codeValuesByType.get(t)" :key="c" :value="JSON.stringify([t, c])">{{ c }}</option>
-        </optgroup>
-      </select>
-      <button v-for="[type, code] in activeCodeFilters" :key="type" class="fs-chip" @click="clearFilter('code:' + type)" :title="`Remove: ${type}: ${code}`">
-        {{ type }}: {{ code }}<span class="fs-x">&times;</span>
-      </button>
-      <button v-if="activeFilterChips.length" class="btn-tiny-light" @click="clearFilters">Clear</button>
+    <GanttFilterBar
+      v-model:filter="filter"
+      :activities="data.activities"
+      :annotations="annotations"
+      :code-types="codeTypesAvailable"
+      :data-date="data.project.data_date"
+      @clear="clearFilters"
+    >
       <button v-if="returnTab" class="return-chip" @click="$emit('return-to-origin')">&larr; Back to {{ returnTab }}</button>
       <span v-if="isolatedIds" class="isolation-chip">
         Chain trace &middot; {{ isolatedIds.size }} {{ isolatedIds.size === 1 ? 'activity' : 'activities' }}
@@ -146,7 +116,7 @@
         @remove="removeView"
       />
       <span class="filter-count" title="Activities shown">{{ matchCount }} of {{ data.activities.length }}</span>
-    </div>
+    </GanttFilterBar>
 
     <div class="gantt-body">
     <div
@@ -564,14 +534,15 @@ import type { Activity, Schedule } from '../types/schedule'
 import { loadMarkup, saveMarkup, periodSpan, highlightColors, toggleMember, newMarkId, nextColor, MARK_COLORS, type Markup, type MarkColor, type TextBox } from '../utils/markup'
 import GanttMarkupPanel from './GanttMarkupPanel.vue'
 import GanttViewBar from './GanttViewBar.vue'
+import GanttFilterBar from './GanttFilterBar.vue'
 import Icon from './Icon.vue'
 import { loadViews, saveViews, completeState, stepView, type SavedView as NamedView, type ViewState } from '../utils/views'
-import { matchesNoteFilter, NOTE_FILTER_LABELS, DEFAULT_CALLOUT, SEVERITY_LABELS, type Annotations, type CalloutOffset, type NoteFilter, type Severity } from '../utils/annotations'
+import { DEFAULT_CALLOUT, SEVERITY_LABELS, type Annotations, type CalloutOffset, type NoteFilter, type Severity } from '../utils/annotations'
+import { emptyFilter, isFilterSet, matchesFilter, filterChips, emptyFilterHint, type GanttFilter } from '../utils/ganttFilter'
 import { formatDate, formatDateShort, formatHours, formatFloat, formatLag, statusLabel } from '../utils/format'
 
-const STATUS_LABELS: Record<string, string> = { TK_NotStart: 'Not started', TK_Active: 'Active', TK_Complete: 'Complete' }
 import fullscreenMixin from '../mixins/fullscreen'
-import { relTypeLabel, cstrLabel, displayStart, displayEnd, CSTR_LABELS, CONSTRAINT_FILTER_GROUPS, constraintTypesOf, matchesConstraintFilter, constraintFilterLabel } from '../utils/p6'
+import { relTypeLabel, cstrLabel, displayStart, displayEnd } from '../utils/p6'
 import { dateSlipDays, finishSlipDays } from '../utils/compareChecks'
 import { PAPER_SIZES, paperOrDefault, usableWidthPx, usableHeightPx } from '../utils/paper'
 import {
@@ -687,7 +658,7 @@ function saveView(view: SavedView): void {
 export default defineComponent({
   name: 'GanttChart',
   mixins: [fullscreenMixin],
-  components: { IconChevron, ActivityDetailDrawer, GanttMarkupPanel, GanttViewBar, Icon },
+  components: { IconChevron, ActivityDetailDrawer, GanttMarkupPanel, GanttViewBar, GanttFilterBar, Icon },
   directives: { focus: { mounted: (el: HTMLElement) => el.focus() } },
   props: {
     data: { type: Object as PropType<Schedule>, required: true },
@@ -745,14 +716,7 @@ export default defineComponent({
       editingTextId: null as string | null,
       textDrag: null as { id: string; startX: number; startY: number; x0: number; y0: number; x: number; y: number } | null,
       selectedTaskId: null as number | null,
-      filterText: '',
-      filterStatus: '',
-      filterCriticalOnly: false,
-      filterConstraint: '',
-      filterNotes: '' as NoteFilter,
-      filterFrom: '',
-      filterTo: '',
-      filterCodes: Object.fromEntries<string>((this.data.project.activity_code_types || []).map(t => [t, ''])),
+      filter: emptyFilter(this.data.project.activity_code_types) as GanttFilter,
       // Chain tracing: null = off; a Set of task_ids = show ONLY these activities.
       // Grown one activity at a time by clicking predecessors/successors in the drawer,
       // letting a reviewer reconstruct a driving chain link by link.
@@ -1015,79 +979,19 @@ export default defineComponent({
     codeTypesAvailable(): string[] {
       return this.data.project.has_activity_codes ? this.data.project.activity_code_types : []
     },
-    codeValuesByType(): Map<string, string[]> {
-      const sets = new Map<string, Set<string>>()
-      for (const t of this.codeTypesAvailable) sets.set(t, new Set())
-      for (const a of this.data.activities) {
-        for (const c of a.activity_codes) {
-          sets.get(c.type)?.add(c.code)
-        }
-      }
-      const m = new Map<string, string[]>()
-      for (const [t, set] of sets) m.set(t, [...set].sort())
-      return m
-    },
-    // The groups first, then each P6 type in its usual order, counted on this file so an
-    // empty choice is visibly empty rather than a surprise blank chart.
-    constraintFilterOptions(): { value: string; label: string; count: number }[] {
-      const counts = new Map<string, number>()
-      const bump = (k: string) => counts.set(k, (counts.get(k) || 0) + 1)
-      for (const a of this.data.activities) {
-        const types = constraintTypesOf(a)
-        for (const t of new Set(types)) bump(t)
-        for (const g of Object.keys(CONSTRAINT_FILTER_GROUPS)) if (matchesConstraintFilter(a, g)) bump(g)
-      }
-      const groups = Object.entries(CONSTRAINT_FILTER_GROUPS).map(([value, label]) => ({ value, label, count: counts.get(value) || 0 }))
-      const types = Object.keys(CSTR_LABELS).filter(t => counts.has(t))
-        .map(t => ({ value: t, label: cstrLabel(t), count: counts.get(t)! }))
-      return [...groups, ...types]
-    },
-    // Counted over this file's activities, so a note left on an activity the file no
-    // longer has doesn't promise a match.
-    noteFilterOptions(): { value: NoteFilter; label: string; count: number }[] {
-      const notes = this.data.activities.map(a => this.annotations[a.task_id]).filter(Boolean)
-      return (Object.entries(NOTE_FILTER_LABELS) as [NoteFilter, string][])
-        .map(([value, label]) => ({ value, label, count: notes.filter(n => matchesNoteFilter(n, value)).length }))
-    },
-    activeCodeFilters(): [string, string][] {
-      return Object.entries(this.filterCodes).filter(([, v]) => v)
-    },
     isolationActive(): boolean {
       return this.isolatedIds !== null
     },
     isFilterActive(): boolean {
-      return this.isolationActive || !!(this.filterText.trim() || this.filterStatus || this.filterConstraint || this.filterNotes || this.filterCriticalOnly || this.filterFrom || this.filterTo || this.activeCodeFilters.length)
+      return this.isolationActive || isFilterSet(this.filter)
     },
     matchedTaskIds(): Set<number> | null {
       // Isolation takes precedence over the text/status/code filters: the trace IS the view.
       if (this.isolatedIds) return this.isolatedIds
       if (!this.isFilterActive) return null
-      const q = this.filterText.trim().toLowerCase()
+      const ctx = { annotations: this.annotations, isCritical: this.isBasisCritical }
       const ids = new Set<number>()
-      for (const a of this.data.activities) {
-        if (q && !(a.task_code.toLowerCase().includes(q) || a.task_name.toLowerCase().includes(q) || (a.wbs_path && a.wbs_path.toLowerCase().includes(q)))) continue
-        if (this.filterStatus && a.status !== this.filterStatus) continue
-        if (this.filterFrom || this.filterTo) {
-          // Window-intersection on the display dates (actual once started, else early):
-          // an activity is shown if any part of it touches [from, to]. ISO date-prefix
-          // string comparison is deliberate — no timezone surprises.
-          const aStart = (displayStart(a) || '').slice(0, 10)
-          const aEnd = (displayEnd(a) || aStart || '').slice(0, 10)
-          if (!aStart) continue
-          if (this.filterFrom && aEnd < this.filterFrom) continue
-          if (this.filterTo && aStart > this.filterTo) continue
-        }
-        if (!matchesConstraintFilter(a, this.filterConstraint)) continue
-        if (!matchesNoteFilter(this.annotations[a.task_id], this.filterNotes)) continue
-        if (this.filterCriticalOnly && !this.isBasisCritical(a)) continue
-        if (this.activeCodeFilters.length) {
-          const matchesAll = this.activeCodeFilters.every(([type, code]) =>
-            a.activity_codes.some(c => c.type === type && c.code === code)
-          )
-          if (!matchesAll) continue
-        }
-        ids.add(a.task_id)
-      }
+      for (const a of this.data.activities) if (matchesFilter(a, this.filter, ctx)) ids.add(a.task_id)
       return ids
     },
     // The slip column belongs to the two-schedule view: it shows whenever the compared
@@ -1101,37 +1005,12 @@ export default defineComponent({
       for (const a of this.baseline.activities) m.set(a.task_code, a)
       return m
     },
-    // One removable chip per active filter — the strip states exactly what is
-    // narrowing the view, so a filtered chart can't be read as the whole programme.
+    // One label per active filter, for the printout's title line.
     activeFilterChips(): { id: string; label: string }[] {
-      const out: { id: string; label: string }[] = []
-      const q = this.filterText.trim()
-      if (q) out.push({ id: 'text', label: `Search: ${q}` })
-      if (this.filterStatus) out.push({ id: 'status', label: `Status: ${STATUS_LABELS[this.filterStatus] || this.filterStatus}` })
-      if (this.filterConstraint) out.push({ id: 'cstr', label: `Constraint: ${constraintFilterLabel(this.filterConstraint)}` })
-      if (this.filterNotes) out.push({ id: 'notes', label: `Notes: ${NOTE_FILTER_LABELS[this.filterNotes]}` })
-      if (this.filterCriticalOnly) out.push({ id: 'crit', label: 'Critical only' })
-      if (this.filterFrom || this.filterTo) {
-        const la = [28, 56].find(d => this.lookAheadActive(d))
-        out.push({ id: 'dates', label: la
-          ? `${la / 7}-week look-ahead`
-          : `Window: ${this.filterFrom ? formatDateShort(this.filterFrom) : '…'} – ${this.filterTo ? formatDateShort(this.filterTo) : '…'}` })
-      }
-      for (const [type, code] of this.activeCodeFilters) out.push({ id: 'code:' + type, label: `${type}: ${code}` })
-      return out
+      return filterChips(this.filter, this.data.project.data_date)
     },
     emptyFilterHint(): string {
-      const bits: string[] = []
-      if (this.filterText.trim()) bits.push(`text “${this.filterText.trim()}”`)
-      if (this.filterStatus) bits.push('a status')
-      if (this.filterConstraint) bits.push('a constraint')
-      if (this.filterNotes) bits.push('notes')
-      if (this.filterCriticalOnly) bits.push('critical only')
-      if (this.filterFrom || this.filterTo) bits.push('a date window')
-      if (this.activeCodeFilters.length) bits.push('an activity code')
-      return bits.length
-        ? `Filtering by ${bits.join(', ')}.`
-        : 'This schedule has no activities to show.'
+      return emptyFilterHint(this.filter)
     },
     matchCount(): number {
       return this.matchedTaskIds ? this.matchedTaskIds.size : this.data.activities.length
@@ -1332,62 +1211,11 @@ export default defineComponent({
       this.selectedTaskId = next.task_id
       this.$nextTick(() => this.scrollToActivity(next.task_id))
     },
-    clearFilter(id: string) {
-      if (id === 'text') this.filterText = ''
-      else if (id === 'status') this.filterStatus = ''
-      else if (id === 'cstr') this.filterConstraint = ''
-      else if (id === 'notes') this.filterNotes = ''
-      else if (id === 'crit') this.filterCriticalOnly = false
-      else if (id === 'dates') { this.filterFrom = ''; this.filterTo = '' }
-      else if (id.startsWith('code:')) this.filterCodes[id.slice(5)] = ''
-    },
-    // The code picker is a one-shot menu: a pick sets that category's filter (shown as a
-    // chip beside it) and the menu returns to its prompt for the next pick.
-    addCodeFilter(e: Event) {
-      const sel = e.target as HTMLSelectElement
-      if (sel.value) {
-        const [type, code] = JSON.parse(sel.value) as [string, string]
-        this.filterCodes[type] = code
-      }
-      sel.value = ''
-    },
     clearFilters() {
       this.filterCollapsed = new Set()
-      this.filterText = ''
-      this.filterStatus = ''
-      this.filterCriticalOnly = false
-      this.filterConstraint = ''
-      this.filterNotes = ''
-      this.filterFrom = ''
-      this.filterTo = ''
-      // Reseed one '' entry per category — an undefined v-model renders the select blank.
-      this.filterCodes = Object.fromEntries<string>((this.data.project.activity_code_types || []).map(t => [t, '']))
+      // Reseeds one '' entry per code category — an undefined v-model renders the select blank.
+      this.filter = emptyFilter(this.data.project.activity_code_types)
       this.isolatedIds = null
-    },
-    // Look-ahead: the window every site meeting asks for — data date + N days.
-    lookAheadWindow(days: number): { from: string; to: string } | null {
-      const dd = this.data.project.data_date
-      if (!dd) return null
-      const from = dd.slice(0, 10)
-      const end = new Date(from + 'T12:00:00')
-      end.setDate(end.getDate() + days)
-      const to = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`
-      return { from, to }
-    },
-    lookAheadActive(days: number): boolean {
-      const w = this.lookAheadWindow(days)
-      return !!w && this.filterFrom === w.from && this.filterTo === w.to
-    },
-    setLookAhead(days: number) {
-      const w = this.lookAheadWindow(days)
-      if (!w) return
-      if (this.lookAheadActive(days)) {
-        this.filterFrom = ''
-        this.filterTo = ''
-      } else {
-        this.filterFrom = w.from
-        this.filterTo = w.to
-      }
     },
     isolateSelected() {
       if (this.selectedTaskId == null) return
@@ -1471,9 +1299,9 @@ export default defineComponent({
         zoom: this.zoom, dayWidthOverride: this.dayWidthOverride, criticalBasis: this.criticalBasis,
         showLinks: this.showLinks, linksScope: this.linksScope, showProgressLine: this.showProgressLine,
         showBaseline: this.showBaseline, showMarkup: this.showMarkup, showSlipArrows: this.showSlipArrows,
-        filterText: this.filterText, filterStatus: this.filterStatus, filterConstraint: this.filterConstraint,
-        filterNotes: this.filterNotes, filterCriticalOnly: this.filterCriticalOnly,
-        filterFrom: this.filterFrom, filterTo: this.filterTo, filterCodes: { ...this.filterCodes },
+        filterText: this.filter.text, filterStatus: this.filter.status, filterConstraint: this.filter.constraint,
+        filterNotes: this.filter.notes, filterCriticalOnly: this.filter.criticalOnly,
+        filterFrom: this.filter.from, filterTo: this.filter.to, filterCodes: { ...this.filter.codes },
         isolatedCodes: this.isolatedIds ? [...this.isolatedIds].map(codeOf).filter((c): c is string => !!c) : null,
         expandedWbs: [...this.expandedWbs], filterCollapsed: [...this.filterCollapsed],
         groupsOn: this.markup.groups.filter(g => g.on).map(g => g.id),
@@ -1494,15 +1322,12 @@ export default defineComponent({
       this.showBaseline = s.showBaseline
       this.showMarkup = s.showMarkup
       this.showSlipArrows = s.showSlipArrows
-      this.filterText = s.filterText
-      this.filterStatus = s.filterStatus
-      this.filterConstraint = s.filterConstraint
-      this.filterNotes = s.filterNotes as NoteFilter
-      this.filterCriticalOnly = s.filterCriticalOnly
-      this.filterFrom = s.filterFrom
-      this.filterTo = s.filterTo
-      // Only this file's code categories: a category that no longer exists is dropped.
-      this.filterCodes = Object.fromEntries((this.data.project.activity_code_types || []).map(t => [t, s.filterCodes[t] || '']))
+      this.filter = {
+        text: s.filterText, status: s.filterStatus, constraint: s.filterConstraint, notes: s.filterNotes as NoteFilter,
+        criticalOnly: s.filterCriticalOnly, from: s.filterFrom, to: s.filterTo,
+        // Only this file's code categories: a category that no longer exists is dropped.
+        codes: Object.fromEntries((this.data.project.activity_code_types || []).map(t => [t, s.filterCodes[t] || ''])),
+      }
       if (s.isolatedCodes) {
         const want = new Set(s.isolatedCodes)
         this.isolatedIds = new Set(this.data.activities.filter(a => want.has(a.task_code)).map(a => a.task_id))
@@ -1883,20 +1708,6 @@ export default defineComponent({
 .gantt-toolbar .tb-chip { padding: 4px 7px; }
 .tb-panel { position: absolute; right: 0; top: calc(100% + 5px); min-width: 250px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: 0 10px 30px -12px rgba(0,0,0,0.35); padding: var(--space-3); z-index: 12; display: flex; flex-direction: column; gap: 7px; }
 
-/* ── Active-filter strip ──────────────────────────────────────────────────── */
-.filter-strip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 34px; padding: 5px var(--space-4); background: var(--panel-2); border-bottom: 1px solid var(--line); }
-.fs-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent); border-radius: 14px; padding: 2px 5px 2px 10px; cursor: pointer; font: var(--text-small); font-weight: 600; }
-.fs-chip:hover { background: var(--panel); }
-.fs-x { font-size: 14px; line-height: 1; opacity: 0.75; }
-.filter-strip .fb-search { width: 124px; padding: 3px 8px; }
-.filter-strip .fb-select { height: 26px; padding: 0 4px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); color: var(--ink-2); max-width: 118px; }
-.filter-strip .fb-select.set { max-width: 180px; }
-.filter-strip .tb-chip { padding: 3px 9px; }
-.fb-dates { display: inline-flex; align-items: center; gap: 2px; }
-.filter-strip .fb-dates .filter-date { height: 26px; box-sizing: border-box; padding: 0 2px; width: 108px; font-size: 11px; }
-.fb-dash { color: var(--ink-3); }
-.filter-strip .set, .fb-dates.set .filter-date { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.filter-strip .filter-count { margin-left: 4px; white-space: nowrap; font: var(--text-small); color: var(--ink-3); font-family: var(--font-mono); }
 
 
 .gantt-wrap.is-fullscreen .gantt-scroll { flex: 1; height: auto; max-height: none; }
@@ -1939,13 +1750,10 @@ export default defineComponent({
 .progress-swatch { width: 14px; height: 2px; background: var(--milestone); display: inline-block; }
 
 
-.filter-input { padding: 6px 12px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); width: 240px; }
-.filter-date { border: 1px solid var(--gray-300); border-radius: var(--radius-sm); padding: 4px 6px; background: var(--white); font-family: var(--font-mono); font-size: 12px; color: var(--ink); }
-.filter-strip .la-btn { padding: 3px 7px; }
-.la-btn.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 700; }
 .filter-select { padding: 6px 8px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); }
 .filter-check { font: var(--text-small); color: var(--gray-700); display: flex; align-items: center; gap: 4px; cursor: pointer; }
 .filter-count { font: var(--text-small); color: var(--gray-500); margin-left: auto; }
+.filter-strip .filter-count { margin-left: 4px; white-space: nowrap; font: var(--text-small); color: var(--ink-3); font-family: var(--font-mono); }
 .return-chip { display: inline-flex; align-items: center; background: var(--nav); color: var(--nav-ink); border: none; border-radius: 12px; padding: 3px 12px; font: var(--text-small); font-weight: 600; cursor: pointer; }
 .return-chip:hover { opacity: 0.9; }
 .isolation-chip { display: inline-flex; align-items: center; gap: 8px; background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); border-radius: 12px; padding: 2px 4px 2px 10px; font: var(--text-small); font-weight: 600; }
