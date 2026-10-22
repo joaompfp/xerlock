@@ -1,10 +1,10 @@
 // XERlock's IndexedDB database: everything the app keeps in this browser that is too
-// large for localStorage (snapshots for Compare). Opened per call; the browser keeps the
+// large for localStorage (snapshots for Compare, the last opened file). Opened per call; the browser keeps the
 // connection cheap, and the stores are created on first use.
 
 const DB_NAME = 'xerlock'
-const DB_VERSION = 1
-const STORES = ['snapshot-meta', 'snapshot-data']
+const DB_VERSION = 2 // 2: the last-file store
+const STORES = ['snapshot-meta', 'snapshot-data', 'last-file']
 
 export function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
