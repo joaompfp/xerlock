@@ -32,75 +32,71 @@
       />
     </div>
 
-    <!-- One toolbar row, ordered by frequency of use. What is used once per session
-         (Today, Fullscreen, Print, paper size) lives behind the overflow. -->
+    <!-- One compact toolbar row, every control in sight: icons where the meaning is
+         plain, a short word where it isn't. Grouped left to right as scale, structure,
+         basis, overlays, markup, then the once-a-session actions. -->
     <div class="gantt-toolbar">
-      <div class="zoom-group">
+      <div class="seg" role="group" aria-label="Scale">
         <button
           v-for="z in zoomLevels"
           :key="z"
           :class="{ active: !dayWidthOverride && zoom === z }"
+          :title="zoomLabel(z)"
           @click="selectZoomPreset(z)"
-        >{{ zoomLabel(z) }}</button>
+        >{{ zoomLabel(z).charAt(0) }}</button>
       </div>
-      <div class="zoom-adjust">
-        <button class="zbtn" title="Zoom out" @click="zoomOut">−</button>
-        <button class="zbtn" title="Fit to available width" @click="fitToWidth">Fit</button>
-        <button class="zbtn" title="Zoom in" @click="zoomIn">+</button>
-      </div>
-
-      <span class="tb-div"></span>
-
-      <div class="tb-group">
-        <span class="tb-group-label">WBS</span>
-        <button class="ctrl-btn" @click="expandAll">Expand</button>
-        <button class="ctrl-btn" title="Expand one more WBS level" @click="expandOneLevel">+1</button>
-        <button class="ctrl-btn" title="Collapse the deepest expanded WBS level" @click="collapseOneLevel">−1</button>
-        <button class="ctrl-btn" @click="collapseAll">Collapse</button>
+      <div class="seg" role="group" aria-label="Zoom">
+        <button title="Zoom out" @click="zoomOut"><Icon name="zoom-out" /></button>
+        <button title="Fit to the available width" @click="fitToWidth"><Icon name="fit" /></button>
+        <button title="Zoom in" @click="zoomIn"><Icon name="zoom-in" /></button>
       </div>
 
       <span class="tb-div"></span>
 
-      <div class="tb-group basis-group">
-        <span class="tb-group-label">Basis</span>
+      <div class="seg" role="group" aria-label="WBS">
+        <button title="Collapse all WBS" @click="collapseAll"><Icon name="collapse-all" /></button>
+        <button title="Collapse the deepest expanded WBS level" @click="collapseOneLevel"><Icon name="level-up" /></button>
+        <button title="Expand one more WBS level" @click="expandOneLevel"><Icon name="level-down" /></button>
+        <button title="Expand all WBS" @click="expandAll"><Icon name="expand-all" /></button>
+      </div>
+
+      <div class="tb-group basis-group" title="Critical basis: total float ≤ 0, or the longest path">
         <button :class="{ active: criticalBasis === 'tf0' }" @click="criticalBasis = 'tf0'">TF &le; 0</button>
-        <button :class="{ active: criticalBasis === 'longest' }" @click="criticalBasis = 'longest'">Longest path</button>
+        <button :class="{ active: criticalBasis === 'longest' }" @click="criticalBasis = 'longest'">Longest</button>
       </div>
 
       <span class="tb-div"></span>
 
-      <!-- Overlay chips: solid border with a dot when on, dashed when off. -->
-      <button class="tb-chip" :class="{ on: showLinks }" @click="showLinks = !showLinks"><i></i>Links</button>
-      <select v-if="showLinks" v-model="linksScope" class="filter-select linkscope-select" title="Which relationships to draw">
-        <option value="critical">Critical only</option>
-        <option value="all">All logic</option>
+      <!-- Overlay chips: solid and in the accent colour when on, dashed when off. -->
+      <button class="tb-chip" :class="{ on: showLinks }" title="Relationship lines" @click="showLinks = !showLinks"><Icon name="link" :size="13" />Links</button>
+      <select v-if="showLinks" v-model="linksScope" class="tb-select" title="Which relationships to draw">
+        <option value="critical">Critical</option>
+        <option value="all">All</option>
       </select>
-      <button class="tb-chip" :class="{ on: showProgressLine }" @click="showProgressLine = !showProgressLine"><i></i>Progress line</button>
-      <button v-if="baseline" class="tb-chip" :class="{ on: showBaseline }" @click="showBaseline = !showBaseline" title="Ghost bars at each activity's position in the compared snapshot"><i></i>Baseline</button>
+      <button class="tb-chip" :class="{ on: showProgressLine }" title="Progress line through the data date" @click="showProgressLine = !showProgressLine"><Icon name="progress" :size="13" />Progress</button>
+      <button v-if="baseline" class="tb-chip" :class="{ on: showBaseline }" title="Outlined bars at each activity's position in the compared schedule" @click="showBaseline = !showBaseline"><Icon name="baseline" :size="13" />Baseline</button>
+      <button v-if="showSlip" class="tb-chip" :class="{ on: showSlipArrows }" title="An arrow under each moved activity, from its compared finish to its current one" @click="showSlipArrows = !showSlipArrows"><Icon name="slip" :size="13" />Slip</button>
+
+      <span class="tb-div"></span>
+
+      <div class="tb-pop tb-markup">
+        <button class="tb-chip" :class="{ on: markupShown }" :title="hasMarkup ? 'Show or hide your key dates, periods, highlights and text boxes' : 'Add key dates, periods and highlights'" @click="hasMarkup ? (showMarkup = !showMarkup) : (markupOpen = !markupOpen)"><Icon name="flag" :size="13" />Key dates</button>
+        <button class="tb-icon" :class="{ active: markupOpen }" title="Edit key dates, periods and highlights" @click="markupOpen = !markupOpen"><Icon name="pencil" :size="14" /></button>
+        <button class="tb-icon" title="Add a text box to the chart" @click="addTextBox"><Icon name="text" :size="14" /></button>
+        <div v-if="markupOpen" class="tb-panel">
+          <GanttMarkupPanel :markup="markup" :default-date="markupDefaultDate" @change="setMarkup" />
+        </div>
+      </div>
 
       <div class="tb-right">
-        <div class="tb-pop">
-          <button class="ctrl-btn tb-more" @click="overflowOpen = !overflowOpen; markupOpen = false" :aria-expanded="(String(overflowOpen) as 'true' | 'false')" title="More actions" aria-label="More actions">⋯</button>
-          <div v-if="markupOpen" class="tb-panel">
-            <GanttMarkupPanel :markup="markup" :default-date="markupDefaultDate" @change="setMarkup" />
-          </div>
-          <div v-if="overflowOpen" class="tb-panel tb-panel-menu">
-            <button :disabled="todayX === null" @click="overflowOpen = false; scrollToToday()">Scroll to today</button>
-            <button @click="overflowOpen = false; toggleFullscreen()">{{ isFullscreen ? 'Exit fullscreen' : 'Fullscreen' }}</button>
-            <div class="fp-sep"></div>
-            <button @click="overflowOpen = false; markupOpen = true">Key dates &amp; highlights…</button>
-            <button @click="overflowOpen = false; addTextBox()">Add text box</button>
-            <label v-if="showSlip" class="tb-menu-check" title="An arrow under each moved activity, from its compared finish to its current one"><input type="checkbox" v-model="showSlipArrows" /> Slip arrows</label>
-            <label v-if="hasMarkup" class="tb-menu-check"><input type="checkbox" v-model="showMarkup" /> Show key dates &amp; highlights</label>
-            <div class="fp-sep"></div>
-            <label class="fp-row"><span>Paper</span>
-              <select v-model="printPaperSize" class="filter-select">
-                <option v-for="(p, key) in paperSizes" :key="key" :value="key">{{ p.label }}</option>
-              </select>
-            </label>
-            <button @click="overflowOpen = false; printGantt()">Print</button>
-          </div>
-        </div>
+        <button class="tb-icon" :disabled="todayX === null" title="Scroll to today" @click="scrollToToday"><Icon name="today" :size="14" /></button>
+        <button class="tb-icon" :class="{ active: isFullscreen }" :title="isFullscreen ? 'Exit fullscreen' : 'Fullscreen'" @click="toggleFullscreen"><Icon name="fullscreen" :size="14" /></button>
+        <span class="tb-print">
+          <button class="tb-icon" title="Print the chart as it is, fitted to the paper width" @click="printGantt"><Icon name="print" :size="14" /></button>
+          <select v-model="printPaperSize" class="tb-select tb-paper" title="Paper">
+            <option v-for="key in Object.keys(paperSizes)" :key="key" :value="key">{{ key.toUpperCase() }}</option>
+          </select>
+        </span>
       </div>
     </div>
 
@@ -568,6 +564,7 @@ import type { Activity, Schedule, WbsNode } from '../types/schedule'
 import { loadMarkup, saveMarkup, periodSpan, highlightColors, toggleMember, newMarkId, nextColor, MARK_COLORS, type Markup, type MarkColor, type TextBox } from '../utils/markup'
 import GanttMarkupPanel from './GanttMarkupPanel.vue'
 import GanttViewBar from './GanttViewBar.vue'
+import Icon from './Icon.vue'
 import { loadViews, saveViews, completeState, stepView, type SavedView as NamedView, type ViewState } from '../utils/views'
 import { matchesNoteFilter, NOTE_FILTER_LABELS, DEFAULT_CALLOUT, SEVERITY_LABELS, type Annotations, type CalloutOffset, type NoteFilter, type Severity } from '../utils/annotations'
 import { formatDate, formatDateShort, formatHours, isMilestone, formatFloat, formatLag, statusLabel } from '../utils/format'
@@ -725,7 +722,7 @@ function saveView(view: SavedView): void {
 export default defineComponent({
   name: 'GanttChart',
   mixins: [fullscreenMixin],
-  components: { IconChevron, ActivityDetailDrawer, GanttMarkupPanel, GanttViewBar },
+  components: { IconChevron, ActivityDetailDrawer, GanttMarkupPanel, GanttViewBar, Icon },
   directives: { focus: { mounted: (el: HTMLElement) => el.focus() } },
   props: {
     data: { type: Object as PropType<Schedule>, required: true },
@@ -793,7 +790,6 @@ export default defineComponent({
       filterNotes: '' as NoteFilter,
       filterFrom: '',
       filterTo: '',
-      overflowOpen: false,
       filterCodes: Object.fromEntries<string>((this.data.project.activity_code_types || []).map(t => [t, ''])),
       // Chain tracing: null = off; a Set of task_ids = show ONLY these activities.
       // Grown one activity at a time by clicking predecessors/successors in the drawer,
@@ -814,8 +810,7 @@ export default defineComponent({
     // overlay swallowing the interaction context.
     drag(this)._onDocMousedown = (e: MouseEvent) => {
       const target = e.target as Element
-      if ((this.overflowOpen || this.markupOpen) && !target.closest('.tb-pop')) {
-        this.overflowOpen = false
+      if (this.markupOpen && !target.closest('.tb-pop')) {
         this.markupOpen = false
       }
       if (this.selectedTaskId && this.$el.offsetParent !== null && !this.$el.contains(target)) {
@@ -2078,25 +2073,31 @@ export default defineComponent({
 .gantt-wrap.is-fullscreen { border-radius: 0; display: flex; flex-direction: column; height: 100vh; }
 .gantt-wrap.is-fullscreen .gantt-body { flex: 1; min-height: 0; display: flex; }
 /* ── Toolbar: one row ─────────────────────────────────────────────────────── */
-.gantt-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 7px var(--space-4); background: var(--panel); border-bottom: 1px solid var(--line); }
+.gantt-toolbar { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; padding: 7px var(--space-4); background: var(--panel); border-bottom: 1px solid var(--line); }
 .tb-div { width: 1px; align-self: stretch; background: var(--line); margin: 0 2px; }
 .tb-group { display: flex; align-items: center; gap: 4px; }
 .tb-group-label { font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin-right: 2px; }
 .tb-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
-.tb-right .filter-input { width: 172px; }
-.tb-more { font-size: 15px; line-height: 1; padding: 4px 9px; }
 
 /* Popovers: filters and overflow */
 .tb-pop { position: relative; }
+.tb-markup { display: flex; align-items: center; gap: 2px; }
+/* Segmented groups: one bordered strip of equal, compact buttons. */
+.seg { display: flex; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); overflow: hidden; flex-shrink: 0; }
+.seg button { height: 26px; min-width: 26px; padding: 0 7px; border: none; border-right: 1px solid var(--gray-300); background: var(--white); color: var(--gray-700); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font: var(--text-small); font-weight: 600; }
+.seg button:last-child { border-right: none; }
+.seg button:hover:not(.active) { background: var(--gray-150); color: var(--ink); }
+.seg button.active { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+/* Icon-only actions: borderless until hovered, so a row of them stays quiet. */
+.tb-icon { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: var(--radius-sm); background: none; color: var(--ink-2); cursor: pointer; padding: 0; }
+.tb-icon:hover:not(:disabled) { border-color: var(--gray-300); background: var(--panel); color: var(--ink); }
+.tb-icon.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.tb-icon:disabled { opacity: 0.35; cursor: default; }
+.tb-select { height: 26px; padding: 0 3px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); color: var(--ink-2); }
+.tb-print { display: inline-flex; align-items: center; gap: 2px; }
+.tb-paper { width: 50px; }
+.gantt-toolbar .tb-chip { padding: 4px 7px; }
 .tb-panel { position: absolute; right: 0; top: calc(100% + 5px); min-width: 250px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: 0 10px 30px -12px rgba(0,0,0,0.35); padding: var(--space-3); z-index: 12; display: flex; flex-direction: column; gap: 7px; }
-.fp-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); font: var(--text-small); color: var(--ink-2); }
-.fp-row > span { white-space: nowrap; }
-.fp-row .filter-select { min-width: 132px; }
-.fp-sep { height: 1px; background: var(--line); margin: 2px 0; }
-.tb-panel-menu button { text-align: left; background: none; border: none; border-radius: var(--radius-sm); padding: 6px 8px; cursor: pointer; font: var(--text-small); color: var(--ink-2); }
-.tb-panel-menu button:hover:not(:disabled) { background: var(--chip); color: var(--ink); }
-.tb-menu-check { display: flex; align-items: center; gap: 6px; padding: 4px 8px; font: var(--text-small); color: var(--ink-2); cursor: pointer; }
-.tb-panel-menu button:disabled { opacity: 0.45; cursor: default; }
 
 /* ── Active-filter strip ──────────────────────────────────────────────────── */
 .filter-strip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 34px; padding: 5px var(--space-4); background: var(--panel-2); border-bottom: 1px solid var(--line); }
@@ -2125,7 +2126,7 @@ export default defineComponent({
    light control row below, so there's no large dark panel to justify visually. */
 
 .basis-group { display: flex; align-items: center; gap: 6px; border: 1px solid var(--ink-soft); border-radius: var(--radius-sm); padding: 2px; flex-shrink: 0; }
-.basis-group button { padding: 4px 10px; border: none; border-radius: 3px; background: none; cursor: pointer; font: var(--text-small); color: var(--ink-2); }
+.basis-group button { padding: 4px 8px; border: none; border-radius: 3px; background: none; cursor: pointer; font: var(--text-small); color: var(--ink-2); }
 .basis-group button.active { background: var(--crit); color: var(--on-solid); font-weight: 700; }
 .basis-group button:hover:not(.active) { background: var(--ink-soft); }
 
@@ -2144,15 +2145,6 @@ export default defineComponent({
 .bar-wbs { width: 16px; height: 7px; border-radius: 3px; background: var(--gray-700); display: inline-block; }
 .progress-swatch { width: 14px; height: 2px; background: var(--milestone); display: inline-block; }
 
-.zoom-group { display: flex; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); overflow: hidden; }
-.zoom-group button { padding: 4px 10px; border: none; border-right: 1px solid var(--gray-300); background: var(--white); cursor: pointer; font: var(--text-small); color: var(--gray-700); }
-.zoom-group button:last-child { border-right: none; }
-.zoom-group button.active { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
-.zoom-group button:hover:not(.active) { background: var(--gray-150); }
-.zoom-adjust { display: flex; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); overflow: hidden; }
-.zbtn { padding: 4px 10px; border: none; border-right: 1px solid var(--gray-300); background: var(--white); cursor: pointer; font: var(--text-small); color: var(--gray-700); font-weight: 700; }
-.zbtn:last-child { border-right: none; }
-.zbtn:hover { background: var(--gray-150); }
 
 .filter-input { padding: 6px 12px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); width: 240px; }
 .filter-date { border: 1px solid var(--gray-300); border-radius: var(--radius-sm); padding: 4px 6px; background: var(--white); font-family: var(--font-mono); font-size: 12px; color: var(--ink); }
