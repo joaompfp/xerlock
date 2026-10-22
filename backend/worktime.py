@@ -14,8 +14,8 @@ exceptions replace the weekday pattern for that date (no periods = non-working).
 
 from datetime import date, datetime, timedelta
 
-# Walking a calendar day by day is linear in the span. Bounded so a corrupt date
-# (year 2999, a common P6 placeholder) cannot stall a parse.
+# Spans are bounded so a corrupt date (year 2999, a common P6 placeholder) cannot
+# stall a parse or build a running total centuries long.
 MAX_SPAN_DAYS = 366 * 30
 
 
@@ -33,6 +33,9 @@ class WorkCalendar:
         self._exceptions = {
             date.fromisoformat(e["date"]): self._spans(e["periods"]) for e in exceptions
         }
+        # (first day ordinal, running totals): replaced whole, never edited in place, so
+        # a calendar shared between requests is never read half-rebuilt.
+        self._table: tuple[int, list[int]] = (0, [])
 
     @staticmethod
     def _spans(periods):
@@ -49,21 +52,56 @@ class WorkCalendar:
             return self._exceptions[d]
         return self._week[d.weekday()]
 
+    # ── Whole days in bulk ────────────────────────────────────────────────────
+    # A schedule asks these two questions tens of thousands of times over spans of
+    # months, so whole days are not walked one at a time: in the table (base, cum),
+    # cum[i] holds the working minutes of every day from `base` up to (not including)
+    # day `base + i`, built on demand. Only the first and last day of a span are
+    # looked at period by period.
+
+    def _day_minutes(self, d: date) -> int:
+        return sum(f - s for s, f in self.spans_on(d))
+
+    def _cover(self, lo: int, hi: int):
+        """Running totals covering day ordinals lo..hi inclusive, as a function giving
+        the working minutes before a day (measured from the table's own start)."""
+        base, cum = self._table
+        if not (cum and base <= lo and hi < base + len(cum) - 1):
+            if cum:
+                lo, hi = min(lo, base), max(hi, base + len(cum) - 2)
+            lo, hi = lo - 366, hi + 366
+            cum, total = [0], 0
+            for o in range(lo, hi + 1):
+                total += self._day_minutes(date.fromordinal(o))
+                cum.append(total)
+            base = lo
+            self._table = (base, cum)
+        return lambda o: cum[o - base]
+
+    def _whole_days(self, first: int, last: int) -> int:
+        """Working minutes in days first..last inclusive (0 when last < first)."""
+        if last < first:
+            return 0
+        before = self._cover(first, last)
+        return before(last + 1) - before(first)
+
+    def _on_day(self, d: date, lo: float, hi: float) -> float:
+        return sum(max(0, min(f, hi) - max(s, lo)) for s, f in self.spans_on(d))
+
     def working_hours_between(self, t0: datetime, t1: datetime) -> float:
         """Working hours from t0 to t1; negative when t1 precedes t0."""
         if t1 < t0:
             return -self.working_hours_between(t1, t0)
-        total = 0
-        d = t0.date()
-        for _ in range(MAX_SPAN_DAYS):
-            if d > t1.date():
-                break
-            day0 = datetime.combine(d, datetime.min.time())
-            lo = (t0 - day0).total_seconds() / 60 if d == t0.date() else 0
-            hi = (t1 - day0).total_seconds() / 60 if d == t1.date() else 1440
-            for s, f in self.spans_on(d):
-                total += max(0, min(f, hi) - max(s, lo))
-            d += timedelta(days=1)
+        d0, d1 = t0.date(), t1.date()
+        if (d1 - d0).days >= MAX_SPAN_DAYS:
+            d1 = d0 + timedelta(days=MAX_SPAN_DAYS - 1)
+            t1 = datetime.combine(d1, datetime.max.time())
+        m0 = (t0 - datetime.combine(d0, datetime.min.time())).total_seconds() / 60
+        m1 = (t1 - datetime.combine(d1, datetime.min.time())).total_seconds() / 60
+        if d0 == d1:
+            return self._on_day(d0, m0, m1) / 60
+        total = self._on_day(d0, m0, 1440) + self._on_day(d1, 0, m1)
+        total += self._whole_days(d0.toordinal() + 1, d1.toordinal() - 1)
         return total / 60
 
     def add_working_hours(self, t: datetime, hours: float) -> datetime:
@@ -73,26 +111,66 @@ class WorkCalendar:
         remaining = abs(hours) * 60
         forward = hours > 0
         d = t.date()
-        for _ in range(MAX_SPAN_DAYS):
-            day0 = datetime.combine(d, datetime.min.time())
-            here = (t - day0).total_seconds() / 60 if d == t.date() else (0 if forward else 1440)
-            spans = self.spans_on(d)
-            for s, f in (spans if forward else reversed(spans)):
-                if forward:
-                    s = max(s, here)
-                    if s >= f:
-                        continue
-                    if f - s >= remaining:
-                        return day0 + timedelta(minutes=s + remaining)
+        here = (t - datetime.combine(d, datetime.min.time())).total_seconds() / 60
+        # The rest of t's own day first.
+        found, remaining = self._within_day(d, here, remaining, forward)
+        if found is not None:
+            return found
+        # Then the day the hours run out on, found by bisecting the running totals.
+        o = d.toordinal()
+        step = 1 if forward else -1
+        limit = o + step * MAX_SPAN_DAYS
+        before = self._cover(min(o, limit), max(o, limit))
+        first = o + step
+        if forward:
+            # The first day D with minutes(first..D) >= remaining.
+            start = before(first)
+            lo, hi = first, limit
+            if before(hi + 1) - start < remaining:
+                return t
+            while lo < hi:
+                mid = (lo + hi) // 2
+                if before(mid + 1) - start >= remaining:
+                    hi = mid
                 else:
-                    f = min(f, here)
-                    if f <= s:
-                        continue
-                    if f - s >= remaining:
-                        return day0 + timedelta(minutes=f - remaining)
-                remaining -= f - s
-            d += timedelta(days=1 if forward else -1)
-        return t
+                    lo = mid + 1
+            remaining -= before(lo) - start
+        else:
+            # The last day D with minutes(D..first) >= remaining.
+            end = before(first + 1)
+            lo, hi = limit, first
+            if end - before(lo) < remaining:
+                return t
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                if end - before(mid) >= remaining:
+                    lo = mid
+                else:
+                    hi = mid - 1
+            remaining -= end - before(lo + 1)
+        found, _ = self._within_day(date.fromordinal(lo), 0 if forward else 1440, remaining, forward)
+        return found if found is not None else t
+
+    def _within_day(self, d: date, here: float, remaining: float, forward: bool):
+        """Walks d's periods from minute `here` (forwards or back). Returns the instant
+        the hours run out, or None with what is left once the day is spent."""
+        day0 = datetime.combine(d, datetime.min.time())
+        spans = self.spans_on(d)
+        for s, f in (spans if forward else reversed(spans)):
+            if forward:
+                s = max(s, here)
+                if s >= f:
+                    continue
+                if f - s >= remaining:
+                    return day0 + timedelta(minutes=s + remaining), 0
+            else:
+                f = min(f, here)
+                if f <= s:
+                    continue
+                if f - s >= remaining:
+                    return day0 + timedelta(minutes=f - remaining), 0
+            remaining -= f - s
+        return None, remaining
 
     # P6 never schedules into non-working time. A start that logic puts at Friday
     # 16:00 (a period's end) becomes Monday 08:00; a finish may sit exactly on a
