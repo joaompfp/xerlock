@@ -178,6 +178,19 @@
         </div>
       </div>
 
+      <!-- Review: the one page to forward -->
+      <div v-if="opened.includes('review')" v-show="tab === 'review'" class="section section-full">
+        <ReviewView
+          :data="data"
+          :annotations="annotations"
+          :filename="currentFilename"
+          :compare-data="compareData"
+          :compare-filename="compareFilename"
+          :refresh-key="healthScore"
+          @open="selectTab"
+        />
+      </div>
+
       <!-- Gantt Chart (primary view) -->
       <div v-if="opened.includes('gantt')" v-show="tab === 'gantt'" class="section section-full">
         <GanttChart
@@ -387,6 +400,7 @@ import GanttChart from './components/GanttChart.vue'
 import HealthCheck from './components/HealthCheck.vue'
 import CalendarView from './components/CalendarView.vue'
 import ActivityTable from './components/ActivityTable.vue'
+import ReviewView from './components/ReviewView.vue'
 import TableInspector from './components/TableInspector.vue'
 import ProgressView from './components/ProgressView.vue'
 import CompareView from './components/CompareView.vue'
@@ -401,6 +415,19 @@ import { buildWbsRollups, type WbsRollup } from './utils/wbs'
 import type { Activity, ProjectInFile } from './types/schedule'
 import { parseSchedule, prepareParser, PARSER_MODE } from './utils/parseSchedule'
 import { ACCEPT, DROP_PROMPT, unsupportedFileMessage } from './utils/source'
+
+// Projects already opened in this browser (the first open starts on the review).
+const SEEN_KEY = 'schedule-app:seen-projects'
+function firstLook(proj: string): boolean {
+  try {
+    const seen: string[] = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')
+    if (seen.includes(proj)) return false
+    localStorage.setItem(SEEN_KEY, JSON.stringify([...seen, proj].slice(-200)))
+    return true
+  } catch {
+    return false
+  }
+}
 
 // Set while this tab shows a file, so a reload reopens it (sessionStorage: this tab only).
 const SHOWING_FILE = 'xerlock:showing-file'
@@ -429,7 +456,7 @@ function applyTheme(theme: Theme): void {
 
 export default defineComponent({
   name: 'App',
-  components: { WBSNode, XerlockMark, CriticalPathGraph, GanttChart, HealthCheck, ProgressView, CompareView, CalendarView, TableInspector, ActivityTable },
+  components: { WBSNode, XerlockMark, CriticalPathGraph, GanttChart, HealthCheck, ProgressView, CompareView, CalendarView, TableInspector, ActivityTable, ReviewView },
   data() {
     return {
       data: null as StoredSchedule | null,
@@ -462,11 +489,12 @@ export default defineComponent({
       uploadError: null as string | null,
       parsingStage: 0,
       jumpOrigin: null as string | null,
-      tabLabels: { gantt: 'Gantt chart', story: 'Critical path', table: 'Activity table', wbs: 'WBS tree', progress: 'Progress', health: 'Health check', calendars: 'Calendars', tables: 'Raw tables', compare: 'Compare' } as Record<string, string>,
+      tabLabels: { review: 'Review', gantt: 'Gantt chart', story: 'Critical path', table: 'Activity table', wbs: 'WBS tree', progress: 'Progress', health: 'Health check', calendars: 'Calendars', tables: 'Raw tables', compare: 'Compare' } as Record<string, string>,
       // Three jobs, not one row of nine: the programme, the analysis of it, and the
       // audit of the file it came from.
       navGroups: [
         { label: 'Programme', items: [
+          { id: 'review', label: 'Review' },
           { id: 'gantt', label: 'Gantt chart' },
           { id: 'story', label: 'Critical path' },
           { id: 'progress', label: 'Progress' },
@@ -711,8 +739,10 @@ export default defineComponent({
       this.data = parsed
       // A reload of this tab comes back to the file (created() reads this).
       try { sessionStorage.setItem(SHOWING_FILE, '1') } catch { /* reload shows the landing page */ }
-      this.tab = 'gantt'
-      this.opened = ['gantt']
+      // A project opened for the first time in this browser starts on the review (the
+      // verdict, before any chart); after that it opens on the Gantt.
+      this.tab = firstLook(parsed.project.proj_short_name) ? 'review' : 'gantt'
+      this.opened = [this.tab]
       this.liveHealthScore = null
       this.annotations = loadAnnotations(parsed.project.proj_short_name)
       this.dismissedWarnings = []
