@@ -161,7 +161,7 @@
       </div>
 
       <!-- Gantt Chart (primary view) -->
-      <div v-show="tab === 'gantt'" class="section section-full">
+      <div v-if="opened.includes('gantt')" v-show="tab === 'gantt'" class="section section-full">
         <GanttChart
           :data="data"
           :baseline="compareData"
@@ -179,7 +179,7 @@
       </div>
 
       <!-- Critical Path Graph -->
-      <div v-show="tab === 'story'" class="section section-full">
+      <div v-if="opened.includes('story')" v-show="tab === 'story'" class="section section-full">
         <CriticalPathGraph
           :activities="data.activities"
           :visible="tab === 'story'"
@@ -189,7 +189,7 @@
           @unannotate="removeAnnotationFor"
         />
       </div>
-      <div v-show="tab === 'story'" class="section cp-below-section">
+      <div v-if="opened.includes('story')" v-show="tab === 'story'" class="section cp-below-section">
         <!-- Near-critical watchlist -->
         <div class="insight-card" v-if="nearCritical.length > 0">
           <h3>Near-critical watchlist</h3>
@@ -218,7 +218,7 @@
       </div>
 
       <!-- Activity Table -->
-      <div v-show="tab === 'table'" class="section">
+      <div v-if="opened.includes('table')" v-show="tab === 'table'" class="section">
         <div class="table-controls">
           <input
             type="text"
@@ -322,7 +322,7 @@
       </div>
 
       <!-- WBS Tree -->
-      <div v-show="tab === 'wbs'" class="section">
+      <div v-if="opened.includes('wbs')" v-show="tab === 'wbs'" class="section">
         <div class="wbs-tree">
           <div class="wbs-head">
             <span class="wbs-head-name">WBS</span>
@@ -344,16 +344,16 @@
       </div>
 
       <!-- Progress -->
-      <div v-show="tab === 'progress'" class="section section-full">
+      <div v-if="opened.includes('progress')" v-show="tab === 'progress'" class="section section-full">
         <ProgressView :data="data" @jump="jumpToActivity" />
       </div>
 
       <!-- Health Check -->
-      <div v-show="tab === 'health'" class="section section-full">
+      <div v-if="opened.includes('health')" v-show="tab === 'health'" class="section section-full">
         <HealthCheck
           :data="data"
           :annotations="annotations"
-          @score="healthScore = $event"
+          @score="liveHealthScore = $event"
           @jump="jumpToActivity"
           @annotate="setAnnotation"
           @unannotate="removeAnnotationFor"
@@ -361,17 +361,17 @@
       </div>
 
       <!-- Calendars -->
-      <div v-show="tab === 'calendars'" class="section section-full">
+      <div v-if="opened.includes('calendars')" v-show="tab === 'calendars'" class="section section-full">
         <CalendarView :data="data" @jump="jumpToActivity" />
       </div>
 
       <!-- Raw table inspector -->
-      <div v-show="tab === 'tables'" class="section section-full">
+      <div v-if="opened.includes('tables')" v-show="tab === 'tables'" class="section section-full">
         <TableInspector :data="data" />
       </div>
 
       <!-- Compare -->
-      <div v-show="tab === 'compare'" class="section section-full">
+      <div v-if="opened.includes('compare')" v-show="tab === 'compare'" class="section section-full">
         <CompareView
           v-if="compareData"
           :current="data"
@@ -462,6 +462,7 @@ import ProgressView from './components/ProgressView.vue'
 import CompareView from './components/CompareView.vue'
 import { formatDate, formatHours, statusLabel, isMilestone, formatFloat, timeAgo } from './utils/format'
 import { exportWorkbook, exportActivitiesCsv, exportReviewReport } from './utils/export'
+import { runChecks, weightedScore, loadHealthConfig } from './utils/healthChecks'
 import { loadLastFile, saveLastFile, clearLastFile, type LastFile, type StoredSchedule } from './utils/lastFile'
 import { loadAnnotations, saveAnnotation, removeAnnotation, setCallout, type Annotations, type CalloutOffset, type Severity } from './utils/annotations'
 import { listSnapshots, saveSnapshot, getSnapshotData, deleteSnapshot, type SnapshotMeta } from './utils/snapshots'
@@ -555,7 +556,12 @@ export default defineComponent({
       sidebarCollapsed: (() => { try { return localStorage.getItem('schedule-app:sidebar-collapsed') === '1' } catch { return false } })(),
       exportMenuOpen: false,
       // Reported up by HealthCheck so the score is visible from any view.
-      healthScore: null as number | null,
+      // The views opened since this file was loaded. A view is built the first time it is
+      // shown and then kept (switching back keeps its state); one never opened costs
+      // nothing, which matters on a large file.
+      opened: ['gantt'] as string[],
+      // The Health check view's score once it is open (it follows edits to targets and weights).
+      liveHealthScore: null as number | null,
       exportState: '',
       themeOptions: { light: 'Light', dark: 'Dark' } as Record<Theme, string>,
       compareLoading: false,
@@ -577,6 +583,9 @@ export default defineComponent({
     applyTheme(this.theme)
   },
   watch: {
+    tab(t: string) {
+      if (!this.opened.includes(t)) this.opened.push(t)
+    },
     sidebarCollapsed(v: boolean) {
       try { localStorage.setItem('schedule-app:sidebar-collapsed', v ? '1' : '0') } catch { /* not remembered */ }
     },
@@ -588,6 +597,14 @@ export default defineComponent({
   computed: {
     wbsRollups(): Map<number, WbsRollup> | null {
       return this.data ? buildWbsRollups(this.data.wbs_tree, this.data.activities) : null
+    },
+    // Shown on the Health check nav item from any view, so it is worked out here rather
+    // than waiting for that view to be opened.
+    healthScore(): number | null {
+      if (this.liveHealthScore !== null) return this.liveHealthScore
+      if (!this.data) return null
+      const cfg = loadHealthConfig()
+      return weightedScore(runChecks(this.data, cfg).results, cfg)
     },
     healthScoreClass(): string {
       if (this.healthScore === null) return ''
@@ -777,6 +794,8 @@ export default defineComponent({
     activateData(parsed: StoredSchedule) {
       this.data = parsed
       this.tab = 'gantt'
+      this.opened = ['gantt']
+      this.liveHealthScore = null
       this.search = ''
       this.statusFilter = ''
       this.showCriticalOnly = false
