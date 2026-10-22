@@ -4,6 +4,12 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.8.5] - 2026-10-22
+
+### Changed
+- Tighter sidebar spacing, so the figures, navigation, legend and footer fit a 900 px
+  tall window without scrolling.
+
 ## [1.8.4] - 2026-10-22
 
 ### Changed
