@@ -27,7 +27,7 @@
       Export view (.csv)
     </button>
   </div>
-  <div class="table-wrap">
+  <div class="table-wrap" ref="wrap" @scroll="onScroll">
     <table class="data-table">
       <thead>
         <tr>
@@ -47,10 +47,12 @@
             <span class="table-empty">No activities match the current filters.</span>
           </td>
         </tr>
+        <!-- Only the rows in view are drawn; these keep the scroll height of the rest. -->
+        <tr v-if="padTop" class="vt-pad" aria-hidden="true"><td colspan="8" :style="{ height: padTop + 'px' }"></td></tr>
         <tr
-          v-for="act in filteredActivities"
+          v-for="act in shownActivities"
           :key="act.task_id"
-          :class="{ critical: act.is_critical, 'negative-float': act.is_negative_float, milestone: isMilestone(act) }"
+          :class="['act-row', { critical: act.is_critical, 'negative-float': act.is_negative_float, milestone: isMilestone(act) }]"
           @click="selectedAct = selectedAct?.task_id === act.task_id ? null : act"
         >
           <td class="code">{{ act.task_code }}</td>
@@ -71,6 +73,7 @@
           <td class="num-cell">{{ formatDate(displayEnd(act)) }}</td>
           <td class="num-cell" :class="floatClass(act.total_float_hrs)">{{ formatFloat(act.total_float_hrs, act.calendar_hrs_per_day) }}</td>
         </tr>
+        <tr v-if="padBottom" class="vt-pad" aria-hidden="true"><td colspan="8" :style="{ height: padBottom + 'px' }"></td></tr>
         <tr v-if="selectedAct" class="rel-row">
           <td colspan="8">
             <div class="rel-wbs-path" v-if="selectedAct.wbs_path">{{ selectedAct.wbs_path }}</div>
@@ -108,6 +111,10 @@ import type { Annotations } from '../utils/annotations'
 import { compareBy, type SortDir } from '../utils/sort'
 import { formatDate, formatHours, formatFloat, statusLabel, isMilestone } from '../utils/format'
 import { displayStart, displayEnd } from '../utils/p6'
+import { visibleRowRange } from '../utils/virtual'
+
+// Kept off the component's reactive state.
+const resizeObservers = new WeakMap<object, ResizeObserver>()
 
 type SortField = 'task_code' | 'task_name' | 'status' | 'pct_complete' | 'duration_hrs' | 'early_start' | 'early_end' | 'total_float_hrs'
 
@@ -120,6 +127,19 @@ export default defineComponent({
     annotations: { type: Object as PropType<Annotations>, default: () => ({}) },
   },
   emits: ['export-view'],
+  mounted() {
+    const wrap = this.$refs.wrap as HTMLElement
+    this.viewH = wrap.clientHeight || this.viewH
+    resizeObservers.set(this, new ResizeObserver(() => { this.viewH = wrap.clientHeight || this.viewH }))
+    resizeObservers.get(this)!.observe(wrap)
+    this.measureRow()
+  },
+  updated() {
+    this.measureRow()
+  },
+  beforeUnmount() {
+    resizeObservers.get(this)?.disconnect()
+  },
   data() {
     return {
       search: '',
@@ -128,6 +148,10 @@ export default defineComponent({
       sortField: 'total_float_hrs' as SortField,
       sortDir: 'asc' as SortDir,
       selectedAct: null as Activity | null,
+      // Windowing: the list's scroll position and height, and one row's height.
+      scrollTop: 0,
+      viewH: 800,
+      rowH: 34,
       codeFilters: Object.fromEntries((this.data.project.activity_code_types || []).map(t => [t, ''])) as Record<string, string>,
     }
   },
@@ -161,6 +185,21 @@ export default defineComponent({
         this.sortField === 'early_end' ? displayEnd(x) : x[this.sortField],
       this.sortDir))
       return acts
+    },
+    rowWindow(): { from: number; to: number } {
+      return visibleRowRange(this.scrollTop, this.viewH, this.rowH, this.filteredActivities.length)
+    },
+    shownActivities(): Activity[] {
+      return this.filteredActivities.slice(this.rowWindow.from, this.rowWindow.to)
+    },
+    padTop(): number {
+      return this.rowWindow.from * this.rowH
+    },
+    padBottom(): number {
+      return (this.filteredActivities.length - this.rowWindow.to) * this.rowH
+    },
+    codeById(): Map<number, string> {
+      return new Map(this.data.activities.map(a => [a.task_id, a.task_code]))
     },
     codeTypesAvailable(): string[] {
       return this.data.project.has_activity_codes ? this.data.project.activity_code_types : []
@@ -202,8 +241,20 @@ export default defineComponent({
       return ''
     },
     getActCode(tid: number) {
-      const a = this.data.activities.find(a => a.task_id === tid)
-      return a ? a.task_code : '?' + tid
+      return this.codeById.get(tid) ?? '?' + tid
+    },
+    onScroll(e: Event) {
+      this.scrollTop = (e.target as HTMLElement).scrollTop
+    },
+    // Rows are one line each (cells don't wrap), so the drawn rows' mean height sizes
+    // them all. Measured across the rows, not rounded from one: collapsed borders make
+    // heights fractional, and a rounding error repeated over thousands of rows adds up.
+    measureRow() {
+      const wrap = this.$refs.wrap as HTMLElement | undefined
+      const rows = wrap?.querySelectorAll<HTMLElement>('tbody tr.act-row')
+      if (!rows || rows.length < 2) return
+      const h = (rows[rows.length - 1].getBoundingClientRect().bottom - rows[0].getBoundingClientRect().top) / rows.length
+      if (h > 0 && Math.abs(h - this.rowH) > 0.01) this.rowH = h
     },
     formatDate,
     formatHours,
@@ -215,3 +266,8 @@ export default defineComponent({
   },
 })
 </script>
+
+<style scoped>
+.vt-pad td { padding: 0; border: 0; }
+.data-table tbody tr.vt-pad:hover td { background: none; }
+</style>
