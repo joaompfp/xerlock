@@ -149,6 +149,7 @@ class ScheduleData(BaseModel):
 
 
 from backend.schedule import EXTENSIONS, parse_schedule as parse_schedule_dict
+from backend.isolate import ParseFailed, parse_isolated
 
 
 def parse_schedule(filepath: str) -> ScheduleData:
@@ -170,6 +171,9 @@ def health():
 @app.post("/api/upload", response_model=ScheduleData)
 async def upload_schedule(file: UploadFile = File(...)):
     if not file.filename or not file.filename.lower().endswith(EXTENSIONS):
+        if file.filename and file.filename.lower().endswith(".pp"):
+            raise HTTPException(400, "Asta Powerproject (.pp) files can't be read. In Powerproject, export the "
+                                     "project as Microsoft Project XML and open that file instead.")
         raise HTTPException(400, "Only .xer, .xml (Microsoft Project) and .mpp files are accepted")
 
     # Stream to a temp file in chunks, enforcing the size cap as bytes arrive rather than
@@ -186,11 +190,14 @@ async def upload_schedule(file: UploadFile = File(...)):
             tmp.write(chunk)
 
     try:
-        # The parse is CPU-bound and can take seconds-to-minutes on large schedules;
-        # run it off the event loop so one upload doesn't freeze the server for everyone.
-        data = await run_in_threadpool(parse_schedule, tmp_path)
+        # In a child process with a time limit (backend/isolate.py), waited for off the
+        # event loop, so one upload can neither freeze nor take down the server.
+        data = ScheduleData(**await run_in_threadpool(parse_isolated, tmp_path))
     except ValueError as e:
-        # Deliberate validation errors (e.g. "no projects") are safe to show verbatim.
+        # The readers' refusals (e.g. "no projects") are written for the user.
+        raise HTTPException(422, str(e))
+    except ParseFailed as e:
+        logger.error("Failed to parse uploaded schedule %r\n%s", file.filename, e.detail)
         raise HTTPException(422, str(e))
     except Exception:
         logger.exception("Failed to parse uploaded schedule %r", file.filename)

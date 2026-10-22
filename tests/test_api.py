@@ -131,3 +131,9 @@ def test_asset_responses_are_immutably_cached_and_index_is_not():
     a deploy leaves users on a stale build."""
     r = client.get("/api/health")
     assert r.headers["cache-control"] == "no-cache"
+
+
+def test_an_asta_file_is_refused_with_a_way_out(sample_bytes):
+    r = post("programme.pp", sample_bytes)
+    assert r.status_code == 400
+    assert "Microsoft Project XML" in r.json()["detail"]

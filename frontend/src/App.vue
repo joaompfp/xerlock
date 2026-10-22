@@ -376,7 +376,7 @@ import { displayStart, displayEnd } from './utils/p6'
 import { buildWbsRollups, type WbsRollup } from './utils/wbs'
 import type { Activity } from './types/schedule'
 import { parseSchedule, prepareParser, PARSER_MODE } from './utils/parseSchedule'
-import { ACCEPT, DROP_PROMPT, hasAcceptedExtension } from './utils/source'
+import { ACCEPT, DROP_PROMPT, unsupportedFileMessage } from './utils/source'
 
 type Theme = 'light' | 'dark'
 
@@ -590,8 +590,9 @@ export default defineComponent({
       if (file) await this.uploadCompareFile(file)
     },
     async uploadCompareFile(file: File) {
-      if (!hasAcceptedExtension(file.name)) {
-        alert('Only .xer, Microsoft Project XML and .mpp files are accepted')
+      const refused = unsupportedFileMessage(file.name)
+      if (refused) {
+        alert(refused)
         return
       }
       this.compareLoading = true
@@ -605,8 +606,9 @@ export default defineComponent({
       }
     },
     async uploadFile(file: File) {
-      if (!hasAcceptedExtension(file.name)) {
-        alert('Only .xer, Microsoft Project XML and .mpp files are accepted')
+      const refused = unsupportedFileMessage(file.name)
+      if (refused) {
+        alert(refused)
         return
       }
       this.loading = true
