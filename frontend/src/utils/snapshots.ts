@@ -7,9 +7,8 @@
 
 import type { Schedule } from '../types/schedule'
 import type { StoredSchedule } from './lastFile'
+import { openDb, tx } from './idb'
 
-const DB_NAME = 'xerlock'
-const DB_VERSION = 1
 const META = 'snapshot-meta'
 const DATA = 'snapshot-data'
 
@@ -25,34 +24,6 @@ export interface SnapshotMeta {
 interface SnapshotRecord {
   id: string
   data: StoredSchedule
-}
-
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION)
-    req.onupgradeneeded = () => {
-      const db = req.result
-      if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: 'id' })
-      if (!db.objectStoreNames.contains(DATA)) db.createObjectStore(DATA, { keyPath: 'id' })
-    }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
-  })
-}
-
-// T is what the store holds; callers name it, since IndexedDB values are untyped.
-function tx<T>(
-  db: IDBDatabase,
-  store: string,
-  mode: IDBTransactionMode,
-  fn: (s: IDBObjectStore) => IDBRequest | undefined,
-): Promise<T | undefined> {
-  return new Promise((resolve, reject) => {
-    const t = db.transaction(store, mode)
-    const req = fn(t.objectStore(store))
-    t.oncomplete = () => resolve(req?.result as T | undefined)
-    t.onerror = () => reject(t.error)
-  })
 }
 
 export async function listSnapshots(): Promise<SnapshotMeta[]> {
