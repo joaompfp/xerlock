@@ -101,11 +101,13 @@
 
 <script lang="ts">
 import { defineComponent, type PropType } from 'vue'
-import { formatDate, formatHours, formatFloat, isMilestone } from '../utils/format'
+import { formatDate, formatHours, formatFloat, isMilestone, dateFormat } from '../utils/format'
 import { displayEnd } from '../utils/p6'
 import { durationSCurve, type SCurve, type SCurvePoint } from '../utils/sCurve'
 import type { Activity, Schedule } from '../types/schedule'
 import { isProjectFile } from '../utils/source'
+
+const fmtMonthYear = dateFormat({ month: 'short', year: '2-digit' })
 
 type MilestoneStatus = 'achieved' | 'on-track' | 'watch' | 'at-risk' | 'unknown'
 type CurveSeries = 'planned' | 'actual' | 'forecast'
@@ -245,7 +247,7 @@ export default defineComponent({
       return pts.map((p, i) => (i === 0 ? 'M' : 'L') + this.xFor(p.t).toFixed(1) + ',' + this.yFor(p[key]!).toFixed(1)).join(' ')
     },
     monthLabel(t: number): string {
-      return new Date(t).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
+      return fmtMonthYear(t)
     },
   },
 })

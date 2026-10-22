@@ -3,6 +3,8 @@
 // component state — so the maths that positions every bar on screen is unit-tested
 // rather than only eyeballed.
 
+import { dateFormat } from './format'
+
 export type Zoom = 'day' | 'week' | 'month' | 'quarter'
 
 export interface Tick {
@@ -19,6 +21,8 @@ export const MIN_DAY_WIDTH = 0.4
 export const MAX_DAY_WIDTH = 60
 
 const MS_PER_DAY = 86400000
+const fmtMonth = dateFormat({ month: 'short' })
+const fmtDayMonth = dateFormat({ day: 'numeric', month: 'short' })
 
 /** Visible range: the project's own span with a few days of air either side, so
  *  the first and last bars aren't flush against the chart edge. */
@@ -91,7 +95,7 @@ export function monthTicks(rangeStart: Date, rangeEnd: Date, dayWidth: number): 
   while (cur <= rangeEnd) {
     ticks.push({
       x: xOf(cur, rangeStart, dayWidth),
-      label: cur.toLocaleDateString('en-GB', { month: 'short' }),
+      label: fmtMonth(cur),
     })
     cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
   }
@@ -120,7 +124,7 @@ export function weekTicks(rangeStart: Date, rangeEnd: Date, dayWidth: number): T
   while (cur <= rangeEnd) {
     ticks.push({
       x: xOf(cur, rangeStart, dayWidth),
-      label: cur.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+      label: fmtDayMonth(cur),
     })
     cur = new Date(cur.getTime() + 7 * MS_PER_DAY)
   }

@@ -2,10 +2,33 @@ import type { Activity } from '../types/schedule'
 
 type DateInput = string | number | Date | null | undefined
 
+// One formatter per format, built once: Date.toLocaleDateString with options builds a
+// new Intl.DateTimeFormat on every call, which made formatting dates the main cost of
+// redrawing a large Gantt. `dateFormat` wraps one with what toLocaleDateString did for
+// an unparseable date, and remembers each date's text (a programme repeats a few
+// hundred dates thousands of times).
+export function dateFormat(options: Intl.DateTimeFormatOptions): (d: string | number | Date) => string {
+  const fmt = new Intl.DateTimeFormat('en-GB', options)
+  const cache = new Map<string | number, string>()
+  return d => {
+    const key = d instanceof Date ? d.getTime() : d
+    let s = cache.get(key)
+    if (s === undefined) {
+      const dt = new Date(d)
+      s = isNaN(dt.getTime()) ? 'Invalid Date' : fmt.format(dt)
+      if (cache.size > 20000) cache.clear()
+      cache.set(key, s)
+    }
+    return s
+  }
+}
+
+const fmtDate = dateFormat({ day: '2-digit', month: 'short', year: 'numeric' })
+const fmtDateShort = dateFormat({ day: '2-digit', month: 'short' })
+
 export function formatDate(d: DateInput): string {
   if (!d) return '--'
-  const dt = new Date(d)
-  return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  return fmtDate(d)
 }
 
 // hrsPerDay defaults to 8 but should be passed from the activity's own calendar
@@ -41,8 +64,7 @@ export function formatFloat(hrs: number | null | undefined, hrsPerDay = 8): stri
 
 export function formatDateShort(d: DateInput): string {
   if (!d) return '—'
-  const dt = new Date(d)
-  return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+  return fmtDateShort(d)
 }
 
 export function formatDateRange(start: DateInput, end: DateInput): string {
@@ -60,7 +82,7 @@ export function timeAgo(timestamp: number): string {
   if (hr < 24) return `${hr}h ago`
   const day = Math.floor(hr / 24)
   if (day < 7) return `${day}d ago`
-  return new Date(timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  return fmtDate(timestamp)
 }
 
 // Lags are stored in hours in the XER; planners think in working days. Uses the
