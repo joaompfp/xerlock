@@ -12,7 +12,7 @@
 export type P6Date = string
 
 /** Which tool wrote the file. Absent on snapshots saved before 1.2.0, which are all .xer. */
-export type SourceFormat = 'xer' | 'mspdi' | 'mpp'
+export type SourceFormat = 'xer' | 'pmxml' | 'mspdi' | 'mpp'
 
 export type RelType = 'PR_FS' | 'PR_SS' | 'PR_FF' | 'PR_SF'
 export type TaskType = 'TT_Task' | 'TT_Rsrc' | 'TT_Mile' | 'TT_StartMile' | 'TT_FinMile' | 'TT_LOE' | 'TT_WBS'

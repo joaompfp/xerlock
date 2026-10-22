@@ -177,7 +177,7 @@ async def upload_schedule(file: UploadFile = File(...), project: Optional[int] =
         if file.filename and file.filename.lower().endswith(".pp"):
             raise HTTPException(400, "Asta Powerproject (.pp) files can't be read. In Powerproject, export the "
                                      "project as Microsoft Project XML and open that file instead.")
-        raise HTTPException(400, "Only .xer, .xml (Microsoft Project) and .mpp files are accepted")
+        raise HTTPException(400, "Only .xer, .xml (P6 or Microsoft Project) and .mpp files are accepted")
 
     # Stream to a temp file in chunks, enforcing the size cap as bytes arrive rather than
     # slurping an unbounded body into memory first. The reader is chosen by content, not

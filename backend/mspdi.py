@@ -448,8 +448,8 @@ def load(source) -> ET.Element:
     if root.tag != _T + "Project":
         if "APIBusinessObjects" in root.tag:
             raise UnsupportedFile(
-                "This is a Primavera P6 XML export, which XERlock does not read. "
-                "Export the project from P6 as .xer instead."
+                "This is a Primavera P6 XML export, not Microsoft Project XML "
+                "(backend/pmxml.py reads it)."
             )
         raise UnsupportedFile(
             f"This XML file is not a Microsoft Project XML (MSPDI) file: its root element is "
