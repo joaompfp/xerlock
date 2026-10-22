@@ -169,6 +169,7 @@
           :jump-to="pendingJump"
           :annotations="annotations"
           :return-tab="jumpOrigin ? (tabLabels[jumpOrigin] || '') : ''"
+          :active="tab === 'gantt'"
           @jumped="pendingJump = null"
           @return-to-origin="returnToOrigin"
           @annotate="setAnnotation"

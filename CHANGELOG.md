@@ -4,6 +4,18 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.8.4] - 2026-10-22
+
+### Changed
+- The headline figures (critical, milestones, longest path, negative float, % done)
+  sit in the sidebar under the data date, and Review notes and Export sit in its footer.
+  On wide screens the top bar is gone: the highlighted sidebar item names the page.
+- The Gantt legend sits at the bottom of the sidebar while the Gantt is open (back
+  above the toolbar in fullscreen), and saved views sit at the end of the filter row:
+  the Gantt's controls take two rows instead of three. Both rows fit at 1500 px.
+- The sidebar can be hidden (« in its header) to an 18 px rail, and the choice is
+  remembered. Narrow screens keep the slide-over sidebar and the top bar.
+
 ## [1.8.3] - 2026-10-22
 
 ### Changed
