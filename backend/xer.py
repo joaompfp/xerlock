@@ -348,7 +348,7 @@ def read_xer(filepath: str) -> dict:
                     tid = int(row[ri["task_id"]])
                 except (ValueError, IndexError):
                     continue
-                name = rsrc_names.get(row[ri["rsrc_id"]])
+                name = rsrc_names.get(_int(row[ri["rsrc_id"]]))
                 if name:
                     task_rsrc.setdefault(tid, set()).add(name)
 
