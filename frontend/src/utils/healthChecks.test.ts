@@ -123,6 +123,14 @@ describe('DCMA rules', () => {
     expect(run([start, stray, work, finish]).openEnds.map(a => a.task_id)).toEqual([stray.task_id])
   })
 
+  it('treats a TT_Mile start milestone like TT_StartMile (P6 versions differ)', () => {
+    const start = act({ task_type: 'TT_Mile', early_start: '2026-03-02 08:00:00' })
+    const work = act()
+    const finish = act({ task_type: 'TT_FinMile' })
+    link(start, work); link(work, finish)
+    expect(run([start, work, finish]).openEnds).toEqual([])
+  })
+
   it('counts a finish tied only by SS as dangling', () => {
     const a = act(), b = act()
     const s = act({ task_type: 'TT_StartMile' }), f = act({ task_type: 'TT_FinMile' })

@@ -272,9 +272,24 @@ def read_xer(filepath: str, project_id: Optional[int] = None) -> dict:
         encoding_ok = False
         raw_text = raw_bytes.decode("cp1252", errors="replace")
     raw_tables, ermhdr = parse_raw_tables(raw_text)
-    calendars = parse_calendars(raw_tables)
+    trailing = [] if encoding_ok else [
+        "This file is not valid UTF-8, so it was read as Windows-1252, the encoding "
+        "P6 usually exports in. If accented characters look wrong, the file was saved "
+        "in another encoding."
+    ]
+    return read_tables(raw_tables, parse_calendars(raw_tables), project_id,
+                       shown_tables=raw_tables, ermhdr=ermhdr, source_format="xer",
+                       trailing_warnings=trailing)
 
-    # Every table is read from the raw pass above: one parse of the file, and no
+
+def read_tables(raw_tables: dict, calendars: list, project_id: Optional[int] = None, *,
+                shown_tables: dict, ermhdr: dict, source_format: str,
+                trailing_warnings: list) -> dict:
+    """The neutral intermediate from P6's tables (TASK, TASKPRED, PROJWBS, PROJECT,
+    SCHEDOPTIONS, CALENDAR, the activity-code and resource tables), as a .xer carries
+    them or as P6 XML maps onto them (backend/pmxml.py). `shown_tables` are what the
+    raw-table inspector shows: the file's own tables, which for XML are not these."""
+    # Every table is read from the raw pass: one parse of the file, and no
     # third-party object model (which re-read the file, built an object per row with a
     # strptime per date, and failed outright on exports missing optional columns).
     projects = [r for r in table_records(raw_tables, "PROJECT") if _int(r.get("proj_id")) is not None]
@@ -440,12 +455,7 @@ def read_xer(filepath: str, project_id: Optional[int] = None) -> dict:
     # P6 commonly exports Windows-1252 rather than UTF-8. The file was decoded as such
     # above, which is right for P6's own exports; say so, since a file from elsewhere
     # in another single-byte encoding would show some characters wrongly.
-    if not encoding_ok:
-        warnings.append(
-            "This file is not valid UTF-8, so it was read as Windows-1252, the encoding "
-            "P6 usually exports in. If accented characters look wrong, the file was saved "
-            "in another encoding."
-        )
+    warnings.extend(trailing_warnings)
 
     pid = str(proj_id)
     project_row = next((r for r in table_records(raw_tables, "PROJECT") if r.get("proj_id") == pid), {})
@@ -468,7 +478,7 @@ def read_xer(filepath: str, project_id: Optional[int] = None) -> dict:
                 for p, n in counts
             ],
             "schedule_options": sched_options,
-            "source_format": "xer",
+            "source_format": source_format,
         },
         "activities": activities,
         "links": links,
@@ -477,7 +487,7 @@ def read_xer(filepath: str, project_id: Optional[int] = None) -> dict:
         "has_resources": len(rsrc_names) > 0,
         "activity_code_types": sorted(set(actv_type_names.values())),
         "warnings": warnings,
-        "raw_tables": raw_tables,
+        "raw_tables": shown_tables,
         "ermhdr": ermhdr,
         "recalculate": recalculate,
     }

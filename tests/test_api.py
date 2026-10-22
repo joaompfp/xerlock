@@ -63,11 +63,21 @@ def test_upload_chooses_the_reader_by_content_not_name(sample_bytes):
     assert r.json()["project"]["source_format"] == "xer"
 
 
-def test_upload_refuses_p6_xml_with_a_reason():
+def test_upload_reads_p6_xml(tmp_path, sample_path):
+    from pathlib import Path
+    from tests.pmxml_twin import write_twin
+    twin = write_twin(Path(sample_path), tmp_path / "export.xml")
+    r = post("export.xml", twin.read_bytes())
+    assert r.status_code == 200
+    assert r.json()["project"]["source_format"] == "pmxml"
+    assert len(r.json()["activities"]) == 24
+
+
+def test_an_empty_p6_xml_export_is_refused_with_a_reason():
     p6xml = b'<?xml version="1.0"?><APIBusinessObjects xmlns="http://xmlns.oracle.com/Primavera/P6/V8.3/API/BusinessObjects"/>'
     r = post("export.xml", p6xml)
     assert r.status_code == 422
-    assert "Primavera P6 XML" in r.json()["detail"]
+    assert "No projects found in this P6 XML file" in r.json()["detail"]
 
 
 def test_upload_rejects_unparseable_content():

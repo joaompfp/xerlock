@@ -155,8 +155,10 @@ export function runChecks(data: ScheduleCore, cfg: HealthConfig) {
   // Schedule Assessment Guide, BP 2) counts too: a start tied only by FF/SF links, or a
   // finish tied only by SS/SF links, is as free to move as one with no link at all.
   // Exempt: the one project start milestone and the one project finish milestone.
+  // P6 writes a start milestone as TT_Mile or TT_StartMile, depending on the version.
+  const isStartMile = (a: Activity) => a.task_type === 'TT_StartMile' || a.task_type === 'TT_Mile'
   const firstStart = scope
-    .filter(a => a.task_type === 'TT_StartMile' && !a.predecessors.length)
+    .filter(a => isStartMile(a) && !a.predecessors.length)
     .sort((x, y) => byDate(x.early_start, y.early_start))[0]
   const lastFinish = scope
     .filter(a => a.task_type === 'TT_FinMile' && !a.successors.length)
@@ -167,7 +169,7 @@ export function runChecks(data: ScheduleCore, cfg: HealthConfig) {
     const finishTied = a.successors.some(s => s.type === 'PR_FS' || s.type === 'PR_FF')
     // A start milestone has no finish to tie, a finish milestone no start.
     const flagStart = !startTied && a !== firstStart && a.task_type !== 'TT_FinMile'
-    const flagFinish = !finishTied && a !== lastFinish && a.task_type !== 'TT_StartMile'
+    const flagFinish = !finishTied && a !== lastFinish && !isStartMile(a)
     if (flagStart || flagFinish) {
       openEnds.push({
         ...a,

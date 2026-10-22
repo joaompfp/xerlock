@@ -5,7 +5,7 @@
 ![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue) ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB) ![Vue 3](https://img.shields.io/badge/vue-3-42b883) ![Self-hosted](https://img.shields.io/badge/self--hosted-yes-8250df)
 
 **Review a contractor's programme in full - without a P6 or Project licence.** Upload a P6 `.xer`
-export, a Microsoft Project XML file or a `.mpp` and get
+or P6 XML export, a Microsoft Project XML file or a `.mpp` and get
 an interactive Gantt chart, a critical-path network diagram, configurable DCMA-14-style schedule
 quality checks, calendar and raw-table inspection, progress tracking, and snapshot comparison -
 everything a planner needs to review a schedule in detail, self-hosted so the file never leaves
@@ -167,6 +167,16 @@ same file ships in [`examples/sample-schedule.xer`](examples/sample-schedule.xer
 beside it loads the same project as Microsoft Project would save it
 ([`examples/sample-schedule.xml`](examples/sample-schedule.xml)).
 
+## P6 XML exports
+
+Since 1.13.0 XERlock reads Primavera P6 XML exports (root element `APIBusinessObjects`) as
+well as `.xer`, in both builds. The XML is mapped onto the same tables a `.xer` carries
+(`backend/pmxml.py`), so every view, check, the recalculation and the Critical Path Test
+work identically; a P6 XML twin of the sample reads exactly as the `.xer` does. Embedded
+baselines (`BaselineProject`) open or compare like any other project of the file, and the
+raw-table inspector shows the XML's own elements field by field. An export without total
+float gets it worked out from each activity's early and late finish, and says so.
+
 ## Microsoft Project files
 
 Since 1.2.0 XERlock reads Microsoft Project files too: **Project XML** (File > Save As >
@@ -188,14 +198,14 @@ evidence for each decision.
 ```
 ┌────────────┐  file upload   ┌─────────────────────────────┐
 │  Vue 3 SPA │ ─────────────▶ │ FastAPI backend              │
-│  (Vite)    │ ◀───────────── │ readers: .xer, Project XML,  │
-└────────────┘  parsed JSON   │ .mpp (MPXJ)                  │
+│  (Vite)    │ ◀───────────── │ readers: .xer, P6 XML,       │
+└────────────┘  parsed JSON   │ Project XML, .mpp (MPXJ)     │
                               └─────────────────────────────┘
 ```
 
 - **Backend** (`backend/main.py`): FastAPI. One endpoint (`POST /api/upload`) picks the reader
   from the file's content (`backend/schedule.py`): `backend/xer.py` for `.xer`
-  and `backend/mspdi.py` for Project XML (both standard library only), `backend/mpp.py` with [MPXJ](https://www.mpxj.org) over JPype
+  `backend/pmxml.py` for P6 XML and `backend/mspdi.py` for Project XML (all standard library only), `backend/mpp.py` with [MPXJ](https://www.mpxj.org) over JPype
   for `.mpp`. `backend/analysis.py` derives what both formats share (driving links, Longest
   Path, CPLI, WBS roll-ups) and returns the full schedule as JSON - activities with
   float/constraints/actuals/codes, the WBS tree, and project stats. **Nothing is persisted

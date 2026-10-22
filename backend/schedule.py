@@ -12,7 +12,9 @@ when such a file arrives).
 from pathlib import Path
 from typing import Optional
 
-from backend import mspdi, xer
+import xml.etree.ElementTree as ET
+
+from backend import mspdi, pmxml, xer
 
 OLE2_SIGNATURE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 
@@ -28,7 +30,8 @@ MPP_NEEDS_XML = (
 
 
 def detect_format(head: bytes) -> str:
-    """'mpp', 'mspdi' or 'xer' from the first bytes of the file. A .mpp is an OLE2
+    """'mpp', 'mspdi' or 'xer' from the first bytes of the file (an XML file is told
+    apart as P6 XML or Project XML by its root element: see xml_kind). A .mpp is an OLE2
     compound file; XML is any document that starts with a declaration or an element (the
     MSPDI reader then checks the root element itself and says what it found when it is
     not MSPDI); everything else goes to the .xer reader, as every upload did before
@@ -40,6 +43,17 @@ def detect_format(head: bytes) -> str:
     return "xer"
 
 
+def xml_kind(filepath: str) -> str:
+    """'pmxml' for a Primavera P6 XML export (root APIBusinessObjects), else 'mspdi'.
+    Reads only up to the root element."""
+    try:
+        for _, el in ET.iterparse(filepath, events=("start",)):
+            return "pmxml" if el.tag.rsplit("}", 1)[-1] == "APIBusinessObjects" else "mspdi"
+    except ET.ParseError:
+        pass
+    return "mspdi"  # its reader says what is wrong with the XML
+
+
 def parse_schedule(filepath: str, project_id: Optional[int] = None) -> dict:
     """Parse a schedule file of any supported format into the structure the API serves.
     Raises ValueError, with a message meant for the user, when the file is not one.
@@ -49,6 +63,8 @@ def parse_schedule(filepath: str, project_id: Optional[int] = None) -> dict:
         head = fh.read(4096)
     fmt = detect_format(head)
     if fmt == "mspdi":
+        if xml_kind(filepath) == "pmxml":
+            return pmxml.parse_pmxml(filepath, project_id)
         return mspdi.parse_mspdi(filepath)
     if fmt == "mpp":
         try:

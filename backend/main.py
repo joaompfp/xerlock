@@ -23,7 +23,7 @@ MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 app = FastAPI(
     title="XERlock",
-    version="1.12.0",
+    version="1.13.0",
     description="Parses Primavera P6 .xer exports and Microsoft Project files (XML, .mpp) in "
     "memory and returns the full schedule (activities, WBS tree, project stats, longest-path "
     "trace) as JSON. Nothing is persisted.",
@@ -177,7 +177,7 @@ async def upload_schedule(file: UploadFile = File(...), project: Optional[int] =
         if file.filename and file.filename.lower().endswith(".pp"):
             raise HTTPException(400, "Asta Powerproject (.pp) files can't be read. In Powerproject, export the "
                                      "project as Microsoft Project XML and open that file instead.")
-        raise HTTPException(400, "Only .xer, .xml (Microsoft Project) and .mpp files are accepted")
+        raise HTTPException(400, "Only .xer, .xml (P6 or Microsoft Project) and .mpp files are accepted")
 
     # Stream to a temp file in chunks, enforcing the size cap as bytes arrive rather than
     # slurping an unbounded body into memory first. The reader is chosen by content, not

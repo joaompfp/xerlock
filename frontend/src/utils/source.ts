@@ -8,11 +8,13 @@ type Sourced = Pick<ProjectSummary, 'source_format'>
 /** Snapshots saved before 1.2.0 carry no source_format; they are all .xer. */
 export function sourceFormat(p: Sourced | null | undefined): SourceFormat {
   const f = p?.source_format
-  return f === 'mspdi' || f === 'mpp' ? f : 'xer'
+  return f === 'mspdi' || f === 'mpp' || f === 'pmxml' ? f : 'xer'
 }
 
+/** A Microsoft Project file (XML or .mpp); P6's .xer and XML are both P6. */
 export function isProjectFile(p: Sourced | null | undefined): boolean {
-  return sourceFormat(p) !== 'xer'
+  const f = sourceFormat(p)
+  return f === 'mspdi' || f === 'mpp'
 }
 
 /** The scheduling tool, for labels such as "P6 scheduling options". */
@@ -23,13 +25,13 @@ export function toolName(p: Sourced | null | undefined): string {
 /** The kind of file, for messages such as "check the file is a P6 .xer export". */
 export function fileKind(p: Sourced | null | undefined): string {
   const f = sourceFormat(p)
-  return f === 'mpp' ? 'Microsoft Project .mpp file' : f === 'mspdi' ? 'Microsoft Project XML file' : 'P6 .xer export'
+  return f === 'mpp' ? 'Microsoft Project .mpp file' : f === 'mspdi' ? 'Microsoft Project XML file' : f === 'pmxml' ? 'P6 XML export' : 'P6 .xer export'
 }
 
 /** What the file inputs accept; the backend decides by content, the extension only filters the picker. */
 export const ACCEPT = '.xer,.xml,.mpp'
 export const ACCEPTED_EXTENSIONS = ['.xer', '.xml', '.mpp']
-export const DROP_PROMPT = 'Drop a .xer, Project XML or .mpp file here, or click to browse'
+export const DROP_PROMPT = 'Drop a P6 .xer or XML, or a Microsoft Project .mpp or XML file here, or click to browse'
 
 export function hasAcceptedExtension(name: string): boolean {
   const n = name.toLowerCase()
@@ -44,5 +46,5 @@ export function unsupportedFileMessage(name: string): string | null {
   if (n.endsWith('.pp')) {
     return 'Asta Powerproject (.pp) files can\'t be read. In Powerproject, export the project as Microsoft Project XML and open that file instead.'
   }
-  return 'Only .xer, Microsoft Project XML and .mpp files are accepted'
+  return 'Only .xer, .xml (P6 or Microsoft Project) and .mpp files are accepted'
 }
