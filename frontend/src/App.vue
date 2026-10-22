@@ -58,7 +58,7 @@
     </div>
 
     <!-- Dashboard -->
-    <div v-else class="app-shell">
+    <div v-else class="app-shell" :class="{ 'sb-collapsed': sidebarCollapsed }">
       <!-- Sidebar: grouped navigation. Replaces a flat row of nine tabs, which gave the
            programme views, the analysis views and the file-audit views equal billing. -->
       <aside class="sidebar" :class="{ open: navOpen }" id="app-sidebar">
@@ -68,6 +68,9 @@
             <span>XERlock</span>
           </a>
           <span class="sb-readonly" title="XERlock never modifies or stores your file">read only</span>
+          <button class="sb-collapse" title="Hide the sidebar" aria-label="Hide the sidebar" @click="sidebarCollapsed = true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 7l-5 5 5 5M18 7l-5 5 5 5"/></svg>
+          </button>
         </div>
 
         <div class="sb-project">
@@ -75,6 +78,18 @@
           <div class="sb-proj-meta">{{ data.project.total_activities }} activities &middot; {{ data.project.total_wbs }} WBS</div>
           <div v-if="data.project.data_date" class="sb-datadate">
             <i></i><span>DATA DATE</span><b>{{ formatDate(data.project.data_date) }}</b>
+          </div>
+          <!-- The headline figures, read once per file: they sit with the project, not
+               in a strip above every view. -->
+          <div class="sb-metrics">
+            <div class="sb-metric"><b :class="data.project.total_critical > 0 ? 'is-crit' : 'is-ok'">{{ data.project.total_critical }}</b><span>Critical</span></div>
+            <div class="sb-metric"><b>{{ data.project.total_milestones }}</b><span>Milestones</span></div>
+            <div class="sb-metric" :class="{ 'sb-metric-wide': !data.project.total_negative_float }"><b>{{ data.project.total_longest_path }}</b><span>Longest path</span></div>
+            <div class="sb-metric" v-if="data.project.total_negative_float > 0"><b class="is-crit">{{ data.project.total_negative_float }}</b><span>Neg. float</span></div>
+            <div class="sb-metric sb-metric-pct" title="Share of activities with status Complete. A count, not weighted by duration, cost or units; per-activity % complete uses each activity's own percent-complete type.">
+              <b>{{ data.project.pct_complete }}%</b><span>Done</span>
+              <i class="tb-bar"><u :style="{ width: data.project.pct_complete + '%' }"></u></i>
+            </div>
           </div>
         </div>
 
@@ -96,6 +111,20 @@
         </nav>
 
         <div class="sb-footer">
+          <!-- The open view's legend, when it has one (the Gantt teleports its own here). -->
+          <div id="sb-legend"></div>
+          <div class="sb-actions">
+            <button v-if="annotationCount > 0" class="sb-load" :disabled="exporting" @click="doExport(() => exportReviewReport(data!, annotations))" title="Download the annotated Review Report (.xlsx)">
+              {{ exportLabel('Review notes (' + annotationCount + ')') }}
+            </button>
+            <div class="tb-export">
+              <button class="sb-load" :disabled="exporting" @click="exportMenuOpen = !exportMenuOpen" :aria-expanded="exportMenuOpen ? 'true' : 'false'">{{ exportLabel('Export') }} &#9662;</button>
+              <div v-if="exportMenuOpen" class="tb-menu sb-export-menu">
+                <button @click="exportMenuOpen = false; doExport(() => exportWorkbook(data!))">Schedule workbook (.xlsx)</button>
+                <button :disabled="annotationCount === 0" @click="exportMenuOpen = false; doExport(() => exportReviewReport(data!, annotations))">Review report (.xlsx)</button>
+              </div>
+            </div>
+          </div>
           <div class="sb-theme" role="group" aria-label="Colour theme">
             <button v-for="(label, key) in themeOptions" :key="key" :class="{ active: theme === key }" @click="theme = key">{{ label }}</button>
           </div>
@@ -108,6 +137,9 @@
         </div>
       </aside>
       <div v-if="navOpen" class="sb-backdrop" @click="navOpen = false"></div>
+      <button v-if="sidebarCollapsed" class="sb-rail" title="Show the sidebar" aria-label="Show the sidebar" @click="sidebarCollapsed = false">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7l5 5-5 5M13 7l5 5-5 5"/></svg>
+      </button>
 
       <div class="main">
         <header class="topbar">
@@ -116,31 +148,6 @@
           </button>
           <h1 class="topbar-title">{{ tabLabels[tab] }}</h1>
 
-          <!-- The six-cell metrics strip, inline: nothing needs hiding any more, so the
-               collapse/expand summary toggle is gone. -->
-          <div class="topbar-metrics">
-            <div class="tb-metric"><b :class="data.project.total_critical > 0 ? 'is-crit' : 'is-ok'">{{ data.project.total_critical }}</b><span>Critical</span></div>
-            <div class="tb-metric" v-if="data.project.total_negative_float > 0"><b class="is-crit">{{ data.project.total_negative_float }}</b><span>Neg. float</span></div>
-            <div class="tb-metric"><b>{{ data.project.total_longest_path }}</b><span>Longest path</span></div>
-            <div class="tb-metric"><b>{{ data.project.total_milestones }}</b><span>Milestones</span></div>
-            <div class="tb-metric tb-metric-pct" title="Share of activities with status Complete. A count, not weighted by duration, cost or units; per-activity % complete uses each activity's own percent-complete type.">
-              <b>{{ data.project.pct_complete }}%</b><span>Activities done</span>
-              <i class="tb-bar"><u :style="{ width: data.project.pct_complete + '%' }"></u></i>
-            </div>
-          </div>
-
-          <div class="topbar-actions">
-            <button v-if="annotationCount > 0" class="btn-tiny-light tb-notes" :disabled="exporting" @click="doExport(() => exportReviewReport(data!, annotations))" title="Download the annotated Review Report (.xlsx)">
-              {{ exportLabel('Review notes (' + annotationCount + ')') }}
-            </button>
-            <div class="tb-export">
-              <button class="btn-tiny-light" :disabled="exporting" @click="exportMenuOpen = !exportMenuOpen" :aria-expanded="exportMenuOpen ? 'true' : 'false'">{{ exportLabel('Export') }} &#9662;</button>
-              <div v-if="exportMenuOpen" class="tb-menu">
-                <button @click="exportMenuOpen = false; doExport(() => exportWorkbook(data!))">Schedule workbook (.xlsx)</button>
-                <button :disabled="annotationCount === 0" @click="exportMenuOpen = false; doExport(() => exportReviewReport(data!, annotations))">Review report (.xlsx)</button>
-              </div>
-            </div>
-          </div>
         </header>
 
         <div class="views">
@@ -543,6 +550,8 @@ export default defineComponent({
         ] },
       ],
       navOpen: false,
+      // Wide screens: the sidebar can be put away for more chart; remembered.
+      sidebarCollapsed: (() => { try { return localStorage.getItem('schedule-app:sidebar-collapsed') === '1' } catch { return false } })(),
       exportMenuOpen: false,
       // Reported up by HealthCheck so the score is visible from any view.
       healthScore: null as number | null,
@@ -567,6 +576,9 @@ export default defineComponent({
     applyTheme(this.theme)
   },
   watch: {
+    sidebarCollapsed(v: boolean) {
+      try { localStorage.setItem('schedule-app:sidebar-collapsed', v ? '1' : '0') } catch { /* not remembered */ }
+    },
     theme(t: Theme) {
       applyTheme(t)
       try { localStorage.setItem('schedule-app:theme', t) } catch { /* storage unavailable */ }
@@ -1326,6 +1338,22 @@ th.num { text-align: right !important; }
 .sb-datadate span { font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em; color: var(--nav-ink-3); }
 .sb-datadate b { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--nav-ink); font-weight: 500; }
 
+.sb-collapse { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: none; border-radius: var(--radius-sm); background: none; color: var(--nav-ink-3); cursor: pointer; padding: 0; }
+.sb-collapse:hover { background: var(--nav-2); color: var(--nav-ink); }
+.sb-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin-top: var(--space-3); }
+.sb-metric { display: flex; align-items: baseline; gap: 5px; white-space: nowrap; min-width: 0; }
+.sb-metric b { font-family: var(--font-mono); font-size: 14px; font-weight: 600; color: var(--nav-ink); }
+.sb-metric b.is-crit { color: var(--crit-bright); }
+.sb-metric b.is-ok { color: var(--ok-bright); }
+.sb-metric span { font: var(--text-micro); text-transform: uppercase; letter-spacing: 0.04em; color: var(--nav-ink-3); overflow: hidden; text-overflow: ellipsis; }
+.sb-metric-pct, .sb-metric-wide { grid-column: 1 / -1; }
+.sb-metric-pct .tb-bar { flex: 1; align-self: center; background: var(--nav-2); }
+.sb-actions { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(--space-2); }
+.sb-actions .tb-export { position: relative; }
+.sb-export-menu { left: 0; right: auto; top: auto; bottom: calc(100% + 4px); }
+.sb-load:disabled { opacity: 0.5; cursor: default; }
+.sb-rail { position: fixed; left: 0; top: 0; bottom: 0; width: 18px; z-index: 30; display: flex; align-items: flex-start; justify-content: center; padding-top: 18px; border: none; background: var(--nav); color: var(--nav-ink-3); cursor: pointer; }
+.sb-rail:hover { color: var(--nav-ink); background: var(--nav-2); }
 .sb-nav { flex: 1; padding: var(--space-3) var(--space-2); }
 .sb-group { font-family: var(--font-mono); font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em; color: var(--nav-ink-3); padding: var(--space-3) var(--space-2) 5px; }
 .sb-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; text-align: left; background: none; border: none; border-radius: var(--radius-sm); padding: 7px 8px; cursor: pointer; font-size: 13px; color: var(--nav-ink-2); }
@@ -1356,16 +1384,8 @@ th.num { text-align: right !important; }
 .topbar { position: sticky; top: 0; z-index: 20; height: var(--topbar-h); display: flex; align-items: center; gap: var(--space-4); padding: 0 var(--space-4); background: var(--panel); border-bottom: 1px solid var(--line); }
 .topbar-title { font: 600 17px/1.3 var(--font-ui); color: var(--ink); margin: 0; white-space: nowrap; }
 .nav-toggle { display: none; align-items: center; justify-content: center; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); color: var(--ink-2); cursor: pointer; flex: none; }
-.topbar-metrics { display: flex; align-items: center; gap: var(--space-5); min-width: 0; overflow-x: auto; scrollbar-width: none; }
-.topbar-metrics::-webkit-scrollbar { display: none; }
-.tb-metric { display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
-.tb-metric b { font-family: var(--font-mono); font-size: 15px; font-weight: 600; color: var(--ink); }
-.tb-metric span { font: var(--text-micro); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
-.tb-metric b.is-crit { color: var(--crit); }
-.tb-metric b.is-ok { color: var(--ok); }
 .tb-bar { display: inline-block; width: 54px; height: 4px; border-radius: 2px; background: var(--chip); overflow: hidden; }
 .tb-bar u { display: block; height: 100%; background: var(--accent); }
-.topbar-actions { margin-left: auto; display: flex; align-items: center; gap: var(--space-2); flex: none; }
 .tb-export { position: relative; }
 .tb-menu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 210px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: 0 8px 24px -10px rgba(0,0,0,0.35); padding: 4px; z-index: 30; }
 .tb-menu button { display: block; width: 100%; text-align: left; background: none; border: none; border-radius: 4px; padding: 7px 10px; cursor: pointer; font: var(--text-small); color: var(--ink-2); }
@@ -1374,6 +1394,15 @@ th.num { text-align: right !important; }
 
 .views { padding: var(--space-4); }
 .views .section-full { width: auto; position: static; left: auto; right: auto; margin-left: 0; margin-right: 0; padding: 0; }
+
+/* Wide screens have no top bar: the page is named by the highlighted sidebar item, and
+   the figures and exports live in the sidebar. Narrow screens keep it for the menu. */
+@media (min-width: 1101px) {
+  .topbar { display: none; }
+  .app-shell.sb-collapsed .sidebar { transform: translateX(-100%); }
+  .app-shell.sb-collapsed .main { margin-left: 18px; }
+}
+@media (max-width: 1100px) { .sb-rail, .sb-collapse { display: none; } }
 
 /* ── Below 1100px the sidebar slides over instead of holding a column ────── */
 @media (max-width: 1100px) {
@@ -1387,11 +1416,6 @@ th.num { text-align: right !important; }
   .views { padding: var(--space-2); }
   .topbar { gap: var(--space-3); padding: 0 var(--space-3); }
   .topbar-title { font-size: 15px; }
-  .tb-metric span { display: none; }
-  .topbar-metrics { gap: var(--space-3); }
-}
-@media (max-width: 520px) {
-  .topbar-metrics { display: none; }
 }
 
 /* Per-view context bar. Carries the sub-line and any view-level controls; the
