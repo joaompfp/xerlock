@@ -4,6 +4,14 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.15.2] - 2026-10-23
+
+### Fixed
+- Calendars: days from the neighbouring months in the month grid are drawn blank, so a
+  holiday on 3 April no longer shows as a holiday cell in the March grid.
+- Calendars: the year strip keeps all twelve months on one row; December no longer
+  wraps under the rest of the year.
+
 ## [1.15.1] - 2026-10-22
 
 ### Changed
