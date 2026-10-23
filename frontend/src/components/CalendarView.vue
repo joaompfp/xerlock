@@ -265,6 +265,13 @@ export default defineComponent({
       for (let i = 0; i < 42; i++) {
         const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i)
         const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        const inMonth = d.getMonth() === this.viewMonth
+        // Leading and trailing days belong to another month: drawn blank, so a holiday
+        // on 3 Apr cannot read as one on 3 Mar. Their own month shows them.
+        if (!inMonth) {
+          cells.push({ key: iso, day: d.getDate(), inMonth, isDataDate: false, cls: '', hours: '', tip: '' })
+          continue
+        }
         const exc = this.excByDate.get(iso)
         const weekPeriods = selected.weekdays[P6_KEY_BY_JSDAY[d.getDay()]] || []
         let cls: string, periods: WorkPeriod[]
@@ -282,7 +289,7 @@ export default defineComponent({
         cells.push({
           key: iso,
           day: d.getDate(),
-          inMonth: d.getMonth() === this.viewMonth,
+          inMonth,
           isDataDate: iso === this.dataDate,
           cls,
           hours,
@@ -400,7 +407,7 @@ export default defineComponent({
 
 .cal-year { display: flex; align-items: center; gap: 3px; margin-top: var(--space-3); flex-wrap: wrap; }
 .cal-year-label { font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em; color: var(--ink-3); margin-right: var(--space-2); }
-.cal-year-month { display: flex; flex-direction: column; align-items: center; gap: 3px; flex: 1; min-width: 34px; background: none; border: none; border-radius: var(--radius-sm); padding: 4px 2px; cursor: pointer; }
+.cal-year-month { display: flex; flex-direction: column; align-items: center; gap: 3px; flex: 1; min-width: 0; background: none; border: none; border-radius: var(--radius-sm); padding: 4px 2px; cursor: pointer; }
 .cal-year-month:hover { background: var(--chip); }
 .cal-year-month.active { background: var(--chip); }
 .cal-year-month i { display: block; width: 100%; height: 4px; border-radius: 2px; }
@@ -409,7 +416,7 @@ export default defineComponent({
 .ym-none { background: var(--line); }
 .ym-holiday { background: var(--near); }
 .ym-work { background: var(--crit); }
-.cal-year-sum { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); }
+.cal-year-sum { flex-basis: 100%; text-align: right; font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); }
 
 .cal-exc-panel { display: flex; flex-direction: column; gap: var(--space-3); }
 .cal-callout { border: 1px solid var(--crit); background: var(--crit-soft); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); }
