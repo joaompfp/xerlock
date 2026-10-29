@@ -288,7 +288,14 @@ The container serves the whole app on port 8000. Put your reverse proxy of choic
 ```bash
 pip install -r requirements-dev.txt && pytest        # backend: parser, calendars, API
 cd frontend && npm install && npm run test:run       # frontend: pure utils, geometry
+cd frontend && npx playwright install chromium && npm run audit:ui -- http://localhost:8000/
+                                                     # UI audit on a running server build
 ```
+
+The UI audit opens the sample programme in a real browser and walks every view, in both
+themes, at desktop and phone width, with each floating panel opened. It fails on a panel
+collapsed, off-screen or without a background, text spilling out of its box, the page
+scrolling sideways, or any WCAG 2 A/AA fault axe finds. CI runs it on every pull request.
 
 The backend suite pins the numerically load-bearing behaviour - working-time arithmetic on P6
 calendars, the driving rule and its agreement with P6's own Longest Path, the CPLI hand
