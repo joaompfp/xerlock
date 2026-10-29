@@ -13,3 +13,10 @@
 .section-body h4 { font: var(--text-small); font-weight: 700; color: var(--ink); margin: var(--space-4) 0 var(--space-2); }
 .section-body h4:first-child { margin-top: 0; }
 .section-note { font: var(--text-small); color: var(--gray-700); margin: var(--space-2) 0 var(--space-4); }
+
+/* Phones: the hint takes its own line under the title instead of a narrow column. */
+@media (max-width: 640px) {
+  .section-head { flex-wrap: wrap; row-gap: 2px; }
+  .section-head .chevron { margin-left: auto; }
+  .section-hint { flex-basis: 100%; order: 3; }
+}

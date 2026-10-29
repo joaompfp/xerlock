@@ -184,6 +184,11 @@ export default defineComponent({
 @media (max-width: 700px) {
   .review { padding: var(--space-4); }
   .rv-figures { grid-template-columns: 1fr 1fr; }
+  .rv-f-name { min-width: 0; flex: 1; }
+  .rv-f-measure { order: 3; flex-basis: 100%; }
+  .rv-table th, .rv-table td { padding: 4px 3px; }
+  .rv-table .num { white-space: normal; }
+  .rv-chip { margin-left: 0; }
 }
 @media print {
   .no-export { display: none !important; }

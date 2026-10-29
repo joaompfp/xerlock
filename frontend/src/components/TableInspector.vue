@@ -49,7 +49,7 @@
         <div v-if="filteredRows.length === 0" class="empty-state">
           No rows in {{ selectedName }} match “{{ filter }}”.
         </div>
-        <div v-else class="ti-scroll">
+        <div v-else class="ti-scroll" tabindex="0" :aria-label="`${selectedName} rows`">
           <table class="ti-table">
             <thead>
               <tr>

@@ -226,26 +226,28 @@
         <div class="insight-card" v-if="nearCritical.length > 0">
           <h3>Near-critical watchlist</h3>
           <p class="subtitle">Activities with low float that could become critical.</p>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Activity</th>
-                <th class="num">Float</th>
-                <th class="num">Duration</th>
-                <th class="num">End</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="act in nearCritical" :key="act.task_id">
-                <td class="code">{{ act.task_code }}</td>
-                <td class="name-cell">{{ act.task_name }}</td>
-                <td class="float-cell num-cell">{{ formatFloat(act.total_float_hrs, act.calendar_hrs_per_day) }}</td>
-                <td class="num-cell">{{ formatHours(act.duration_hrs, act.calendar_hrs_per_day) }}</td>
-                <td class="num-cell">{{ formatDate(displayEnd(act)) }}</td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="table-scroll" tabindex="0" aria-label="Near-critical activities">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Activity</th>
+                  <th class="num">Float</th>
+                  <th class="num">Duration</th>
+                  <th class="num">End</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="act in nearCritical" :key="act.task_id">
+                  <td class="code">{{ act.task_code }}</td>
+                  <td class="name-cell">{{ act.task_name }}</td>
+                  <td class="float-cell num-cell">{{ formatFloat(act.total_float_hrs, act.calendar_hrs_per_day) }}</td>
+                  <td class="num-cell">{{ formatHours(act.duration_hrs, act.calendar_hrs_per_day) }}</td>
+                  <td class="num-cell">{{ formatDate(displayEnd(act)) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -1036,6 +1038,8 @@ export default defineComponent({
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 button, input, select, textarea { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+/* Scroll areas made focusable draw their ring inside, where a clipping parent cannot hide it. */
+[tabindex="0"]:focus-visible { outline-offset: -2px; }
 body { font-family: var(--font-ui); background: var(--bg); color: var(--ink); font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
 
 /* Every number in the app reads as instrument output, not prose — codes, dates,
@@ -1167,6 +1171,8 @@ th.num { text-align: right !important; }
 .btn-export-view { margin-left: auto; }
 
 /* Table */
+/* Wide tables scroll inside a wrapper instead of forcing the page sideways. */
+.table-scroll { overflow-x: auto; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--gray-300); border-radius: var(--radius-md); max-height: calc(100dvh - 190px); }
 .data-table { width: 100%; border-collapse: collapse; font: var(--text-body); }
 .data-table th { text-align: left; padding: var(--space-2) var(--space-3); border-bottom: 2px solid var(--gray-300); font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); letter-spacing: 0.04em; white-space: nowrap; background: var(--gray-100); }
@@ -1278,8 +1284,6 @@ th.num { text-align: right !important; }
   .metric { min-width: 84px; padding: var(--space-2) var(--space-3); }
   .gesture-hint { display: none !important; }
   .section-full { padding: 0 var(--space-3); }
-  /* Wide tables scroll within themselves instead of forcing the page sideways */
-  .data-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 }
 
 

@@ -692,6 +692,7 @@ export default defineComponent({
    scales; side by side they are read together instead of scrolled between. */
 .cmp-side-by-side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1px; background: var(--line); }
 .cmp-side-by-side > .compare-section { background: var(--panel); border-bottom: none; }
+.cmp-side-by-side > .compare-section:only-child { grid-column: 1 / -1; }
 @media (max-width: 1200px) { .cmp-side-by-side { grid-template-columns: 1fr; } }
 
 .lag-neg { color: var(--crit); font-weight: 700; }

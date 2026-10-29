@@ -238,7 +238,7 @@ export default defineComponent({
 
 .progress-section { border-bottom: 1px solid var(--gray-300); }
 .progress-section:last-child { border-bottom: none; }
-.section-head-static { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4); background: var(--gray-100); flex-wrap: wrap; }
+.section-head-static { display: flex; align-items: center; gap: var(--space-4); row-gap: 2px; padding: var(--space-3) var(--space-4); background: var(--gray-100); flex-wrap: wrap; }
 .section-note { margin: 0 0 var(--space-4); font-style: italic; }
 .empty-state { font: var(--text-small); color: var(--ok); }
 .empty-state.warn { color: var(--near); }

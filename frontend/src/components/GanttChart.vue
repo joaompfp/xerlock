@@ -60,6 +60,8 @@
     <div class="gantt-body">
     <div
       class="gantt-scroll"
+      tabindex="0"
+      aria-label="Gantt chart: arrow keys pan and select, + and − zoom"
       :class="{ panning }"
       ref="scrollEl"
       @scroll="onScroll"
