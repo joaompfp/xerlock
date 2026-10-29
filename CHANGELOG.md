@@ -4,6 +4,28 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.15.3] - 2026-10-29
+
+### Fixed
+- The Export menu collapsed to a sliver and its items spilled, unbacked, over the theme
+  buttons. It now opens upward on a solid panel. Floating panels share one style whose
+  placement sets both vertical edges, so this cannot recur.
+- Phones: the Key dates and Save view panels hung off the left edge; on narrow screens
+  they open as a sheet along the bottom of the screen.
+- Phones: the Review page scrolled sideways (the milestone table); section hints in
+  Compare, Health check and Progress take their own line instead of a narrow column; the
+  Calendars year strip gives its label a row of its own.
+- Compare: Milestone Movement spans the full width when there is no Biggest Movers panel
+  beside it, instead of leaving a grey hole.
+- Calendars: neighbouring-month day numbers are legible (they failed contrast).
+- September is written "Sep" like the other months, not "Sept".
+- Accessibility: the Activity table's filters have names, and the scrolling tables and the
+  Gantt can be reached and scrolled from the keyboard.
+
+### Added
+- `npm run audit:ui`: every view, both themes, desktop and phone, each panel opened, in a
+  real browser, checked for layout faults and with axe. It runs in CI.
+
 ## [1.15.2] - 2026-10-23
 
 ### Fixed

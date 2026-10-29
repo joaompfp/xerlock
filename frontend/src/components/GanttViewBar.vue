@@ -10,7 +10,7 @@
     </template>
     <div class="vw-pop">
       <button class="vw-open" :class="{ active: open }" :title="views.length ? 'Save or manage views' : 'Save this chart as a view'" @click="open = !open"><Icon name="bookmark" :size="14" /><span v-if="!views.length">Save view</span></button>
-      <div v-if="open" class="vw-panel">
+      <div v-if="open" class="vw-panel popover popover-below popover-end">
         <form class="vw-row" @submit.prevent="save">
           <input v-model="draft" class="vw-name" placeholder="Name the current chart, e.g. Roof delay" maxlength="50" />
           <button class="btn-tiny-light" type="submit" :disabled="!draft.trim()">Save</button>
@@ -81,7 +81,7 @@ export default defineComponent({
 .vw-open { height: 26px; min-width: 26px; display: inline-flex; align-items: center; gap: 5px; padding: 0 6px; border: 1px solid transparent; border-radius: var(--radius-sm); background: none; color: var(--ink-2); cursor: pointer; font: var(--text-small); }
 .vw-open:hover { border-color: var(--gray-300); background: var(--panel); color: var(--ink); }
 .vw-open.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-.vw-panel { position: absolute; right: 0; top: calc(100% + 5px); min-width: 380px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: 0 10px 30px -12px rgba(0,0,0,0.35); padding: var(--space-3); z-index: 12; display: flex; flex-direction: column; gap: 6px; }
+.vw-panel { --pop-min: 380px; display: flex; flex-direction: column; gap: 6px; }
 .vw-row { display: flex; align-items: center; gap: 5px; margin: 0; }
 .vw-n { font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); width: 16px; text-align: right; }
 .vw-name { flex: 1; min-width: 0; padding: 3px 6px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); color: var(--ink); }

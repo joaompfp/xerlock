@@ -19,6 +19,7 @@ open source.
 ```bash
 pytest                                  # backend
 cd frontend && npm run test:run && npm run build
+cd frontend && npm run audit:ui -- http://localhost:8000/   # with the server running, for UI changes
 ```
 
 Please add a test with any change to parsing, float/date arithmetic, or the health

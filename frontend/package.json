@@ -3,7 +3,7 @@
   "description": "XERlock — self-hosted, read-only Primavera P6 .xer and Microsoft Project review tool: Gantt, critical path, health checks, progress, compare",
   "license": "AGPL-3.0-or-later",
   "private": true,
-  "version": "1.15.2",
+  "version": "1.15.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,7 +13,8 @@
     "test:run": "vitest run",
     "typecheck": "vue-tsc --noEmit -p .",
     "build:standalone": "node scripts/prepare-standalone.mjs && vue-tsc --noEmit -p . && vite build --mode standalone --outDir dist-standalone",
-    "dev:standalone": "node scripts/prepare-standalone.mjs && vite --mode standalone"
+    "dev:standalone": "node scripts/prepare-standalone.mjs && vite --mode standalone",
+    "audit:ui": "node scripts/ui-audit.mjs"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",
@@ -25,6 +26,8 @@
   "devDependencies": {
     "@types/node": "^26.6.5",
     "@vitejs/plugin-vue": "^6.0.10",
+    "axe-core": "4.14.0",
+    "playwright": "1.64.1",
     "typescript": "^6.0.3",
     "vite": "^8.3.4",
     "vitest": "^5.0.3",

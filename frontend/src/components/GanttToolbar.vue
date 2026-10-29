@@ -50,7 +50,7 @@
       <button class="tb-chip" :class="{ on: showMarkup && hasMarkup }" :title="hasMarkup ? 'Show or hide your key dates, periods, highlights and text boxes' : 'Add key dates, periods and highlights'" @click="hasMarkup ? $emit('update:showMarkup', !showMarkup) : (markupOpen = !markupOpen)"><Icon name="flag" :size="13" />Key dates</button>
       <button aria-label="Edit key dates, periods and highlights" class="tb-icon" :class="{ active: markupOpen }" title="Edit key dates, periods and highlights" @click="markupOpen = !markupOpen"><Icon name="pencil" :size="14" /></button>
       <button aria-label="Add a text box to the chart" class="tb-icon" title="Add a text box to the chart" @click="$emit('add-text')"><Icon name="text" :size="14" /></button>
-      <div v-if="markupOpen" class="tb-panel">
+      <div v-if="markupOpen" class="tb-panel popover popover-below popover-end">
         <GanttMarkupPanel :markup="markup" :default-date="markupDefaultDate" @change="m => $emit('markup', m)" />
       </div>
     </div>
@@ -159,7 +159,7 @@ export default defineComponent({
 .tb-print { display: inline-flex; align-items: center; gap: 2px; }
 .tb-paper { width: 50px; }
 .gantt-toolbar .tb-chip { padding: 4px 7px; }
-.tb-panel { position: absolute; right: 0; top: calc(100% + 5px); min-width: 250px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: 0 10px 30px -12px rgba(0,0,0,0.35); padding: var(--space-3); z-index: 12; display: flex; flex-direction: column; gap: 7px; }
+.tb-panel { --pop-min: 250px; display: flex; flex-direction: column; gap: 7px; }
 
 .basis-group { display: flex; align-items: center; gap: 6px; border: 1px solid var(--ink-soft); border-radius: var(--radius-sm); padding: 2px; flex-shrink: 0; }
 .basis-group button { padding: 4px 8px; border: none; border-radius: 3px; background: none; cursor: pointer; font: var(--text-small); color: var(--ink-2); }

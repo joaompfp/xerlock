@@ -116,7 +116,7 @@
             </button>
           </div>
           <div v-if="activitiesOnCalendar.length === 0" class="cal-panel-empty">No activity uses this calendar.</div>
-          <div v-else class="cal-act-scroll">
+          <div v-else class="cal-act-scroll" tabindex="0" aria-label="Activities on this calendar">
           <table class="data-table act-table">
             <thead><tr>
               <th>Code</th><th>Activity</th><th>WBS</th>
@@ -390,7 +390,8 @@ export default defineComponent({
 .cal-workexc { background: var(--crit); border-color: var(--crit-deep); }
 .cal-workexc .cal-day-num, .cal-workexc .cal-day-hrs { color: var(--on-solid); font-weight: 700; }
 .cal-flag { position: absolute; top: 2px; right: 5px; color: var(--on-solid); font-weight: 800; }
-.cal-other { opacity: 0.35; }
+.cal-other { background: none; border-color: transparent; }
+.cal-other .cal-day-num { color: var(--ink-3); font-weight: 400; }
 .cal-datadate { outline: 2px solid var(--active); outline-offset: -2px; }
 
 .cal-legend { display: flex; gap: var(--space-4); flex-wrap: wrap; font: var(--text-micro); color: var(--gray-700); margin: var(--space-3) 0 var(--space-5); }
@@ -467,6 +468,10 @@ export default defineComponent({
 .issue-badge { font: var(--text-micro); padding: 1px 7px; border-radius: var(--radius-sm); font-weight: 600; }
 .issue-severe { background: var(--crit); color: var(--on-solid); }
 .issue-warn { background: var(--near-tint); color: var(--near); }
+
+@media (max-width: 640px) {
+  .cal-year-label { flex-basis: 100%; margin-bottom: 2px; }
+}
 
 @media (max-width: 900px) {
   .cal-body { grid-template-columns: 1fr; }

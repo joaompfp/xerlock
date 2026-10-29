@@ -122,7 +122,7 @@
             </button>
             <div class="tb-export">
               <button class="sb-load" :disabled="exporting" @click="exportMenuOpen = !exportMenuOpen" :aria-expanded="exportMenuOpen ? 'true' : 'false'">{{ exportLabel('Export') }} &#9662;</button>
-              <div v-if="exportMenuOpen" class="tb-menu sb-export-menu">
+              <div v-if="exportMenuOpen" class="popover popover-menu popover-above popover-stretch">
                 <button @click="exportMenuOpen = false; doExport(() => exportWorkbook(data!))">Schedule workbook (.xlsx)</button>
                 <button :disabled="annotationCount === 0" @click="exportMenuOpen = false; doExport(() => exportReviewReport(data!, annotations))">Review report (.xlsx)</button>
               </div>
@@ -226,26 +226,28 @@
         <div class="insight-card" v-if="nearCritical.length > 0">
           <h3>Near-critical watchlist</h3>
           <p class="subtitle">Activities with low float that could become critical.</p>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Activity</th>
-                <th class="num">Float</th>
-                <th class="num">Duration</th>
-                <th class="num">End</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="act in nearCritical" :key="act.task_id">
-                <td class="code">{{ act.task_code }}</td>
-                <td class="name-cell">{{ act.task_name }}</td>
-                <td class="float-cell num-cell">{{ formatFloat(act.total_float_hrs, act.calendar_hrs_per_day) }}</td>
-                <td class="num-cell">{{ formatHours(act.duration_hrs, act.calendar_hrs_per_day) }}</td>
-                <td class="num-cell">{{ formatDate(displayEnd(act)) }}</td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="table-scroll" tabindex="0" aria-label="Near-critical activities">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Activity</th>
+                  <th class="num">Float</th>
+                  <th class="num">Duration</th>
+                  <th class="num">End</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="act in nearCritical" :key="act.task_id">
+                  <td class="code">{{ act.task_code }}</td>
+                  <td class="name-cell">{{ act.task_name }}</td>
+                  <td class="float-cell num-cell">{{ formatFloat(act.total_float_hrs, act.calendar_hrs_per_day) }}</td>
+                  <td class="num-cell">{{ formatHours(act.duration_hrs, act.calendar_hrs_per_day) }}</td>
+                  <td class="num-cell">{{ formatDate(displayEnd(act)) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -961,6 +963,8 @@ export default defineComponent({
   --space-8: 32px;
   --radius-sm: 4px;
   --radius-md: 8px;
+  /* Stacking: popovers sit above the sticky chart chrome and the sidebar. */
+  --z-popover: 40;
   /* Reviewer markup (key dates, periods): muted, so it never competes with the bars. */
   --mk-slate: #5B6B7F;
   --mk-teal: #1F7A72;
@@ -1034,6 +1038,8 @@ export default defineComponent({
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 button, input, select, textarea { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+/* Scroll areas made focusable draw their ring inside, where a clipping parent cannot hide it. */
+[tabindex="0"]:focus-visible { outline-offset: -2px; }
 body { font-family: var(--font-ui); background: var(--bg); color: var(--ink); font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
 
 /* Every number in the app reads as instrument output, not prose — codes, dates,
@@ -1165,6 +1171,8 @@ th.num { text-align: right !important; }
 .btn-export-view { margin-left: auto; }
 
 /* Table */
+/* Wide tables scroll inside a wrapper instead of forcing the page sideways. */
+.table-scroll { overflow-x: auto; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--gray-300); border-radius: var(--radius-md); max-height: calc(100dvh - 190px); }
 .data-table { width: 100%; border-collapse: collapse; font: var(--text-body); }
 .data-table th { text-align: left; padding: var(--space-2) var(--space-3); border-bottom: 2px solid var(--gray-300); font: var(--text-micro); text-transform: uppercase; color: var(--gray-700); letter-spacing: 0.04em; white-space: nowrap; background: var(--gray-100); }
@@ -1276,8 +1284,6 @@ th.num { text-align: right !important; }
   .metric { min-width: 84px; padding: var(--space-2) var(--space-3); }
   .gesture-hint { display: none !important; }
   .section-full { padding: 0 var(--space-3); }
-  /* Wide tables scroll within themselves instead of forcing the page sideways */
-  .data-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 }
 
 
@@ -1318,8 +1324,6 @@ th.num { text-align: right !important; }
 .sb-metric-pct, .sb-metric-wide { grid-column: 1 / -1; }
 .sb-metric-pct .tb-bar { flex: 1; align-self: center; background: var(--nav-2); }
 .sb-actions { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(--space-2); }
-.sb-actions .tb-export { position: relative; }
-.sb-export-menu { left: 0; right: auto; top: auto; bottom: calc(100% + 4px); }
 .sb-load:disabled { opacity: 0.5; cursor: default; }
 .sb-rail { position: fixed; left: 0; top: 0; bottom: 0; width: 18px; z-index: 30; display: flex; align-items: flex-start; justify-content: center; padding-top: 18px; border: none; background: var(--nav); color: var(--nav-ink-3); cursor: pointer; }
 .sb-rail:hover { color: var(--nav-ink); background: var(--nav-2); }
@@ -1356,10 +1360,6 @@ th.num { text-align: right !important; }
 .tb-bar { display: inline-block; width: 54px; height: 4px; border-radius: 2px; background: var(--chip); overflow: hidden; }
 .tb-bar u { display: block; height: 100%; background: var(--accent); }
 .tb-export { position: relative; }
-.tb-menu { position: absolute; right: 0; top: calc(100% + 4px); min-width: 210px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: 0 8px 24px -10px rgba(0,0,0,0.35); padding: 4px; z-index: 30; }
-.tb-menu button { display: block; width: 100%; text-align: left; background: none; border: none; border-radius: 4px; padding: 7px 10px; cursor: pointer; font: var(--text-small); color: var(--ink-2); }
-.tb-menu button:hover:not(:disabled) { background: var(--chip); color: var(--ink); }
-.tb-menu button:disabled { opacity: 0.45; cursor: default; }
 
 .views { padding: var(--space-4); }
 .views .section-full { width: auto; position: static; left: auto; right: auto; margin-left: 0; margin-right: 0; padding: 0; }

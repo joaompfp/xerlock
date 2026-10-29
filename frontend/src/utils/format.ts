@@ -15,7 +15,8 @@ export function dateFormat(options: Intl.DateTimeFormatOptions): (d: string | nu
     let s = cache.get(key)
     if (s === undefined) {
       const dt = new Date(d)
-      s = isNaN(dt.getTime()) ? 'Invalid Date' : fmt.format(dt)
+      // en-GB abbreviates September as "Sept"; every other month has three letters.
+      s = isNaN(dt.getTime()) ? 'Invalid Date' : fmt.format(dt).replace('Sept', 'Sep')
       if (cache.size > 20000) cache.clear()
       cache.set(key, s)
     }

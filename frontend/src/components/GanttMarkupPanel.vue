@@ -112,11 +112,11 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.mk-panel { display: flex; flex-direction: column; gap: 10px; min-width: 460px; }
+.mk-panel { display: flex; flex-direction: column; gap: 10px; min-width: min(460px, 100%); }
 .mk-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 .mk-title { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
 .mk-empty { margin: 0; font: var(--text-small); color: var(--ink-3); max-width: 420px; }
-.mk-row { display: flex; align-items: center; gap: 5px; margin-top: 4px; }
+.mk-row { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
 .mk-swatch { width: 14px; height: 14px; border-radius: 50%; border: none; cursor: pointer; flex-shrink: 0; background: var(--mk); }
 .mk-label { flex: 1; min-width: 90px; padding: 3px 6px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); font: var(--text-small); background: var(--white); color: var(--ink); }
 .mk-row .filter-date { padding: 2px 3px; width: 132px; }

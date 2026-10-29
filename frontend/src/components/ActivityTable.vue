@@ -6,7 +6,7 @@
       placeholder="Search code, name, or WBS..."
       class="search-input"
     />
-    <select v-model="statusFilter" class="filter-select">
+    <select v-model="statusFilter" class="filter-select" aria-label="Status">
       <option value="">All statuses</option>
       <option value="TK_NotStart">Not Started</option>
       <option value="TK_Active">Active</option>
@@ -18,7 +18,7 @@
     </label>
     <span v-for="t in codeTypesAvailable" :key="t" class="code-filter-group">
       <span class="code-filter-src" aria-hidden="true">{{ t }}</span>
-      <select v-model="codeFilters[t]" class="filter-select" :title="`P6 activity code category '${t}' — name and values read verbatim from this file's ACTVTYPE/ACTVCODE tables`">
+      <select v-model="codeFilters[t]" class="filter-select" :aria-label="t" :title="`P6 activity code category '${t}' — name and values read verbatim from this file's ACTVTYPE/ACTVCODE tables`">
         <option value="">All {{ t }}</option>
         <option v-for="c in codeValuesByType.get(t)" :key="c" :value="c">{{ c }}</option>
       </select>
@@ -27,7 +27,7 @@
       Export view (.csv)
     </button>
   </div>
-  <div class="table-wrap" ref="wrap" @scroll="onScroll">
+  <div class="table-wrap" ref="wrap" tabindex="0" aria-label="Activities" @scroll="onScroll">
     <table class="data-table">
       <thead>
         <tr>
