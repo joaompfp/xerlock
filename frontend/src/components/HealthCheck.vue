@@ -1017,19 +1017,6 @@ export default defineComponent({
 
 .health-section { border-bottom: 1px solid var(--gray-300); }
 .health-section:last-child { border-bottom: none; }
-.section-title { font: 600 15px/1.4 var(--font-ui); }
-.section-head { width: 100%; display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4); background: var(--gray-100); border: none; cursor: pointer; text-align: left; }
-.section-head:hover { background: var(--gray-150); }
-.section-title { font-weight: 600; color: var(--ink); white-space: nowrap; }
-.section-title em { font-style: normal; color: var(--accent); font-family: var(--font-mono); }
-.section-title em.pass { color: var(--ok); }
-.section-hint { font: var(--text-small); color: var(--gray-700); flex: 1; }
-.chevron { transition: transform 0.15s; color: var(--gray-500); font-size: 19px; }
-.chevron.open { transform: rotate(90deg); }
-.section-body { padding: var(--space-4); }
-.section-note { font: var(--text-small); color: var(--gray-700); margin: var(--space-2) 0 var(--space-4); }
-.section-body h4 { font: var(--text-small); font-weight: 700; color: var(--ink); margin: var(--space-4) 0 var(--space-2); }
-.section-body h4:first-child { margin-top: 0; }
 .empty-state { font: var(--text-small); color: var(--ok); }
 
 .rel-mix { display: flex; gap: var(--space-6); flex-wrap: wrap; }

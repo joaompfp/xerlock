@@ -239,11 +239,7 @@ export default defineComponent({
 .progress-section { border-bottom: 1px solid var(--gray-300); }
 .progress-section:last-child { border-bottom: none; }
 .section-head-static { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4); background: var(--gray-100); flex-wrap: wrap; }
-.section-title { font-weight: 600; color: var(--ink); white-space: nowrap; }
-.section-title em { font-style: normal; color: var(--accent); font-family: var(--font-mono); }
-.section-hint { font: var(--text-small); color: var(--gray-700); flex: 1; }
-.section-body { padding: var(--space-4); }
-.section-note { font: var(--text-small); color: var(--gray-700); margin: 0 0 var(--space-4); font-style: italic; }
+.section-note { margin: 0 0 var(--space-4); font-style: italic; }
 .empty-state { font: var(--text-small); color: var(--ok); }
 .empty-state.warn { color: var(--near); }
 

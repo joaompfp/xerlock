@@ -1,0 +1,21 @@
+/* Floating panels and menus opened from a button: one surface, one stacking level.
+   The anchor is the nearest positioned wrapper. Placement is a modifier that sets BOTH
+   vertical edges, so no later rule can leave a panel with top and bottom set at once
+   (which squeezes it to nothing and lets its content spill out unbacked). */
+.popover {
+  position: absolute; z-index: var(--z-popover);
+  min-width: var(--pop-min, 210px); max-width: calc(100vw - 32px);
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md);
+  box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.35); padding: var(--space-3);
+}
+.popover-below { top: calc(100% + 5px); bottom: auto; }
+.popover-above { bottom: calc(100% + 4px); top: auto; }
+.popover-end { right: 0; left: auto; }
+.popover-start { left: 0; right: auto; }
+.popover-stretch { left: 0; right: 0; min-width: 0; }
+
+/* A list of actions inside a popover. */
+.popover-menu { padding: 4px; }
+.popover-menu button { display: block; width: 100%; text-align: left; background: none; border: none; border-radius: 4px; padding: 7px 10px; cursor: pointer; font: var(--text-small); color: var(--ink-2); }
+.popover-menu button:hover:not(:disabled) { background: var(--chip); color: var(--ink); }
+.popover-menu button:disabled { opacity: 0.45; cursor: default; }
