@@ -1,4 +1,4 @@
 # Test dependencies (the app itself needs only requirements.txt)
 -r requirements.txt
-pytest==9.1.1
+pytest==9.2.0
 httpx==0.28.1        # required by fastapi.testclient
