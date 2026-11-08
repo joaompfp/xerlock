@@ -172,6 +172,13 @@
         <span v-if="!currentFile" class="project-switch__hint">Reopened from this browser: load the file again to switch.</span>
       </div>
 
+      <!-- Opening another project of this file can fail; the schedule stays open, so the
+           reason has to be shown here and not only on the (hidden) landing page. -->
+      <div v-if="load.phase === 'failed'" class="upload-error load-banner" role="alert">
+        <span>{{ load.error }}</span>
+        <button class="btn-tiny-light" @click="dispatchLoad({ type: 'dismiss' })">Dismiss</button>
+      </div>
+
       <div v-if="visibleWarnings.length" class="parse-warnings">
         <div v-for="(w, i) in visibleWarnings" :key="i" class="parse-warning">
           <span>{{ w }}</span>
@@ -325,6 +332,11 @@
             <p class="subtitle">Diff this file against an earlier export of the same project — slipped dates, duration edits, float erosion, logic changes and critical-path movement. The current file stays loaded; the snapshot is only used for the diff.</p>
           </header>
 
+          <div v-if="compare.phase === 'failed'" class="upload-error load-banner" role="alert">
+            <span>{{ compare.error }}</span>
+            <button class="btn-tiny-light" @click="dispatchCompare({ type: 'dismiss' })">Dismiss</button>
+          </div>
+
           <div v-if="otherProjects.length && currentFile" class="compare-in-file">
             <h3>Other projects in this file</h3>
             <p class="compare-upload__note">An export often carries a baseline as a second project: compare against it directly.</p>
@@ -380,7 +392,7 @@
                 <path d="M12 5v14M5 12h14" />
               </svg>
               <span v-if="!compareLoading">{{ dropPrompt }}</span>
-              <span v-else class="loading">{{ parsingNote || 'Parsing schedule…' }}</span>
+              <span v-else class="loading">{{ compare.note || 'Parsing schedule…' }}</span>
             </label>
           </div>
           <p class="compare-upload__note">{{ parserMode === 'local' ? 'Parsed on this computer: nothing is uploaded.' : 'Parsed in memory on the server and discarded: nothing is stored.' }}</p>
@@ -418,6 +430,7 @@ import { buildWbsRollups, type WbsRollup } from './utils/wbs'
 import type { Activity, ProjectInFile } from './types/schedule'
 import { parseSchedule, prepareParser, PARSER_MODE } from './utils/parseSchedule'
 import { ACCEPT, DROP_PROMPT, unsupportedFileMessage } from './utils/source'
+import { initialLoad, loadReducer, type LoadEvent } from './utils/loadMachine'
 
 // Projects already opened in this browser (the first open starts on the review).
 const SEEN_KEY = 'schedule-app:seen-projects'
@@ -463,8 +476,10 @@ export default defineComponent({
   data() {
     return {
       data: null as StoredSchedule | null,
-      loading: false,
-      parsingNote: '',
+      // The two "read a file" jobs (the schedule itself; the one to compare against) are
+      // separate machines: each has its own progress line and its own error.
+      load: initialLoad,
+      compare: initialLoad,
       parserMode: PARSER_MODE,
       accept: ACCEPT,
       dropPrompt: DROP_PROMPT,
@@ -489,8 +504,6 @@ export default defineComponent({
       compareFilename: '',
       dismissedWarnings: [] as string[],
       theme: normaliseTheme(localStorage.getItem('schedule-app:theme')),
-      uploadError: null as string | null,
-      parsingStage: 0,
       jumpOrigin: null as string | null,
       tabLabels: { review: 'Review', gantt: 'Gantt chart', story: 'Critical path', table: 'Activity table', wbs: 'WBS tree', progress: 'Progress', health: 'Health check', calendars: 'Calendars', tables: 'Raw tables', compare: 'Compare' } as Record<string, string>,
       // Three jobs, not one row of nine: the programme, the analysis of it, and the
@@ -526,7 +539,6 @@ export default defineComponent({
       liveHealthScore: null as number | null,
       exportState: '',
       themeOptions: { light: 'Light', dark: 'Dark' } as Record<Theme, string>,
-      compareLoading: false,
       compareDragOver: false,
     }
   },
@@ -608,9 +620,12 @@ export default defineComponent({
         .sort((a, b) => a.total_float_hrs! - b.total_float_hrs!)
         .slice(0, 15)
     },
+    loading(): boolean { return this.load.phase === 'parsing' },
+    compareLoading(): boolean { return this.compare.phase === 'parsing' },
+    uploadError(): string | null { return this.load.error },
     parsingMessage(): string {
       // A parser that reports real progress (the in-browser one) wins over the cycling hints.
-      return this.parsingNote || PARSE_STAGES[this.parsingStage % PARSE_STAGES.length]
+      return this.load.note || PARSE_STAGES[this.load.stage % PARSE_STAGES.length]
     },
     visibleWarnings(): string[] {
       const ws = (this.data && this.data.warnings) || []
@@ -656,7 +671,7 @@ export default defineComponent({
         this.snapshotJustSaved = true
         setTimeout(() => { this.snapshotJustSaved = false }, 1800)
       } catch {
-        this.uploadError = ''
+        this.dispatchLoad({ type: 'dismiss' })
         alert('Could not save the snapshot (browser storage unavailable or full).')
       } finally {
         this.snapshotSaving = false
@@ -684,45 +699,39 @@ export default defineComponent({
     },
     async uploadCompareFile(file: File) {
       const refused = unsupportedFileMessage(file.name)
-      if (refused) {
-        alert(refused)
-        return
-      }
-      this.compareLoading = true
-      this.parsingNote = ''
+      if (refused) return this.failCompare(refused)
+      const run = this.dispatchCompare({ type: 'start' })
       try {
-        this.compareData = await parseSchedule(file, msg => { this.parsingNote = msg })
+        const parsed = await parseSchedule(file, text => this.dispatchCompare({ type: 'note', run, text }))
+        // A newer comparison file replaced this one while it parsed: its result is stale.
+        if (this.compare.run !== run) return
+        this.compareData = parsed
         this.compareFilename = file.name
+        this.dispatchCompare({ type: 'succeed', run })
       } catch (e) {
-        alert('Failed to parse: ' + (e as Error).message)
-      } finally {
-        this.compareLoading = false
+        this.dispatchCompare({ type: 'fail', run, message: 'Failed to parse: ' + (e as Error).message })
       }
     },
     async uploadFile(file: File, project?: number) {
       const refused = unsupportedFileMessage(file.name)
-      if (refused) {
-        alert(refused)
-        return
-      }
-      this.loading = true
-      this.uploadError = null
-      this.parsingStage = 0
-      this.parsingNote = ''
-      const stageTimer = setInterval(() => { this.parsingStage++ }, 800)
+      if (refused) return this.failLoad(refused)
+      const run = this.dispatchLoad({ type: 'start' })
+      const stageTimer = setInterval(() => this.dispatchLoad({ type: 'tick', run }), 800)
       try {
-        const parsed = await parseSchedule(file, msg => { this.parsingNote = msg }, project)
+        const parsed = await parseSchedule(file, text => this.dispatchLoad({ type: 'note', run, text }), project)
+        // Another file was dropped while this one parsed: last drop wins, this result is stale.
+        if (this.load.run !== run) return
         this.activateData(parsed)
         this.currentFilename = file.name
         this.currentFile = file
         const kept = await saveLastFile(file.name, parsed)
         this.lastFileKept = !!kept
         if (kept) this.lastFile = kept
+        this.dispatchLoad({ type: 'succeed', run })
       } catch (e) {
-        this.uploadError = `${(e as Error).message} — check the file is a P6 .xer export or a Microsoft Project XML or .mpp file, or try the sample project below.`
+        this.dispatchLoad({ type: 'fail', run, message: `${(e as Error).message} — check the file is a P6 .xer export or a Microsoft Project XML or .mpp file, or try the sample project below.` })
       } finally {
         clearInterval(stageTimer)
-        this.loading = false
       }
     },
     async loadSample(kind: 'xer' | 'xml' = 'xer') {
@@ -735,8 +744,28 @@ export default defineComponent({
         const blob = await res.blob()
         await this.uploadFile(new File([blob], name))
       } catch {
-        this.uploadError = 'Could not load the sample project.'
+        this.failLoad('Could not load the sample project.')
       }
+    },
+    // A failure that happens before any parsing starts still goes through the machine,
+    // so there is one place errors are shown.
+    failLoad(message: string) {
+      const run = this.dispatchLoad({ type: 'start' })
+      this.dispatchLoad({ type: 'fail', run, message })
+    },
+    failCompare(message: string) {
+      const run = this.dispatchCompare({ type: 'start' })
+      this.dispatchCompare({ type: 'fail', run, message })
+    },
+    // The only writers of the load machines. Each returns the run the event produced or
+    // belongs to, which the caller passes back on every later event of the same job.
+    dispatchLoad(event: LoadEvent): number {
+      this.load = loadReducer(this.load, event)
+      return this.load.run
+    },
+    dispatchCompare(event: LoadEvent): number {
+      this.compare = loadReducer(this.compare, event)
+      return this.compare.run
     },
     activateData(parsed: StoredSchedule) {
       this.data = parsed
@@ -758,15 +787,15 @@ export default defineComponent({
     },
     async compareProject(p: ProjectInFile) {
       if (!this.currentFile) return
-      this.compareLoading = true
-      this.parsingNote = ''
+      const run = this.dispatchCompare({ type: 'start' })
       try {
-        this.compareData = await parseSchedule(this.currentFile, msg => { this.parsingNote = msg }, p.proj_id)
+        const parsed = await parseSchedule(this.currentFile, text => this.dispatchCompare({ type: 'note', run, text }), p.proj_id)
+        if (this.compare.run !== run) return
+        this.compareData = parsed
         this.compareFilename = `${this.currentFilename} · ${p.proj_short_name}`
+        this.dispatchCompare({ type: 'succeed', run })
       } catch (e) {
-        alert('Failed to parse: ' + (e as Error).message)
-      } finally {
-        this.compareLoading = false
+        this.dispatchCompare({ type: 'fail', run, message: 'Failed to parse: ' + (e as Error).message })
       }
     },
     reopenLastFile() {
@@ -781,6 +810,9 @@ export default defineComponent({
     },
     closeFile() {
       this.data = null
+      // An old failure must not greet the next visit to the landing page.
+      this.dispatchLoad({ type: 'dismiss' })
+      this.dispatchCompare({ type: 'dismiss' })
       try { sessionStorage.removeItem(SHOWING_FILE) } catch { /* nothing to undo */ }
     },
     formatDate,
@@ -1101,6 +1133,7 @@ th.num { text-align: right !important; }
 .sample-sub { font: var(--text-micro); color: var(--gray-500); margin-top: 4px; }
 .sample-alt { border: none; background: none; cursor: pointer; font: inherit; color: var(--accent); padding: 0; }
 .sample-alt:hover { text-decoration: underline; }
+.load-banner { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); }
 .upload-error { margin-top: var(--space-3); font: var(--text-small); color: var(--crit); background: var(--crit-tint); border: 1px solid var(--crit); border-radius: var(--radius-sm); padding: 8px 12px; }
 .tab-report-btn { margin-left: var(--space-2); margin-bottom: 4px; padding: 5px 12px; font: var(--text-small); font-weight: 700; color: var(--on-solid); background: var(--accent); border: none; border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap; }
 .tab-report-btn:hover { opacity: 0.92; }
