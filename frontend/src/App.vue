@@ -172,6 +172,13 @@
         <span v-if="!currentFile" class="project-switch__hint">Reopened from this browser: load the file again to switch.</span>
       </div>
 
+      <!-- Opening another project of this file can fail; the schedule stays open, so the
+           reason has to be shown here and not only on the (hidden) landing page. -->
+      <div v-if="load.phase === 'failed'" class="upload-error load-banner" role="alert">
+        <span>{{ load.error }}</span>
+        <button class="btn-tiny-light" @click="dispatchLoad({ type: 'dismiss' })">Dismiss</button>
+      </div>
+
       <div v-if="visibleWarnings.length" class="parse-warnings">
         <div v-for="(w, i) in visibleWarnings" :key="i" class="parse-warning">
           <span>{{ w }}</span>
@@ -324,6 +331,11 @@
             <h2>Compare against a previous snapshot</h2>
             <p class="subtitle">Diff this file against an earlier export of the same project — slipped dates, duration edits, float erosion, logic changes and critical-path movement. The current file stays loaded; the snapshot is only used for the diff.</p>
           </header>
+
+          <div v-if="compare.phase === 'failed'" class="upload-error load-banner" role="alert">
+            <span>{{ compare.error }}</span>
+            <button class="btn-tiny-light" @click="dispatchCompare({ type: 'dismiss' })">Dismiss</button>
+          </div>
 
           <div v-if="otherProjects.length && currentFile" class="compare-in-file">
             <h3>Other projects in this file</h3>
@@ -687,31 +699,28 @@ export default defineComponent({
     },
     async uploadCompareFile(file: File) {
       const refused = unsupportedFileMessage(file.name)
-      if (refused) {
-        alert(refused)
-        return
-      }
+      if (refused) return this.failCompare(refused)
       const run = this.dispatchCompare({ type: 'start' })
       try {
-        this.compareData = await parseSchedule(file, text => this.dispatchCompare({ type: 'note', run, text }))
+        const parsed = await parseSchedule(file, text => this.dispatchCompare({ type: 'note', run, text }))
+        // A newer comparison file replaced this one while it parsed: its result is stale.
+        if (this.compare.run !== run) return
+        this.compareData = parsed
         this.compareFilename = file.name
         this.dispatchCompare({ type: 'succeed', run })
       } catch (e) {
-        const message = (e as Error).message
-        this.dispatchCompare({ type: 'fail', run, message })
-        alert('Failed to parse: ' + message)
+        this.dispatchCompare({ type: 'fail', run, message: 'Failed to parse: ' + (e as Error).message })
       }
     },
     async uploadFile(file: File, project?: number) {
       const refused = unsupportedFileMessage(file.name)
-      if (refused) {
-        alert(refused)
-        return
-      }
+      if (refused) return this.failLoad(refused)
       const run = this.dispatchLoad({ type: 'start' })
       const stageTimer = setInterval(() => this.dispatchLoad({ type: 'tick', run }), 800)
       try {
         const parsed = await parseSchedule(file, text => this.dispatchLoad({ type: 'note', run, text }), project)
+        // Another file was dropped while this one parsed: last drop wins, this result is stale.
+        if (this.load.run !== run) return
         this.activateData(parsed)
         this.currentFilename = file.name
         this.currentFile = file
@@ -735,9 +744,18 @@ export default defineComponent({
         const blob = await res.blob()
         await this.uploadFile(new File([blob], name))
       } catch {
-        const run = this.dispatchLoad({ type: 'start' })
-        this.dispatchLoad({ type: 'fail', run, message: 'Could not load the sample project.' })
+        this.failLoad('Could not load the sample project.')
       }
+    },
+    // A failure that happens before any parsing starts still goes through the machine,
+    // so there is one place errors are shown.
+    failLoad(message: string) {
+      const run = this.dispatchLoad({ type: 'start' })
+      this.dispatchLoad({ type: 'fail', run, message })
+    },
+    failCompare(message: string) {
+      const run = this.dispatchCompare({ type: 'start' })
+      this.dispatchCompare({ type: 'fail', run, message })
     },
     // The only writers of the load machines. Each returns the run the event produced or
     // belongs to, which the caller passes back on every later event of the same job.
@@ -771,13 +789,13 @@ export default defineComponent({
       if (!this.currentFile) return
       const run = this.dispatchCompare({ type: 'start' })
       try {
-        this.compareData = await parseSchedule(this.currentFile, text => this.dispatchCompare({ type: 'note', run, text }), p.proj_id)
+        const parsed = await parseSchedule(this.currentFile, text => this.dispatchCompare({ type: 'note', run, text }), p.proj_id)
+        if (this.compare.run !== run) return
+        this.compareData = parsed
         this.compareFilename = `${this.currentFilename} · ${p.proj_short_name}`
         this.dispatchCompare({ type: 'succeed', run })
       } catch (e) {
-        const message = (e as Error).message
-        this.dispatchCompare({ type: 'fail', run, message })
-        alert('Failed to parse: ' + message)
+        this.dispatchCompare({ type: 'fail', run, message: 'Failed to parse: ' + (e as Error).message })
       }
     },
     reopenLastFile() {
@@ -792,6 +810,9 @@ export default defineComponent({
     },
     closeFile() {
       this.data = null
+      // An old failure must not greet the next visit to the landing page.
+      this.dispatchLoad({ type: 'dismiss' })
+      this.dispatchCompare({ type: 'dismiss' })
       try { sessionStorage.removeItem(SHOWING_FILE) } catch { /* nothing to undo */ }
     },
     formatDate,
@@ -1112,6 +1133,7 @@ th.num { text-align: right !important; }
 .sample-sub { font: var(--text-micro); color: var(--gray-500); margin-top: 4px; }
 .sample-alt { border: none; background: none; cursor: pointer; font: inherit; color: var(--accent); padding: 0; }
 .sample-alt:hover { text-decoration: underline; }
+.load-banner { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); }
 .upload-error { margin-top: var(--space-3); font: var(--text-small); color: var(--crit); background: var(--crit-tint); border: 1px solid var(--crit); border-radius: var(--radius-sm); padding: 8px 12px; }
 .tab-report-btn { margin-left: var(--space-2); margin-bottom: 4px; padding: 5px 12px; font: var(--text-small); font-weight: 700; color: var(--on-solid); background: var(--accent); border: none; border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap; }
 .tab-report-btn:hover { opacity: 0.92; }

@@ -4,6 +4,23 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.15.4] - 2026-11-08
+
+### Fixed
+- Dropping a second file while the first was still parsing could leave the first file's
+  schedule on screen (and switch off the second one's progress message). The last file
+  dropped now wins, and a result that arrives late is discarded.
+- Opening another project of a multi-project file, when it failed, said nothing: the
+  reason was only written on the landing page, which is hidden while a schedule is open.
+  It now shows in a dismissible banner above the schedule.
+- Comparison failures (an unsupported file, a parse error) were browser pop-ups; they now
+  appear inline in the Compare view, the same way the landing page reports them.
+- A failed upload no longer greets you again on the landing page after you close the file.
+
+### Changed
+- The "read a file" lifecycle (idle, parsing, failed) is now one tested state machine
+  instead of five separate flags. No change to what a figure means.
+
 ## [1.15.3] - 2026-10-29
 
 ### Fixed
