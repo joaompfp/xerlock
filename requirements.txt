@@ -1,6 +1,6 @@
 # Exact pins: this is an application, so a rebuild must produce the same dependency set.
 # Dependabot (.github/dependabot.yml) proposes upgrades as PRs, which CI then tests.
-fastapi==0.143.0
+fastapi==0.162.0
 uvicorn==0.54.0
 python-multipart==0.0.32
 # Microsoft Project .mpp files (server only): MPXJ (LGPL-2.1, Java) through JPype. Needs a
