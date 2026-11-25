@@ -2,11 +2,38 @@ import type { Activity } from '../types/schedule'
 
 type DateInput = string | number | Date | null | undefined
 
-// One formatter per format, built once: Date.toLocaleDateString with options builds a
-// new Intl.DateTimeFormat on every call, which made formatting dates the main cost of
-// redrawing a large Gantt. `dateFormat` wraps one with what toLocaleDateString did for
-// an unparseable date, and remembers each date's text (a programme repeats a few
-// hundred dates thousands of times).
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+// P6 prints dates DD-MMM-YY (02-Mar-26) and that is the format a planner reads most
+// easily: day first, month by name, no ambiguity between 03/04 and 04/03. Built by hand
+// rather than through Intl, because Intl inserts the locale's separator and has no
+// hyphen-joined two-digit-year shape.
+//
+// Every formatter memoises: a programme repeats a few hundred dates thousands of times
+// and this runs on every redraw of a large Gantt.
+function twoDigit(n: number): string {
+  return n < 10 ? `0${n}` : String(n)
+}
+
+function memoFormat(build: (dt: Date) => string): (d: string | number | Date) => string {
+  const cache = new Map<string | number, string>()
+  return d => {
+    const key = d instanceof Date ? d.getTime() : d
+    let s = cache.get(key)
+    if (s === undefined) {
+      const dt = d instanceof Date ? d : new Date(d)
+      s = isNaN(dt.getTime()) ? 'Invalid Date' : build(dt)
+      if (cache.size > 20000) cache.clear()
+      cache.set(key, s)
+    }
+    return s
+  }
+}
+
+const fmtDate = memoFormat(dt => `${twoDigit(dt.getDate())}-${MONTHS[dt.getMonth()]}-${twoDigit(dt.getFullYear() % 100)}`)
+const fmtDateShort = memoFormat(dt => `${twoDigit(dt.getDate())}-${MONTHS[dt.getMonth()]}`)
+
+/** Month labels for timeline ticks and axis bands, e.g. 'Mar' or 'Mar 26'. */
 export function dateFormat(options: Intl.DateTimeFormatOptions): (d: string | number | Date) => string {
   const fmt = new Intl.DateTimeFormat('en-GB', options)
   const cache = new Map<string | number, string>()
@@ -23,9 +50,6 @@ export function dateFormat(options: Intl.DateTimeFormatOptions): (d: string | nu
     return s
   }
 }
-
-const fmtDate = dateFormat({ day: '2-digit', month: 'short', year: 'numeric' })
-const fmtDateShort = dateFormat({ day: '2-digit', month: 'short' })
 
 export function formatDate(d: DateInput): string {
   if (!d) return '--'
@@ -63,6 +87,7 @@ export function formatFloat(hrs: number | null | undefined, hrsPerDay = 8): stri
   return `${days}d`
 }
 
+/** Day and month only, for columns with no room for the year (e.g. '02-Mar'). */
 export function formatDateShort(d: DateInput): string {
   if (!d) return '—'
   return fmtDateShort(d)

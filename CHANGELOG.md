@@ -4,6 +4,15 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.15.5] - 2026-11-25
+
+### Changed
+- Dates are printed everywhere as DD-MMM-YY (`02-Mar-26`), the P6 convention: day first,
+  month by name, two-digit year. Nothing can be read month-first.
+- The five date fields (Gantt window from/to, key date, period from/to) no longer use a
+  native date input, whose text follows the browser's locale and read `mm/dd/yyyy` on an
+  en-US machine. They show the same DD-MMM-YY text and still open the browser's calendar.
+
 ## [1.15.4] - 2026-11-08
 
 ### Fixed

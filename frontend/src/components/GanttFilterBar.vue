@@ -18,9 +18,9 @@
     </select>
     <button class="tb-chip" :class="{ on: filter.criticalOnly }" @click="set('criticalOnly', !filter.criticalOnly)" title="Critical activities only, on the current basis"><i></i>Critical only</button>
     <span class="fb-dates" :class="{ set: filter.from || filter.to }" title="Date window: activities touching it">
-      <input type="date" :value="filter.from" class="filter-date" aria-label="From" @input="set('from', ($event.target as HTMLInputElement).value)" />
+      <DateField class="filter-date" :model-value="filter.from" label="From" title="Date window: from (dd-mmm-yy)" @input="set('from', $event)" />
       <span class="fb-dash">–</span>
-      <input type="date" :value="filter.to" class="filter-date" aria-label="To" @input="set('to', ($event.target as HTMLInputElement).value)" />
+      <DateField class="filter-date" :model-value="filter.to" label="To" title="Date window: to (dd-mmm-yy)" @input="set('to', $event)" />
     </span>
     <template v-if="dataDate">
       <button v-for="d in LOOK_AHEAD_DAYS" :key="d" class="btn-tiny-light la-btn" :class="{ active: lookAheadActive(filter, dataDate, d) }" :title="`Data date + ${d / 7} weeks`" @click="update(toggleLookAhead(filter, dataDate, d))">{{ d / 7 }} wk</button>
@@ -43,6 +43,7 @@
 import { defineComponent, type PropType } from 'vue'
 import type { Activity } from '../types/schedule'
 import type { Annotations, NoteFilter } from '../utils/annotations'
+import DateField from './DateField.vue'
 import {
   STATUS_LABELS, LOOK_AHEAD_DAYS, activeCodes, isFilterSet, withoutChip, lookAheadActive, toggleLookAhead,
   constraintOptions, noteOptions, codeValuesByType, type GanttFilter,
@@ -59,6 +60,7 @@ export default defineComponent({
     dataDate: { type: String as PropType<string | null>, default: null },
   },
   emits: ['update:filter', 'clear'],
+  components: { DateField },
   data() {
     return { STATUS_LABELS, LOOK_AHEAD_DAYS }
   },

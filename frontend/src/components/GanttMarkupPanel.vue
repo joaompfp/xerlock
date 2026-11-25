@@ -9,7 +9,7 @@
       <div v-for="k in markup.keyDates" :key="k.id" class="mk-row">
         <button :aria-label="'Colour: ' + k.color + ' (click to change)'" class="mk-swatch" :class="'mk-' + k.color" :title="'Colour: ' + k.color + ' (click to change)'" @click="patchKeyDate(k.id, { color: nextColor(k.color) })"></button>
         <input class="mk-label" :value="k.label" placeholder="Label" maxlength="40" @input="patchKeyDate(k.id, { label: inputValue($event) })" />
-        <input type="date" class="filter-date" :value="k.date" aria-label="Date" @change="setKeyDateDate(k.id, $event)" />
+        <DateField class="filter-date" :model-value="k.date" label="Key date (dd-mmm-yy)" @change="setKeyDateDate(k.id, $event)" />
         <button aria-label="Remove" class="mk-x" title="Remove" @click="removeKeyDate(k.id)">&times;</button>
       </div>
     </section>
@@ -22,9 +22,9 @@
       <div v-for="p in markup.periods" :key="p.id" class="mk-row">
         <button :aria-label="'Colour: ' + p.color + ' (click to change)'" class="mk-swatch" :class="'mk-' + p.color" :title="'Colour: ' + p.color + ' (click to change)'" @click="patchPeriod(p.id, { color: nextColor(p.color) })"></button>
         <input class="mk-label" :value="p.label" placeholder="Label" maxlength="40" @input="patchPeriod(p.id, { label: inputValue($event) })" />
-        <input type="date" class="filter-date" :value="p.from" aria-label="From" @change="setPeriodDate(p.id, 'from', $event)" />
+        <DateField class="filter-date" :model-value="p.from" label="Period from (dd-mmm-yy)" @change="setPeriodDate(p.id, 'from', $event)" />
         <span class="mk-dash">–</span>
-        <input type="date" class="filter-date" :value="p.to" aria-label="To" @change="setPeriodDate(p.id, 'to', $event)" />
+        <DateField class="filter-date" :model-value="p.to" label="Period to (dd-mmm-yy)" @change="setPeriodDate(p.id, 'to', $event)" />
         <button aria-label="Remove" class="mk-x" title="Remove" @click="removePeriod(p.id)">&times;</button>
       </div>
     </section>
@@ -48,6 +48,7 @@
 <script lang="ts">
 import { defineComponent, type PropType } from 'vue'
 import { MARK_COLORS, newMarkId, nextColor, type HighlightGroup, type KeyDate, type Markup, type Period } from '../utils/markup'
+import DateField from './DateField.vue'
 
 export default defineComponent({
   name: 'GanttMarkupPanel',
@@ -57,6 +58,7 @@ export default defineComponent({
     defaultDate: { type: String, required: true },
   },
   emits: ['change'],
+  components: { DateField },
   methods: {
     nextColor,
     inputValue(e: Event): string {
@@ -76,8 +78,7 @@ export default defineComponent({
     patchKeyDate(id: string, patch: Partial<KeyDate>) {
       this.emit({ keyDates: this.markup.keyDates.map(k => (k.id === id ? { ...k, ...patch } : k)) })
     },
-    setKeyDateDate(id: string, e: Event) {
-      const v = this.inputValue(e)
+    setKeyDateDate(id: string, v: string) {
       if (v) this.patchKeyDate(id, { date: v })
     },
     removeKeyDate(id: string) {
@@ -94,8 +95,7 @@ export default defineComponent({
     patchPeriod(id: string, patch: Partial<Period>) {
       this.emit({ periods: this.markup.periods.map(p => (p.id === id ? { ...p, ...patch } : p)) })
     },
-    setPeriodDate(id: string, end: 'from' | 'to', e: Event) {
-      const v = this.inputValue(e)
+    setPeriodDate(id: string, end: 'from' | 'to', v: string) {
       if (v) this.patchPeriod(id, { [end]: v })
     },
     removePeriod(id: string) {
