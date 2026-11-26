@@ -15,13 +15,31 @@ function twoDigit(n: number): string {
   return n < 10 ? `0${n}` : String(n)
 }
 
+// A bare 'YYYY-MM-DD' names a calendar day, not an instant. new Date('2026-11-25') reads
+// it as UTC midnight, so west of UTC getDate() returns the day before and a date picked
+// in a field prints shifted by one. Split the parts into local components instead. A
+// string carrying a time or a zone is an instant in its own right and keeps its own
+// meaning. Out-of-range parts come back Invalid Date rather than silently rolling over.
+const BARE_DAY = /^\s*(\d{4})-(\d{2})-(\d{2})\s*$/
+
+function parseDate(d: string | number): Date {
+  if (typeof d === 'string') {
+    const m = BARE_DAY.exec(d)
+    if (m) {
+      const dt = new Date(+m[1], +m[2] - 1, +m[3])
+      return dt.getMonth() === +m[2] - 1 && dt.getDate() === +m[3] ? dt : new Date(NaN)
+    }
+  }
+  return new Date(d)
+}
+
 function memoFormat(build: (dt: Date) => string): (d: string | number | Date) => string {
   const cache = new Map<string | number, string>()
   return d => {
     const key = d instanceof Date ? d.getTime() : d
     let s = cache.get(key)
     if (s === undefined) {
-      const dt = d instanceof Date ? d : new Date(d)
+      const dt = d instanceof Date ? d : parseDate(d)
       s = isNaN(dt.getTime()) ? 'Invalid Date' : build(dt)
       if (cache.size > 20000) cache.clear()
       cache.set(key, s)
@@ -41,7 +59,7 @@ export function dateFormat(options: Intl.DateTimeFormatOptions): (d: string | nu
     const key = d instanceof Date ? d.getTime() : d
     let s = cache.get(key)
     if (s === undefined) {
-      const dt = new Date(d)
+      const dt = d instanceof Date ? d : parseDate(d)
       // en-GB abbreviates September as "Sept"; every other month has three letters.
       s = isNaN(dt.getTime()) ? 'Invalid Date' : fmt.format(dt).replace('Sept', 'Sep')
       if (cache.size > 20000) cache.clear()

@@ -84,7 +84,7 @@
       </ul>
     </section>
 
-    <footer class="rv-foot">Read from the file as exported, by XERlock (read-only) on {{ formatDate(new Date().toISOString()) }}. Every figure is defined in the methodology; the checks' targets and weights are as configured in the Health check.</footer>
+    <footer class="rv-foot">Read from the file as exported, by XERlock (read-only) on {{ formatDate(new Date()) }}. Every figure is defined in the methodology; the checks' targets and weights are as configured in the Health check.</footer>
   </div>
 </template>
 

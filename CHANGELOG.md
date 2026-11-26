@@ -4,6 +4,16 @@ All notable changes to XERlock. Versions follow [Semantic Versioning](https://se
 a change to what an existing figure means, or to the API contract the frontend and saved
 snapshots rely on, is a major version.
 
+## [1.15.6] - 2026-11-26
+
+### Fixed
+- A bare calendar day (`2026-11-25`, as the date fields and saved markup store it) was
+  parsed as UTC midnight and read back in local time, so west of UTC every date printed
+  one day early: picking 25 Nov showed `24-Nov-26`. The formatter now splits the year,
+  month and day into local components. Strings that carry a time keep their own meaning.
+- The Review page footer took its date from the UTC timestamp and could name yesterday
+  for a reader west of UTC. It now prints the local day.
+
 ## [1.15.5] - 2026-11-25
 
 ### Changed

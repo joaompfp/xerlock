@@ -17,6 +17,20 @@ describe('date formatting', () => {
     expect(formatDate(new Date(2099, 11, 31))).toBe('31-Dec-99')
     expect(formatDate(new Date(2005, 0, 9))).toBe('09-Jan-05')
   })
+  it('reads a bare calendar day as that day, not as UTC midnight', () => {
+    // new Date('2026-11-25') is UTC midnight; read back west of UTC it is the 24th.
+    expect(formatDate('2026-11-25')).toBe('25-Nov-26')
+    expect(formatDateShort('2026-01-01')).toBe('01-Jan')
+    expect(dateFormat({ day: 'numeric' })('2026-11-25')).toBe('25')
+  })
+  it('rejects a bare day that does not exist instead of rolling it over', () => {
+    expect(formatDate('2026-02-30')).toBe('Invalid Date')
+    expect(formatDate('2026-13-01')).toBe('Invalid Date')
+  })
+  it('leaves a string that carries a time to the Date constructor', () => {
+    expect(formatDate('2026-11-25T08:00:00')).toBe('25-Nov-26')
+    expect(formatDate('2026-11-25 08:00')).toBe('25-Nov-26')
+  })
   it('keeps the empty and invalid markers', () => {
     expect(formatDate(null)).toBe('--')
     expect(formatDateShort('')).toBe('—')
